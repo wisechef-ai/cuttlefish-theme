@@ -31,17 +31,23 @@ def _truecolor(hex_color: str, *, bg: bool = False) -> str:
     return f"\033[{48 if bg else 38};2;{r};{g};{b}m"
 
 
-def _no_color_reason() -> str | None:
+def _no_color_reason(stream=None) -> str | None:
     """Why colour is suppressed, or None when it is not.
 
     Three unrelated causes suppress the field, and the old shared message named
     only one of them ("no truecolor here"). A user piping into `head` was told
     their terminal lacked truecolor, which is a diagnosis of the wrong machine —
     so each cause names itself and says what to do about it.
+
+    `stream` is resolved late (not a default argument) because `sys.stdout` is
+    swapped under us by pytest's capture and by any embedding host; binding it
+    at import time would answer about a stream nobody is writing to.
     """
     if os.environ.get("NO_COLOR"):
         return "NO_COLOR is set — unset it to see the field"
-    if not sys.stdout.isatty():
+    if stream is None:
+        stream = sys.stdout
+    if not stream.isatty():
         return ("stdout is not a terminal (piped or redirected) — "
                 "run it attached to a tty to see the field")
     term = os.environ.get("TERM", "")
@@ -50,13 +56,13 @@ def _no_color_reason() -> str | None:
     return None
 
 
-def _supports_color() -> bool:
+def _supports_color(stream=None) -> bool:
     """Honour NO_COLOR and non-tty output.
 
     Piping `watch` into a file or a pager must produce clean text; a wall of escape
     codes in a log is worse than no colour at all.
     """
-    return _no_color_reason() is None
+    return _no_color_reason(stream) is None
 
 
 def _signal_for(_session_id: str) -> Signal:
