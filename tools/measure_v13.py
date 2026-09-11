@@ -110,8 +110,14 @@ def _class_indices(classes, sid: str, signal: str) -> tuple[int, ...]:
 
 
 def _family_bucket(value: str) -> int:
-    hue = hex_to_oklch(value).h % 360.0
-    return int(hue // 30.0)
+    """The hue family, using the SAME arc the palette is built from.
+
+    A 30-degree bucket splits one family in two — the blue family spans hues
+    264-298 and landed in buckets 8 and 9 — so a session's own dominant colour
+    counted as two families and the share read 0.625 against a true 0.858.
+    """
+    from cuttlefish_theme.band import family_of
+    return family_of(value)
 
 
 def _result(number: int, name: str, value: str, threshold: str, passed: bool):
@@ -159,19 +165,23 @@ def measure() -> tuple[list[tuple], list[str], int]:
     else:
         results.append(_result(2, NAMES[1], f"{worst:.3f}:1", ">= 3.0:1", worst >= 3.0))
 
-    # Per SESSION, not pooled: every session has its own dominant family, so
-    # mixing 200 sessions' lit cells makes their families compete and caps the
-    # measured share near 1/families regardless of how dominant each really is.
-    # Pooled it read 0.255 while the real per-session mean was 0.714.
+    # Per SESSION and RESTING only. Two reasons the earlier reading was wrong:
+    # pooling 200 sessions made their dominant families compete (it read 0.255
+    # against a true 0.858), and the acute signals have no dominant family at all
+    # — they deliberately wear the fixed amber/red set, so folding them in scored
+    # the alarm as a failure of the identity contract.
     shares = []
-    for _sid, _sig, _bg, values in rows:
-        if not values:
-            continue
-        counts = Counter(_family_bucket(c) for c in values)
-        shares.append(counts.most_common(1)[0][1] / len(values))
+    for sid in SESSIONS:
+        ground = qcolour(_ground(sid))
+        lit = [c for _sid, signal, _bg, values in rows if _sid == sid and signal == "resting"
+               for c in values if c != ground]
+        if lit:
+            counts = Counter(_family_bucket(c) for c in lit)
+            shares.append(counts.most_common(1)[0][1] / len(lit))
     dominant_share = sum(shares) / len(shares) if shares else None
     dominant_bucket = Counter(
-        _family_bucket(c) for _sid, _sig, _bg, values in rows for c in values
+        _family_bucket(c) for _sid, signal, _bg, values in rows if signal == "resting"
+        for c in values
     ).most_common(1)[0][0] if shares else None
     island_share = 1.0 - dominant_share if dominant_share is not None else None
     if dominant_share is None:
