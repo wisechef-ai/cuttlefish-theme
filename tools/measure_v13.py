@@ -159,10 +159,20 @@ def measure() -> tuple[list[tuple], list[str], int]:
     else:
         results.append(_result(2, NAMES[1], f"{worst:.3f}:1", ">= 3.0:1", worst >= 3.0))
 
-    lit = [c for _sid, _sig, _bg, values in rows for c in values]
-    families = Counter(_family_bucket(c) for c in lit)
-    dominant_bucket, dominant_count = families.most_common(1)[0] if families else (None, 0)
-    dominant_share = dominant_count / len(lit) if lit else None
+    # Per SESSION, not pooled: every session has its own dominant family, so
+    # mixing 200 sessions' lit cells makes their families compete and caps the
+    # measured share near 1/families regardless of how dominant each really is.
+    # Pooled it read 0.255 while the real per-session mean was 0.714.
+    shares = []
+    for _sid, _sig, _bg, values in rows:
+        if not values:
+            continue
+        counts = Counter(_family_bucket(c) for c in values)
+        shares.append(counts.most_common(1)[0][1] / len(values))
+    dominant_share = sum(shares) / len(shares) if shares else None
+    dominant_bucket = Counter(
+        _family_bucket(c) for _sid, _sig, _bg, values in rows for c in values
+    ).most_common(1)[0][0] if shares else None
     island_share = 1.0 - dominant_share if dominant_share is not None else None
     if dominant_share is None:
         results.append(_skip(3, NAMES[2], "no lit cells")); skipped.append("3: no lit cells")

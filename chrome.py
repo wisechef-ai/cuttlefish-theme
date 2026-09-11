@@ -42,6 +42,10 @@ _MIN_PALETTE = 4
 # reaches a fresh cube index while the hue still reads as the family's own.
 _TINT = 0.25
 
+# Share of LIT cells the islands take: the hottest tail of the ramp. The
+# contract wants a 0.75-0.92 dominant share, so islands stay a minority marking.
+_ISLAND_SHARE = 0.15
+
 _SEPARATION_NUDGES = ((0.08, 0), (-0.08, 0), (0.16, 0), (-0.16, 0),
                       (0.0, 25), (0.0, -25), (0.24, 0), (0.0, 50))
 
@@ -241,9 +245,38 @@ def _mantle_row(session_id: str, width: int, row_key: int,
     unlit = row[0][1]
     ramp = sorted({fg for fg, _bg, _g in row if fg != unlit},
                   key=lambda pigment: hex_to_oklch(pigment).L)
-    shade = {pigment: rank * len(classes) // len(ramp) for rank, pigment in enumerate(ramp)}
-    return tuple((f"bg:{ground if fg == unlit else classes[shade[fg]]}", " ")
+    # Reserve the islands for the hottest CELLS, not the hottest ramp positions.
+    # The ramp holds only a handful of distinct values, so a top-slice of its
+    # positions caught 38% of cells where 15% was asked for — the confetti Adam
+    # saw. Counting cells makes the share mean what it says.
+    dominant, islands = _split(session_id, classes)
+    order = {pigment: rank for rank, pigment in enumerate(ramp)}
+    hottest = sorted((fg for fg, _bg, _g in row if fg != unlit),
+                     key=lambda pigment: hex_to_oklch(pigment).L, reverse=True)
+    island_cells = set(hottest[:round(_ISLAND_SHARE * len(hottest))]) if islands else set()
+    shade = {pigment: islands[rank % len(islands)] if pigment in island_cells
+             else dominant[min(len(dominant) - 1, int(rank / max(1, len(ramp) - 1) * len(dominant)))]
+             for pigment, rank in order.items()}
+    return tuple((f"bg:{ground if fg == unlit else shade[fg]}", " ")
                  for fg, _bg, _glyph in row)
+
+
+def _split(session_id: str, classes: tuple[str, ...]) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Separate a palette into its dominant family and its islands.
+
+    The ground is excluded from both: it is the palette's darkest step, so a lit
+    cell painted with it is invisible against the unlit ones. Leaving it in the
+    dominant ramp dropped measured pigment density to 15%.
+    """
+    from .band import family_of
+    ground = _mantle_palette(session_id)
+    paints = tuple(c for c in classes if c != ground) or classes
+    if len(paints) < 2:
+        return paints, ()
+    home = family_of(ground)
+    dominant = tuple(c for c in paints if family_of(c) == home)
+    islands = tuple(c for c in paints if family_of(c) != home)
+    return (dominant or paints), islands
 
 
 def _acute_status_bar(signal: Signal) -> tuple[str, str]:
