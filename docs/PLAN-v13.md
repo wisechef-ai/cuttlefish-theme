@@ -77,3 +77,43 @@ Dithering draws GLYPHS, so it cannot occupy a cell where text already sits.
 Rule: the transcript's occupied cells use the flat narrow-band background
 (contract 1 keeps them near-uniform); blank regions, margins and the bars get
 the full dithered treatment. Quiet where you read, detailed where you do not.
+
+## Contract 9 vs contract 7: a measured conflict, not a bug
+
+Contract 9 (no index shared between a resting palette and an alarm) and
+contract 7 (>= 16 of 20 sessions get a distinct palette) cannot both hold
+with the current palette. The numbers:
+
+- Exactly THREE warm cube entries (hue 0-70, C > .08) clear WCAG AA behind
+  the body foreground: `#5F0000`, `#870000`, `#AF0000`. There are no others —
+  the xterm-256 cube has no fourth dark saturated red.
+- A fault mantle needs two of them to read as an alarm rather than a single
+  flat wash. The readable band needs red as one of its three hue families;
+  without it the band drops to 2 families and 6 colours.
+- Three colours cannot be split 2 + 2.
+
+Measured consequences of each attempt:
+
+| attempt | contract 9 | contract 7 | repo tests |
+|---|---|---|---|
+| as shipped (`caa5078`) | 1 shared | 17/20 PASS | 277 pass |
+| exclude alarm hue arc 20-115 from band | 0 PASS | 15/20 FAIL | 3 fail |
+| exclude alarm indices from band | 0 PASS | 15/20 FAIL | 3 fail |
+| lift fault red to L .44 / .56 | 0 PASS | 15/20 FAIL | 3 fail |
+| widen band to w .13 to pay for it | 0 PASS | 18/20 PASS | 2 fail (swing 1.77x, one pigment quantised to grey) |
+
+Also tried and rejected: sampling blends in sixteenths rather than eighths to
+manufacture extra in-band shades. It reaches no additional cube index — the
+families yield the same shade count — and doubled the work on a per-line path.
+
+The shipped choice is ONE shared index (`#870000`, the fault's darker red,
+which 96 of 200 resting sessions may also draw). It is the least-bad option
+because the collision is partial — a resting session wearing `#870000` still
+differs from a fault mantle in its other three classes and in its ground —
+whereas failing contract 7 means two sessions look identical to each other,
+which is the defect the user actually reported.
+
+Closing this properly needs a colour outside the 256-colour cube. The real
+fix is truecolor: `DEPTH_24_BIT` has dark saturated reds at any lightness, so
+the alarm and the band would not have to share three entries. That is a
+prompt_toolkit colour-depth negotiation change, not a palette change.
