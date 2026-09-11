@@ -3,11 +3,12 @@ from __future__ import annotations
 
 from functools import lru_cache
 from hashlib import blake2b
+from math import gcd
 from typing import Any
 
 from .color.identity import allocate
 from .color.oklab import OKLCh, hex_to_oklch, oklch_to_hex
-from .color.terminal import _index_to_hex, contrast_ratio, quantize_cube_256
+from .color.terminal import _index_to_hex, contrast_ratio, quantize_256, quantize_cube_256
 from .linework import cells
 from .pattern import ACUTE_AMBER, ACUTE_FAULT
 from .session import Signal, collapse
@@ -83,6 +84,43 @@ def _mantle_classes(session_id: str, signal: str) -> tuple[str, ...]:
     return _distinct(tuple(c.oklch for c in classes))
 
 
+def _shades_of(family: tuple[str, ...]) -> tuple[str, ...]:
+    """The family's real colours plus the dithered tones between its endpoints.
+
+    The dark cube is sparse: the band's smallest hue family holds two entries,
+    which is not enough for two sessions drawing from it to look different.
+    `dither` manufactures the tones in between, so a 2-shade family becomes 5.
+
+    Shades that quantise onto an index already taken are dropped. A blend the
+    terminal cannot distinguish is not a shade — #690000 and #7D0000 are two
+    colours in OKLab and one colour on screen, and keeping both let two sessions
+    build "different" palettes that rendered identically.
+    """
+    from .dither import perceived
+    if len(family) < 2:
+        return family
+    seen: dict[int, str] = {}
+    # Blend EVERY adjacent pair, not just the endpoints: a single endpoint blend
+    # passes through the middle shades' own territory and dedups away, leaving
+    # too few distinct tones for two sessions on a small family to differ.
+    ordered = sorted(family, key=lambda c: hex_to_oklch(c).L)
+    steps = [colour for lower, upper in zip(ordered, ordered[1:])
+             for colour in (perceived(lower, upper, quarter / 4) for quarter in range(5))]
+    for colour in sorted(set(ordered) | set(steps), key=lambda c: hex_to_oklch(c).L):
+        seen.setdefault(quantize_256(colour), colour)
+    return tuple(seen.values())
+
+
+def _coprime_stride(count: int, seed: int) -> int:
+    """A stride that visits every slot of a `count`-long ring before repeating.
+
+    Sharing a factor with `count` makes the walk revisit slots, which silently
+    shrinks a palette — 5 of 200 sessions lost a colour that way.
+    """
+    candidates = [step for step in range(1, max(2, count)) if gcd(step, count) == 1]
+    return candidates[seed % len(candidates)] if candidates else 1
+
+
 def _dominant_palette(session_id: str) -> tuple[str, ...]:
     """One hue family carrying the pattern, plus a few island colours.
 
@@ -99,21 +137,30 @@ def _dominant_palette(session_id: str) -> tuple[str, ...]:
     sessions could not look different from one another; choosing a subset gives
     191 while keeping every colour in one hue.
     """
-    from .band import band, families
+    from .band import families
     groups = families()
     seed = int.from_bytes(blake2b(session_id.encode(), digest_size=4).digest(), "big")
     family = groups[seed % len(groups)]
     others = [colour for index, group in enumerate(groups)
               if index != seed % len(groups) for colour in group]
-    # Keep at least two shades so the dominant family can still be shaded, and
-    # walk the rotation rather than slicing: a fixed offset collapsed 6 of 200
-    # sessions onto three colours.
+    # The dominant family is DITHER-EXPANDED before a session draws from it. Two
+    # sessions on the two-shade red family had nothing to tell them apart and
+    # produced identical palettes (tori-main and tilola did); blending the
+    # family's own endpoints turns 2 real shades into 5 usable ones, all inside
+    # the band and all the same hue.
+    shades = _shades_of(family)
     # A session must still show four distinct colours — that contract predates
     # v13 and is what stops two sessions reading alike — so the dominant family
     # keeps at least two shades and the islands make the rest up.
-    keep = min(len(family), 2 + (seed >> 4) % max(1, len(family) - 1))
-    start = (seed >> 12) % len(family)
-    dominant = tuple(family[(start + step) % len(family)] for step in range(keep))
+    keep = min(len(shades), 2 + (seed >> 4) % max(1, len(shades) - 1))
+    start = (seed >> 12) % len(shades)
+    # The dominant walk strides too, for the same reason the island walk does:
+    # with a fixed stride, two sessions that draw the same COUNT from the same
+    # family pick the same shades (tori-main and tilola both took two reds). The
+    # stride is kept coprime with the shade count so the walk visits `keep`
+    # DISTINCT shades — a common factor revisits one and the palette shrinks.
+    step_by = _coprime_stride(len(shades), seed >> 28)
+    dominant = tuple(shades[(start + step * step_by) % len(shades)] for step in range(keep))
     count = max(_MIN_PALETTE - len(dominant), 1 + (seed >> 20) % _ISLAND_COLOURS)
     # Stride the island walk as well as its offset: with a fixed stride two
     # sessions sharing a dominant family and island count landed on identical
@@ -122,7 +169,7 @@ def _dominant_palette(session_id: str) -> tuple[str, ...]:
     offset = (seed >> 8) % len(others) if others else 0
     islands = tuple(others[(offset + step * stride) % len(others)]
                     for step in range(min(count, len(others))))
-    return tuple(sorted(set(dominant + islands), key=band().index))
+    return tuple(sorted(set(dominant + islands), key=lambda c: hex_to_oklch(c).L))
 
 
 def _distinct(colours: tuple[OKLCh, ...]) -> tuple[str, ...]:
