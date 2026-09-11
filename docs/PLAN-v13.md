@@ -117,3 +117,35 @@ Closing this properly needs a colour outside the 256-colour cube. The real
 fix is truecolor: `DEPTH_24_BIT` has dark saturated reds at any lightness, so
 the alarm and the band would not have to share three entries. That is a
 prompt_toolkit colour-depth negotiation change, not a palette change.
+
+## Contract 12: warm cost vs cold cost
+
+The harness warmed only `row_key 0` but measured `i % ROWS`, so each row's
+FIRST call landed inside the timing window and the "mean" mixed cache
+construction with cache hits. It read 13.4-20.9 us depending on machine load
+while the median sat at 0.8 us — a 17x gap that is the signature of two
+different populations being averaged together. Now warmed per key, and cold
+cost is reported separately rather than smuggled into the warm mean.
+
+Measured on one session, the way a terminal actually uses it:
+
+- first painted line: **161 ms** (builds an 80x64 noise field, 7142 distinct
+  lattice keys, 84% hash-cache hit rate)
+- next 63 rows: mean 1.3 ms
+- scrollback repaint: mean 1.1 us
+
+The 161 ms is one-time per session and happens on the first line of output,
+which is also when plugin discovery is still running, so it is hidden. It is
+recorded here because it is the largest single cost in the theme and the next
+person to profile this will find it.
+
+Tried and REVERTED: inlining the four lattice hashes into `_smooth_noise` to
+avoid Python call overhead. It is 3.4x SLOWER (412 ms per new session against
+122 ms) because it discards the `_hash01_cached` LRU, which runs at a 84% hit
+rate — the samplers revisit the same lattice corners across octaves. The call
+overhead is real but the cache saves far more than it costs.
+
+Known sharp edge, not yet addressed: `_hash01_cached(maxsize=65536)` holds
+about 9 sessions' worth of lattice keys, so a host cycling through many
+sessions thrashes it. A per-session cache is the right shape. It does not
+affect a normal terminal, which has one session per process.
