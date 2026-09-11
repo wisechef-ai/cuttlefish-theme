@@ -21,13 +21,17 @@ def ctx(state="idle", sid="zivyra"):
 
 
 def vivid_hues(fragments):
-    ground = quantize_256(render(allocate("zivyra")).ground_hex)
-    hues = []
-    for style, text in fragments:
-        fg = re.search(r"fg:(#[0-9a-fA-F]{6})", style).group(1)
-        if quantize_256(fg) != ground:
-            hues.append(hex_to_oklch(_index_to_hex(quantize_256(fg))).h)
-    return hues
+    """Hues of the LIT cells only.
+
+    The unlit colour is the row's modal entry, not the pre-v13 near-black: once
+    unlit cells moved into the session's readable band, filtering on that
+    near-black let the unlit colour itself count as vivid and its hue fail the
+    amber/red gate — an alarm reported broken by a yardstick that had moved.
+    """
+    styles = [re.search(r"fg:(#[0-9a-fA-F]{6})", style).group(1) for style, _ in fragments]
+    indices = [quantize_256(fg) for fg in styles]
+    ground = Counter(indices).most_common(1)[0][0]
+    return [hex_to_oklch(_index_to_hex(index)).h for index in indices if index != ground]
 
 
 def test_register_chrome_renderer_is_guarded_without_hook():

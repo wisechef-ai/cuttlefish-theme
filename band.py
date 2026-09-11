@@ -29,13 +29,20 @@ from functools import lru_cache
 from .color.oklab import hex_to_oklch
 from .color.terminal import _index_to_hex, contrast_ratio
 
-# The band every mantle colour lives in. Measured trade-off (see module docstring
-# and tools/measure_v13.py): centre .36 width .12 yields 8 chromatic cube entries
-# across 3 hue families at a 1.48x contrast swing, inside the 1.6x legibility
-# contract with margin. The earlier .34/.16 held 9 colours but spanned 1.63x, so
-# a row using the whole band failed the contract on its own.
-_BAND_CENTRE = 0.36
-_BAND_WIDTH = 0.12
+# The band every mantle colour lives in. Measured trade-off (tools/measure_band.py,
+# which sweeps this pair and reports palette cost): centre .35 width .14 drops the
+# ground floor to L .282 — darker than the .36/.12 it replaces, whose floor was
+# .305 — while HOLDING 9 chromatic cube entries across 3 hue families, so identity
+# improves rather than degrades (86 distinct palettes per 120 sessions, against 79).
+# Adam, 2026-09-11: "the background colour is too bright, it should be a little
+# more tinted, little more toward black."
+#
+# Going darker by lowering the CENTRE instead is the trap: .32/.12 reaches the same
+# floor but collapses the band to 5 colours and 10 palettes per 120 sessions, with
+# 22 sessions sharing one — the mantle stops carrying identity, which is its job.
+# Widening around a slightly lower centre buys the dark floor without that cost.
+_BAND_CENTRE = 0.35
+_BAND_WIDTH = 0.14
 
 # A background is not text: WCAG's large-object threshold is the right bar.
 _BODY_FOREGROUND = "#E8E6EA"

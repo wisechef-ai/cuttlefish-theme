@@ -29,12 +29,24 @@ def mean_run(row: list[int]) -> float:
     return len(row) / runs
 
 
+def unlit_of(row: list[int]) -> int:
+    """The row's OWN unlit colour: its modal entry.
+
+    Not `render(allocate(session)).ground_hex`. That near-black stopped being
+    this surface's floor when the unlit cells moved into the session's readable
+    band, and a metric still referencing it counts every cell as vivid (measured:
+    vivid_share 1.0 against a 0.38 ceiling) — the surface looks broken while it
+    is the yardstick that moved. Read the fill from the rendered row.
+    """
+    return Counter(row).most_common(1)[0][0]
+
+
 @pytest.mark.parametrize("session", SESSIONS)
 @pytest.mark.parametrize("signal", SIGNALS)
 @pytest.mark.parametrize("width", WIDTHS)
 def test_quantised_rule_meets_measured_grammar(session: str, signal: str, width: int) -> None:
     row = quantised_row(session, signal, width)
-    ground = quantize_256(render(allocate(session)).ground_hex)
+    ground = unlit_of(row)
     modal_share = Counter(row).most_common(1)[0][1] / width
     vivid_share = sum(colour != ground for colour in row) / width
 
