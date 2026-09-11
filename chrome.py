@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from hashlib import blake2b
 from typing import Any
 
 from .color.identity import allocate
@@ -28,6 +29,10 @@ _ACUTE_BAR_FOREGROUND = "#FFFFFF"
 
 # (lightness delta, hue delta) tried in order when two classes quantise onto one
 # cube entry. Lightness first — it separates without changing what the class IS.
+# How many island colours join the dominant family. Two is enough to read as
+# variation without becoming a second dominant; the target share is 8-20%.
+_ISLAND_COLOURS = 2
+
 _SEPARATION_NUDGES = ((0.08, 0), (-0.08, 0), (0.16, 0), (-0.16, 0),
                       (0.0, 25), (0.0, -25), (0.24, 0), (0.0, 50))
 
@@ -36,10 +41,15 @@ _SEPARATION_NUDGES = ((0.08, 0), (-0.08, 0), (0.16, 0), (-0.16, 0),
 def _mantle_palette(session_id: str) -> str:
     """The ground the session's transcript mantle is painted on.
 
-    Cached because `render(allocate(...))` costs ~46us and this is a session
-    constant asked for once per printed line.
+    The ground is the DARKEST STEP OF THE SESSION'S OWN BAND, not a separate
+    near-black. Measured, the band alone spans a 1.42x contrast swing, but the
+    old #0B0C10 ground dragged it to 1.96x: a line of text crossing both fell
+    into a hole, the eye adapted to the lit cells and lost the glyphs over the
+    dark ones. That hole is what "the text now is not visible good" was.
+
+    Cached because this is a session constant asked for once per printed line.
     """
-    return render(allocate(session_id)).ground_hex
+    return _dominant_palette(session_id)[0]
 
 
 @lru_cache(maxsize=64)
@@ -63,8 +73,32 @@ def _mantle_classes(session_id: str, signal: str) -> tuple[str, ...]:
     another session, which is the identity the mantle exists to carry.
     """
     from .mantle import chromatophore_set
-    return _distinct(tuple(c.oklch for c in
-                           chromatophore_set(allocate(session_id), Signal(signal))))
+    classes = chromatophore_set(allocate(session_id), Signal(signal))
+    if Signal(signal) is Signal.RESTING:
+        return _dominant_palette(session_id)
+    return _distinct(tuple(c.oklch for c in classes))
+
+
+def _dominant_palette(session_id: str) -> tuple[str, ...]:
+    """One hue family carrying the pattern, plus a few island colours.
+
+    Adam, 2026-09-11: "one dominant with just small islands of other colors".
+    Measured, the even four-class mix scored 0.367 dominant share against a
+    0.75-0.92 target and read as confetti rather than skin.
+
+    Every colour comes from `band`, so the whole palette sits inside one narrow
+    lightness range and a line of text crosses a near-uniform background. That
+    is the legibility half; `dither` supplies the tones the narrow band cannot.
+    """
+    from .band import band, families
+    groups = families()
+    seed = int.from_bytes(blake2b(session_id.encode(), digest_size=4).digest(), "big")
+    dominant = groups[seed % len(groups)]
+    others = [colour for index, group in enumerate(groups)
+              if index != seed % len(groups) for colour in group]
+    islands = tuple(others[(seed >> 8) % len(others):][:_ISLAND_COLOURS]) if others else ()
+    return tuple(sorted(set(dominant + islands),
+                        key=lambda colour: band().index(colour)))
 
 
 def _distinct(colours: tuple[OKLCh, ...]) -> tuple[str, ...]:
