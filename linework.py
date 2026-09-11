@@ -37,11 +37,16 @@ def _identity_variants(session_id: str) -> tuple[str, ...]:
 
     The bar re-spreads those hues across its own lightness range: the mantle sits
     BEHIND TEXT and must stay dark, a bar is a lit strip and should read bright.
+
+    A colour sitting in an alarm band is ROTATED out of it rather than dropped.
+    Dropping shrank the ramp, and two sessions whose palettes differed only in
+    the dropped colours rendered identical bars.
     """
     from .chrome import _mantle_classes
     from .color.oklab import hex_to_oklch
     palette = [hex_to_oklch(colour) for colour in _mantle_classes(session_id, "resting")]
-    calm = [c for c in palette if not _reserved_for_alarm(c.h)]
+    calm = [c if not _reserved_for_alarm(c.h) else c.with_(h=(c.h + 180) % 360)
+            for c in palette]
     return _ramp(calm or palette, _BAR_L)
 
 

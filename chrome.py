@@ -38,6 +38,10 @@ _ISLAND_COLOURS = 2
 # two sessions start reading alike.
 _MIN_PALETTE = 4
 
+# How far a shade may be pulled toward a neighbouring colour. A quarter-step
+# reaches a fresh cube index while the hue still reads as the family's own.
+_TINT = 0.25
+
 _SEPARATION_NUDGES = ((0.08, 0), (-0.08, 0), (0.16, 0), (-0.16, 0),
                       (0.0, 25), (0.0, -25), (0.24, 0), (0.0, 50))
 
@@ -84,6 +88,7 @@ def _mantle_classes(session_id: str, signal: str) -> tuple[str, ...]:
     return _distinct(tuple(c.oklch for c in classes))
 
 
+@lru_cache(maxsize=8)
 def _shades_of(family: tuple[str, ...]) -> tuple[str, ...]:
     """The family's real colours plus the dithered tones between its endpoints.
 
@@ -96,18 +101,23 @@ def _shades_of(family: tuple[str, ...]) -> tuple[str, ...]:
     colours in OKLab and one colour on screen, and keeping both let two sessions
     build "different" palettes that rendered identically.
     """
+    from .band import band, family_of
     from .dither import perceived
-    if len(family) < 2:
-        return family
-    seen: dict[int, str] = {}
-    # Blend EVERY adjacent pair, not just the endpoints: a single endpoint blend
-    # passes through the middle shades' own territory and dedups away, leaving
-    # too few distinct tones for two sessions on a small family to differ.
     ordered = sorted(family, key=lambda c: hex_to_oklch(c).L)
-    steps = [colour for lower, upper in zip(ordered, ordered[1:])
-             for colour in (perceived(lower, upper, quarter / 4) for quarter in range(5))]
+    # Blend within the family AND a little way toward every other band colour.
+    # Within-family blends alone are not enough: the red family holds two cube
+    # entries and every mix of them quantises back onto those two, so two
+    # sessions drawing red had no third shade to differ by. A quarter-step
+    # toward a neighbour reaches a new index while the hue still reads as red.
+    steps = [perceived(lower, upper, quarter / 4)
+             for lower, upper in zip(ordered, ordered[1:])
+             for quarter in range(5)]
+    steps += [perceived(member, other, _TINT)
+              for member in ordered for other in band() if other not in family]
+    seen: dict[int, str] = {}
     for colour in sorted(set(ordered) | set(steps), key=lambda c: hex_to_oklch(c).L):
-        seen.setdefault(quantize_256(colour), colour)
+        if family_of(colour) == family_of(ordered[0]):
+            seen.setdefault(quantize_256(colour), colour)
     return tuple(seen.values())
 
 
