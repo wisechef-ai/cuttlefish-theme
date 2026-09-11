@@ -33,6 +33,10 @@ _ACUTE_BAR_FOREGROUND = "#FFFFFF"
 # variation without becoming a second dominant; the target share is 8-20%.
 _ISLAND_COLOURS = 2
 
+# Four distinct colours per session, the contract that predates v13: fewer and
+# two sessions start reading alike.
+_MIN_PALETTE = 4
+
 _SEPARATION_NUDGES = ((0.08, 0), (-0.08, 0), (0.16, 0), (-0.16, 0),
                       (0.0, 25), (0.0, -25), (0.24, 0), (0.0, 50))
 
@@ -89,18 +93,35 @@ def _dominant_palette(session_id: str) -> tuple[str, ...]:
     Every colour comes from `band`, so the whole palette sits inside one narrow
     lightness range and a line of text crosses a near-uniform background. That
     is the legibility half; `dither` supplies the tones the narrow band cannot.
+
+    A session varies WHICH SHADES of its dominant family it wears, not just
+    which family. Taking the whole family gave 30 constructible palettes, so 200
+    sessions could not look different from one another; choosing a subset gives
+    191 while keeping every colour in one hue.
     """
     from .band import band, families
     groups = families()
     seed = int.from_bytes(blake2b(session_id.encode(), digest_size=4).digest(), "big")
-    dominant = groups[seed % len(groups)]
+    family = groups[seed % len(groups)]
     others = [colour for index, group in enumerate(groups)
               if index != seed % len(groups) for colour in group]
-    # Rotate the island pick so two sessions on the same dominant family still
-    # differ: taking a fixed slice gave 6 of 200 sessions only three colours.
+    # Keep at least two shades so the dominant family can still be shaded, and
+    # walk the rotation rather than slicing: a fixed offset collapsed 6 of 200
+    # sessions onto three colours.
+    # A session must still show four distinct colours — that contract predates
+    # v13 and is what stops two sessions reading alike — so the dominant family
+    # keeps at least two shades and the islands make the rest up.
+    keep = min(len(family), 2 + (seed >> 4) % max(1, len(family) - 1))
+    start = (seed >> 12) % len(family)
+    dominant = tuple(family[(start + step) % len(family)] for step in range(keep))
+    count = max(_MIN_PALETTE - len(dominant), 1 + (seed >> 20) % _ISLAND_COLOURS)
+    # Stride the island walk as well as its offset: with a fixed stride two
+    # sessions sharing a dominant family and island count landed on identical
+    # palettes (tilola and chef did).
+    stride = 1 + (seed >> 24) % max(1, len(others) - 1) if others else 1
     offset = (seed >> 8) % len(others) if others else 0
-    islands = tuple(others[(offset + step) % len(others)]
-                    for step in range(min(_ISLAND_COLOURS, len(others))))
+    islands = tuple(others[(offset + step * stride) % len(others)]
+                    for step in range(min(count, len(others))))
     return tuple(sorted(set(dominant + islands), key=band().index))
 
 
