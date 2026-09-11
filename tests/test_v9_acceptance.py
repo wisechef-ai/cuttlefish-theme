@@ -11,9 +11,8 @@ import pytest
 
 from cuttlefish_theme import plugin
 from cuttlefish_theme.color.oklab import hex_to_oklch
+from cuttlefish_theme import chrome as plugin_chrome
 from cuttlefish_theme.color.terminal import contrast_ratio
-from cuttlefish_theme.pattern import render
-from cuttlefish_theme.color.identity import allocate
 
 
 def test_transcript_line_returns_filled_background_fragments():
@@ -68,7 +67,9 @@ def test_transcript_backgrounds_keep_wcag_aa_against_normal_foreground():
 
 
 def test_transcript_mantle_has_about_thirty_percent_pigment():
-    ground = render(allocate("zivyra")).ground_hex.lower()
+    # The ground is the session's own, not a fixed near-black: v13 moved it into
+    # the session's colour band so a line of text no longer crosses a hole.
+    ground = plugin_chrome._mantle_palette("zivyra").lower()
     fragments = plugin.chrome_renderer(
         "transcript_line", 200, {"session_id": "zivyra", "row_key": 12}
     )
@@ -93,9 +94,13 @@ def test_mantle_pigment_survives_terminal_quantisation(session_id):
     from cuttlefish_theme.color.terminal import quantize_256
 
     ground_index = quantize_256(_mantle_palette(session_id))
-    for pigment in _mantle_classes(session_id, "resting"):
+    pigments = [p for p in _mantle_classes(session_id, "resting")
+                if quantize_256(p) != ground_index]
+    # The ground is the band's darkest step, so it IS one of the classes now;
+    # what matters is that pigment remains above it, and that none of it is grey.
+    assert pigments, "every class collapsed onto the ground"
+    for pigment in pigments:
         pigment_index = quantize_256(pigment)
-        assert pigment_index != ground_index, "pigment collapsed onto the ground"
         # 232-255 is the greyscale ramp: landing there means the hue is gone.
         assert not 232 <= pigment_index <= 255, (
             f"pigment quantised to grey index {pigment_index} — the mantle has no colour")

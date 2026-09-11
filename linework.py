@@ -27,26 +27,22 @@ _ACUTE_BAR_L = (0.62, 0.78)
 
 
 def _identity_variants(session_id: str) -> tuple[str, ...]:
-    """The bars' ramp, drawn from the SAME four chromatophore classes as the mantle.
+    """The bars' ramp, drawn from the SAME palette the mantle paints.
 
     Adam, 2026-09-11: "there should be a general colour palette per session and
-    this should reflect that." The bars used to ramp one hue by lightness while
-    the mantle painted four hue families, so the two surfaces shared a session
-    but not a look. Drawing both from `chromatophore_set` gives one palette per
-    session across both surfaces.
+    this should reflect that." Both surfaces read `chrome._mantle_classes`, so a
+    bar colour is always a mantle colour. Sourcing them separately is what made
+    koralen's bar sit at hues 180/210/330 while its mantle sat at 30/270/300/360
+    — one session wearing two unrelated skins.
 
-    Classes whose hue falls in the ALARM bands are dropped. A session can
-    legitimately own hue 99-106, which quantises into the same cube entries as
-    the amber alert (#AF8700 at hue 88) — measured, one session's resting bar
-    shared a quarter of its palette with the alarm. The mantle can afford that
-    ambiguity because an alarm repaints the whole background; a one-row bar
-    cannot, so it gives up a hue rather than the signal.
+    The bar re-spreads those hues across its own lightness range: the mantle sits
+    BEHIND TEXT and must stay dark, a bar is a lit strip and should read bright.
     """
-    from .mantle import chromatophore_set
-    from .session import Signal
-    classes = chromatophore_set(allocate(session_id), Signal.RESTING)
-    calm = [c for c in classes if not _reserved_for_alarm(c.oklch.h)]
-    return _class_ramp(calm or list(classes), _BAR_L)
+    from .chrome import _mantle_classes
+    from .color.oklab import hex_to_oklch
+    palette = [hex_to_oklch(colour) for colour in _mantle_classes(session_id, "resting")]
+    calm = [c for c in palette if not _reserved_for_alarm(c.h)]
+    return _ramp(calm or palette, _BAR_L)
 
 
 def _reserved_for_alarm(hue: float) -> bool:
@@ -54,26 +50,26 @@ def _reserved_for_alarm(hue: float) -> bool:
     return 55 <= hue <= 115 or hue >= 350 or hue <= 50
 
 
-def _class_ramp(classes, lightness: tuple[float, float]) -> tuple[str, ...]:
-    """16 steps across the class set, darkest to brightest.
+def _ramp(colours, lightness: tuple[float, float]) -> tuple[str, ...]:
+    """16 steps across `colours` (OKLCh), darkest to brightest.
 
     Lightness is re-spread across `lightness` while each step keeps ITS OWN
-    class's hue and chroma. The two surfaces share a palette but not a
-    brightness: the mantle sits BEHIND TEXT and must stay dark, whereas a bar is
-    a lit strip and should read bright.
+    hue and chroma. The two surfaces share a palette but not a brightness: the
+    mantle sits BEHIND TEXT and must stay dark, whereas a bar is a lit strip and
+    should read bright.
 
-    Hue is NOT interpolated between classes. Blending a violet class into an
-    amber one walks the whole colour circle and lands the resting bar on the
-    alarm hues — measured, a resting bar hit 14 distinct hues and collided with
-    the amber alarm on half its palette. The animal shows its classes side by
-    side; it does not cross-fade them.
+    Hue is NOT interpolated between colours. Blending a violet into an amber
+    walks the whole colour circle and lands the resting bar on the alarm hues —
+    measured, a resting bar hit 14 distinct hues and collided with the amber
+    alarm on half its palette. The animal shows its classes side by side; it does
+    not cross-fade them.
     """
-    ordered = sorted(classes, key=lambda c: c.oklch.L)
+    ordered = sorted(colours, key=lambda c: c.L)
     floor, ceiling = lightness
     steps = []
     for index in range(16):
         fraction = index / 15
-        source = ordered[min(len(ordered) - 1, int(fraction * len(ordered)))].oklch
+        source = ordered[min(len(ordered) - 1, int(fraction * len(ordered)))]
         steps.append(oklch_to_hex(source.with_(L=floor + (ceiling - floor) * fraction)))
     return tuple(steps)
 
@@ -102,7 +98,7 @@ def _acute_variants(signal: str) -> tuple[str, ...]:
     from .session import Signal
     collapsed = Signal.FAULT if signal in ("fault", "error") else Signal.NEEDS_ME
     classes = chromatophore_set(allocate("acute"), collapsed)
-    return _class_ramp([c for c in classes if c.family in ("amber", "red")], _ACUTE_BAR_L)
+    return _ramp([c.oklch for c in classes if c.family in ("amber", "red")], _ACUTE_BAR_L)
 
 
 def _signal_time(signal: str) -> float:

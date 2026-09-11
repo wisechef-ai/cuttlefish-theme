@@ -9,7 +9,7 @@ from .color.identity import allocate
 from .color.oklab import OKLCh, hex_to_oklch, oklch_to_hex
 from .color.terminal import _index_to_hex, contrast_ratio, quantize_cube_256
 from .linework import cells
-from .pattern import ACUTE_AMBER, ACUTE_FAULT, render
+from .pattern import ACUTE_AMBER, ACUTE_FAULT
 from .session import Signal, collapse
 
 # Anything painted BEHIND TEXT must clear WCAG AA against the body foreground.
@@ -96,9 +96,12 @@ def _dominant_palette(session_id: str) -> tuple[str, ...]:
     dominant = groups[seed % len(groups)]
     others = [colour for index, group in enumerate(groups)
               if index != seed % len(groups) for colour in group]
-    islands = tuple(others[(seed >> 8) % len(others):][:_ISLAND_COLOURS]) if others else ()
-    return tuple(sorted(set(dominant + islands),
-                        key=lambda colour: band().index(colour)))
+    # Rotate the island pick so two sessions on the same dominant family still
+    # differ: taking a fixed slice gave 6 of 200 sessions only three colours.
+    offset = (seed >> 8) % len(others) if others else 0
+    islands = tuple(others[(offset + step) % len(others)]
+                    for step in range(min(_ISLAND_COLOURS, len(others))))
+    return tuple(sorted(set(dominant + islands), key=band().index))
 
 
 def _distinct(colours: tuple[OKLCh, ...]) -> tuple[str, ...]:
@@ -153,12 +156,15 @@ def _mantle_row(session_id: str, width: int, row_key: int,
     ground = _mantle_palette(session_id)
     classes = _mantle_classes(session_id, signal)
     row = cells(session_id, signal, width, row_key)
-    # cells() draws its lit pigments from a graded ramp; rank the distinct ones by
-    # lightness so the most expanded cells reach the brightest class.
-    ramp = sorted({fg for fg, _bg, _g in row if fg != ground},
+    # `cells` marks unlit cells with ITS ground, which is not ours: v13 moved the
+    # mantle ground into the session's band. Comparing against the wrong one made
+    # every cell read as lit and the mantle lost its ground entirely (measured:
+    # 200/200 cells pigment). Take the unlit marker from the row itself.
+    unlit = row[0][1]
+    ramp = sorted({fg for fg, _bg, _g in row if fg != unlit},
                   key=lambda pigment: hex_to_oklch(pigment).L)
-    band = {pigment: rank * len(classes) // len(ramp) for rank, pigment in enumerate(ramp)}
-    return tuple((f"bg:{ground if fg == ground else classes[band[fg]]}", " ")
+    shade = {pigment: rank * len(classes) // len(ramp) for rank, pigment in enumerate(ramp)}
+    return tuple((f"bg:{ground if fg == unlit else classes[shade[fg]]}", " ")
                  for fg, _bg, _glyph in row)
 
 
