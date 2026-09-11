@@ -30,12 +30,12 @@ from .color.oklab import hex_to_oklch
 from .color.terminal import _index_to_hex, contrast_ratio
 
 # The band every mantle colour lives in. Measured trade-off (see module docstring
-# and tools/measure_v13.py): centre .34 width .16 yields 9 chromatic cube entries
-# across 4 hue families at a 1.63x contrast swing. Narrower reaches 1.50x but
-# collapses to 3 families — red, blue, violet only — and sessions stop looking
-# different from one another, which is the whole point of the identity layer.
-_BAND_CENTRE = 0.34
-_BAND_WIDTH = 0.16
+# and tools/measure_v13.py): centre .36 width .12 yields 8 chromatic cube entries
+# across 3 hue families at a 1.48x contrast swing, inside the 1.6x legibility
+# contract with margin. The earlier .34/.16 held 9 colours but spanned 1.63x, so
+# a row using the whole band failed the contract on its own.
+_BAND_CENTRE = 0.36
+_BAND_WIDTH = 0.12
 
 # A background is not text: WCAG's large-object threshold is the right bar.
 _BODY_FOREGROUND = "#E8E6EA"

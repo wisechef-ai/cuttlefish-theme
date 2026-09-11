@@ -52,18 +52,22 @@ _SEPARATION_NUDGES = ((0.08, 0), (-0.08, 0), (0.16, 0), (-0.16, 0),
 
 
 @lru_cache(maxsize=32)
-def _mantle_palette(session_id: str) -> str:
+def _mantle_palette(session_id: str, signal: str = Signal.RESTING.value) -> str:
     """The ground the session's transcript mantle is painted on.
 
-    The ground is the DARKEST STEP OF THE SESSION'S OWN BAND, not a separate
+    The ground is the DARKEST STEP OF THE PALETTE IN PLAY, not a separate
     near-black. Measured, the band alone spans a 1.42x contrast swing, but the
     old #0B0C10 ground dragged it to 1.96x: a line of text crossing both fell
     into a hole, the eye adapted to the lit cells and lost the glyphs over the
     dark ones. That hole is what "the text now is not visible good" was.
 
+    An alarm gets ITS OWN ground for the same reason. Painting the fixed
+    amber/red set (L .44-.51) over the resting ground (L .28) reopened the hole
+    exactly when the mantle had something urgent to say: 2.72x swing.
+
     Cached because this is a session constant asked for once per printed line.
     """
-    return _dominant_palette(session_id)[0]
+    return _mantle_classes(session_id, signal)[0]
 
 
 @lru_cache(maxsize=64)
@@ -87,10 +91,23 @@ def _mantle_classes(session_id: str, signal: str) -> tuple[str, ...]:
     another session, which is the identity the mantle exists to carry.
     """
     from .mantle import chromatophore_set
-    classes = chromatophore_set(allocate(session_id), Signal(signal))
     if Signal(signal) is Signal.RESTING:
         return _dominant_palette(session_id)
+    # An alarm repaints the whole mantle, so it sits behind text exactly as the
+    # resting skin does. Its own ground (see _mantle_palette) is what keeps it
+    # readable; forcing its CLASSES into the band was tried and made things
+    # worse — the cube has no dark amber, so the walk either overshot below the
+    # floor (swing 1.62x -> 2.21x) or pushed red and amber onto one index.
+    classes = chromatophore_set(allocate(session_id), Signal(signal))
     return _distinct(tuple(c.oklch for c in classes))
+
+
+@lru_cache(maxsize=1)
+def _band_bounds() -> tuple[float, float]:
+    """The lightness floor and ceiling of the readable band."""
+    from .band import band
+    lightnesses = [hex_to_oklch(colour).L for colour in band()]
+    return min(lightnesses), max(lightnesses)
 
 
 @lru_cache(maxsize=8)
@@ -120,7 +137,15 @@ def _shades_of(family: tuple[str, ...]) -> tuple[str, ...]:
     steps += [perceived(member, other, _TINT)
               for member in ordered for other in band() if other not in family]
     seen: dict[int, str] = {}
+    floor, ceiling = _band_bounds()
     for colour in sorted(set(ordered) | set(steps), key=lambda c: hex_to_oklch(c).L):
+        # A blend must stay inside the band AS THE TERMINAL SEES IT. Filtering
+        # the raw lightness is not enough: quantisation moves it, and blends
+        # that measured in-band landed on #000087 (L .28) and #5F00D7 (L .45)
+        # against a .30-.41 band — the whole of the remaining 1.83x swing.
+        rendered = _index_to_hex(quantize_256(colour))
+        if not floor <= hex_to_oklch(rendered).L <= ceiling:
+            continue
         if family_of(colour) == family_of(ordered[0]):
             seen.setdefault(quantize_256(colour), colour)
     return tuple(seen.values())
@@ -236,7 +261,7 @@ def _mantle_row(session_id: str, width: int, row_key: int,
     Cached whole: this is called once per printed line, and rebuilding an
     80-element list of f-strings per line is most of the cost at that rate.
     """
-    ground = _mantle_palette(session_id)
+    ground = _mantle_palette(session_id, signal)
     classes = _mantle_classes(session_id, signal)
     row = cells(session_id, signal, width, row_key)
     # `cells` marks unlit cells with ITS ground, which is not ours: v13 moved the
