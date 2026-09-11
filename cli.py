@@ -31,17 +31,32 @@ def _truecolor(hex_color: str, *, bg: bool = False) -> str:
     return f"\033[{48 if bg else 38};2;{r};{g};{b}m"
 
 
+def _no_color_reason() -> str | None:
+    """Why colour is suppressed, or None when it is not.
+
+    Three unrelated causes suppress the field, and the old shared message named
+    only one of them ("no truecolor here"). A user piping into `head` was told
+    their terminal lacked truecolor, which is a diagnosis of the wrong machine —
+    so each cause names itself and says what to do about it.
+    """
+    if os.environ.get("NO_COLOR"):
+        return "NO_COLOR is set — unset it to see the field"
+    if not sys.stdout.isatty():
+        return ("stdout is not a terminal (piped or redirected) — "
+                "run it attached to a tty to see the field")
+    term = os.environ.get("TERM", "")
+    if term in ("", "dumb"):
+        return f"TERM={term or '(unset)'} declares no colour support"
+    return None
+
+
 def _supports_color() -> bool:
     """Honour NO_COLOR and non-tty output.
 
     Piping `watch` into a file or a pager must produce clean text; a wall of escape
     codes in a log is worse than no colour at all.
     """
-    if os.environ.get("NO_COLOR"):
-        return False
-    if not sys.stdout.isatty():
-        return False
-    return os.environ.get("TERM", "") not in ("", "dumb")
+    return _no_color_reason() is None
 
 
 def _signal_for(_session_id: str) -> Signal:
@@ -204,8 +219,9 @@ def run_skin(*, height: int = 16, wave: bool = False) -> int:
                         render_half_blocks)
     from .pattern import render
 
-    if not _supports_color():
-        print("  (no truecolor here - nothing to show)")
+    reason = _no_color_reason()
+    if reason:
+        print(f"  (colour off: {reason})")
         return 0
 
     session_id = _session_id_here()
@@ -265,8 +281,9 @@ def run_demo(*, seconds: float = 0.0) -> int:
     from .morph import BLANCH, RECOVER, SETTLE, morph
     from .pattern import render
 
-    if not _supports_color():
-        print("  (no truecolor here - nothing to show)")
+    reason = _no_color_reason()
+    if reason:
+        print(f"  (colour off: {reason})")
         return 0
 
     session_id = _session_id_here()

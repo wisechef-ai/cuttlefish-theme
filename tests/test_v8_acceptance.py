@@ -82,7 +82,12 @@ def test_status_bar_tint_covers_every_cell(width):
     returning a single space paints 1 cell and leaves the other width-1 stock —
     an alarm the user cannot see. Measured before this test: 1 of 80 cells.
     """
-    from hermes_cli.plugins_dispatch import _normalize_chrome_fragments
+    # The core's own padding rule. Absent only when this interpreter has no
+    # Hermes on its path — `make test` picks one that does; see `make python`.
+    _normalize_chrome_fragments = pytest.importorskip(
+        "hermes_cli.plugins_dispatch",
+        reason="no hermes_cli on this interpreter — run `make test` (see `make python`)",
+    )._normalize_chrome_fragments
 
     for state in ("waiting", "failed"):
         frags = plugin.chrome_renderer("status_bar_bg", width, ctx(state))
