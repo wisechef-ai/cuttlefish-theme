@@ -93,8 +93,23 @@ class Palette:
         from .palette import build_palette
 
         acute = hex_to_oklch(self.acute_hex) if self.acute_hex else None
+        identity = hex_to_oklch(self.identity_hex)
+        # ONE HUE PER SESSION, ACROSS EVERY SURFACE. The identity allocator picks
+        # a hue on the full circle for maximum separation between live sessions,
+        # but the mantle and the bars can only render what the readable dark band
+        # holds — nine cube entries in two usable hue families. Building the
+        # `colors:` block from the allocator's hue therefore produced a green
+        # chrome around a blue mantle (measured on the live skin, 2026-09-12).
+        # The band is arithmetic and cannot move, so the chrome follows it.
+        # Chroma and lightness are untouched: only the hue is re-pointed.
+        try:
+            from .chrome import dominant_hue
+
+            identity = identity.with_(h=dominant_hue(self.session_id))
+        except Exception:  # pragma: no cover - chrome is optional at import time
+            pass
         return build_palette(
-            hex_to_oklch(self.identity_hex),
+            identity,
             acute=acute,
             vivid=vivid,
             tint_background=tint_background,

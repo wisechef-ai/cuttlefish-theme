@@ -96,6 +96,30 @@ def _settings(ctx=None) -> dict[str, Any]:
     return values
 
 
+# Surfaces with a human looking at a terminal. Everything else — cron fires,
+# gateway/chat sessions, API calls — is a session with no attached display.
+#
+# THE STABLE SKIN IS A SHARED RESOURCE: one file, every session, resolved by
+# `display.skin` at CLI startup. A headless session that paints it cannot see
+# the result and can only corrupt somebody else's view. Measured on adam-xps
+# 2026-09-12: the stable skin changed owner three times in 120 seconds, none of
+# them the interactive session, because every cron fire runs `on_session_start`.
+# The user had never once seen their own session's identity.
+_WATCHED_SURFACES = frozenset({"cli", "tui", "desktop"})
+
+
+def paints(platform: str | None) -> bool:
+    """Whether a session on *platform* may claim the shared terminal skin.
+
+    Unknown/empty platform paints. An older Hermes does not pass `platform` to
+    the hook at all, and failing closed there would silently uninstall the theme
+    for everyone on that version — a far worse failure than the one being fixed.
+    """
+    if not platform:
+        return True
+    return str(platform).strip().lower() in _WATCHED_SURFACES
+
+
 def _current_skin_name() -> str | None:
     try:
         from hermes_cli.skin_engine import get_active_skin_name
@@ -125,9 +149,17 @@ def _compute_palette(session_id: str, signal: Signal = Signal.RESTING):
     return render(identity, signal, age_label=age)
 
 
-def on_session_start(session_id: str = "", _ctx=None, **_kw) -> None:
-    """Claim an identity and settle into it."""
+def on_session_start(session_id: str = "", _ctx=None, platform: str = "", **_kw) -> None:
+    """Claim an identity and settle into it — but only for a watched terminal."""
     if not session_id:
+        return
+    if not paints(platform):
+        # A headless session still exists and still holds a lease; it simply has
+        # no display to claim. Returning before `_state["session_id"]` is set
+        # also makes `on_session_end` inert for it, so nothing is torn down that
+        # was never set up.
+        logger.debug("cuttlefish: %s is headless (%s), not painting",
+                     session_id, platform)
         return
     settings = _settings(_ctx or _state.get("ctx"))
     _state["session_id"] = session_id
@@ -181,8 +213,14 @@ def on_session_start(session_id: str = "", _ctx=None, **_kw) -> None:
     animator.start()
 
 
-def on_session_end(session_id: str = "", **_kw) -> None:
+def on_session_end(session_id: str = "", platform: str = "", **_kw) -> None:
     """Stop the animator and hand the terminal back exactly as we found it."""
+    if not paints(platform):
+        # Symmetry with `on_session_start`: a headless session set nothing up.
+        # This matters beyond tidiness — `reset_terminal_background` emits OSC 11,
+        # a real change to the emulator's state. A cron firing inside a terminal's
+        # process tree would otherwise wipe the background the watched session set.
+        return
     animator = _state.get("animator")
     if animator is not None:
         animator.stop()

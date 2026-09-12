@@ -7,6 +7,7 @@ from hashlib import blake2b
 from math import gcd
 from typing import Any
 
+from .band import _FAMILY_ARC, families, family_of, resting_families
 from .color.identity import allocate
 from .color.oklab import OKLCh, hex_to_oklch, oklch_to_hex
 from .color.terminal import _index_to_hex, contrast_ratio, quantize_256, quantize_cube_256
@@ -65,9 +66,17 @@ def _mantle_palette(session_id: str, signal: str = Signal.RESTING.value) -> str:
     amber/red set (L .44-.51) over the resting ground (L .28) reopened the hole
     exactly when the mantle had something urgent to say: 2.72x swing.
 
+    The darkest step IN THE DOMINANT FAMILY, not the darkest step overall. The
+    ground is ~80% of every cell the bar and the mantle paint, so taking it from
+    an island hands the session's largest surface to its smallest colour: six
+    sessions rendered a blue ground under a violet palette, and the bar — which
+    is nothing but ground plus a few dots — read as the wrong colour entirely.
+
     Cached because this is a session constant asked for once per printed line.
     """
-    return _mantle_classes(session_id, signal)[0]
+    classes = _mantle_classes(session_id, signal)
+    dominant = int(dominant_hue(session_id) // _FAMILY_ARC)
+    return next((c for c in classes if family_of(c) == dominant), classes[0])
 
 
 @lru_cache(maxsize=64)
@@ -161,6 +170,50 @@ def _coprime_stride(count: int, seed: int) -> int:
     return candidates[seed % len(candidates)] if candidates else 1
 
 
+@lru_cache(maxsize=512)
+def _dominant_seed(session_id: str) -> int:
+    """The seed choosing a session's dominant family, from the RESTING families.
+
+    Kept as one function so every surface asks the same question of the same
+    hash. The family set excludes the alarm hues (see `band.resting_families`),
+    which is what lets the bar keep every colour its mantle paints instead of
+    dropping the ones an alarm would claim.
+    """
+    return int.from_bytes(blake2b(session_id.encode(), digest_size=4).digest(), "big")
+
+
+@lru_cache(maxsize=512)
+def dominant_hue(session_id: str) -> float:
+    """The ONE hue this session's every surface is built from.
+
+    THE COHERENCE ANCHOR. Before this existed, `palette.build_palette` derived
+    the whole `colors:` block from `identity.oklch.h` — a hue chosen on the full
+    circle by the identity allocator — while the mantle and the bar derived
+    theirs from `band.families()`, a nine-colour set the cube happens to permit.
+    The two answers were unrelated. Measured on the live skin file 2026-09-12:
+    the `colors:` block sat at hue 140 (green), the bar fill at #000087 (blue),
+    the hero spanned six families, and NO hue family was shared by all three
+    surfaces. That is the "it looks ugly" the user reported, and no contract
+    measured across surfaces, so the suite stayed green through all of it.
+
+    The band is the constraint that cannot move: nine cube entries, three hue
+    families, two of them usable at rest — that is arithmetic, not a choice.
+    So the band wins and the palette follows it, rather than the palette
+    inventing a hue the mantle can never render.
+
+    The hue returned is that of the palette's MOST-PAINTED hue family, counted
+    over the palette the mantle actually draws from. Two cheaper definitions were
+    tried and measured worse: the family's mean hue (family 5 spans 298-346, mean
+    322, a different 60-degree bucket from the shades most sessions draw — 12 of
+    40 sessions landed the chrome one bucket off its mantle) and the palette's
+    median entry (43 of 92 contract rows red, because the median is an island as
+    often as not). Counting is the only one that answers the question asked.
+    """
+    counts = Counter(family_of(colour) for colour in _dominant_palette(session_id))
+    winner = max(counts, key=counts.__getitem__)
+    return (winner + 0.5) * _FAMILY_ARC
+
+
 def _dominant_palette(session_id: str) -> tuple[str, ...]:
     """One hue family carrying the pattern, plus a few island colours.
 
@@ -177,12 +230,17 @@ def _dominant_palette(session_id: str) -> tuple[str, ...]:
     sessions could not look different from one another; choosing a subset gives
     191 while keeping every colour in one hue.
     """
-    from .band import families
-    groups = families()
-    seed = int.from_bytes(blake2b(session_id.encode(), digest_size=4).digest(), "big")
+    groups = resting_families()
+    seed = _dominant_seed(session_id)
     family = groups[seed % len(groups)]
-    others = [colour for index, group in enumerate(groups)
-              if index != seed % len(groups) for colour in group]
+    # Islands are drawn from the FULL band, alarm family included. Only the
+    # DOMINANT is restricted: a session must never be mostly red, because red is
+    # the alarm — but a couple of red cells among violet ones is a marking, not a
+    # signal, and excluding them halved identity variety (130 -> 65 distinct
+    # palettes over 200 sessions, measured). The dominant family and the ground
+    # carry the session's colour; the islands only have to differ.
+    others = [colour for group in families() for colour in group
+              if colour not in family]
     # The dominant family is DITHER-EXPANDED before a session draws from it. Two
     # sessions on the two-shade red family had nothing to tell them apart and
     # produced identical palettes (tori-main and tilola did); blending the

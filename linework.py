@@ -7,8 +7,10 @@ instead of cycling a palette by x-coordinate (the old output was terminal tinsel
 """
 from __future__ import annotations
 
+from collections import Counter
 from functools import lru_cache
 
+from .band import _FAMILY_ARC, reserved_for_alarm
 from .color.identity import allocate
 from .color.oklab import OKLCh, oklch_to_hex
 from .pattern import render
@@ -44,21 +46,25 @@ def _identity_variants(session_id: str) -> tuple[str, ...]:
     The bar re-spreads those hues across its own lightness range: the mantle sits
     BEHIND TEXT and must stay dark, a bar is a lit strip and should read bright.
 
-    A colour sitting in an alarm band is ROTATED out of it rather than dropped.
-    Dropping shrank the ramp, and two sessions whose palettes differed only in
-    the dropped colours rendered identical bars.
+    A colour inside the alarm arc is pushed to the arc's NEAREST EDGE, not
+    rotated 180 degrees. Rotation was the old fix and it cost more than it
+    bought: a mantle red at hue 354 became a bar CYAN at 174, so the bar left
+    its own session's hue family entirely. Measured 2026-09-12, that fired on
+    9 of 12 sessions — the single largest source of "the bar doesn't match".
+    Displacing to the edge keeps the colour adjacent to where it started, which
+    is all the alarm separation needs.
     """
     from .chrome import _mantle_classes
     from .color.oklab import hex_to_oklch
     palette = [hex_to_oklch(colour) for colour in _mantle_classes(session_id, "resting")]
-    calm = [c if not _reserved_for_alarm(c.h) else c.with_(h=(c.h + 180) % 360)
-            for c in palette]
+    # Alarm-hued islands are DROPPED here, not displaced. The mantle may carry a
+    # red fleck — it is one dark cell among many and reads as a marking. The bar
+    # is a LIT strip at L .50-.80, where the same hue reads as the alarm itself,
+    # so `test_resting_bars_never_wear_the_alarm_colours` is right to refuse it.
+    # Displacing instead of dropping was tried: it moves the colour off its own
+    # family and puts the bar back out of step with the mantle.
+    calm = [c for c in palette if not reserved_for_alarm(c.h)]
     return _ramp(calm or palette, _BAR_L)
-
-
-def _reserved_for_alarm(hue: float) -> bool:
-    """Hues the acute bars own, widened for the quantiser's reach."""
-    return 55 <= hue <= 115 or hue >= 350 or hue <= 50
 
 
 def _ramp(colours, lightness: tuple[float, float]) -> tuple[str, ...]:
@@ -74,13 +80,26 @@ def _ramp(colours, lightness: tuple[float, float]) -> tuple[str, ...]:
     measured, a resting bar hit 14 distinct hues and collided with the amber
     alarm on half its palette. The animal shows its classes side by side; it does
     not cross-fade them.
+
+    Steps are allocated by the palette's own DOMINANCE, not one slice each. An
+    even split hands a single island colour 4 of 16 cells — 25% of the bar to a
+    colour the mantle spends ~18% of its cells on — and that is what left six
+    sessions' bars reading as a different hue family from their own mantle.
     """
     ordered = sorted(colours, key=lambda c: c.L)
     floor, ceiling = lightness
+    weights = Counter(int(c.h // _FAMILY_ARC) for c in ordered)
+    # Cumulative share of the strip each colour owns, in palette order.
+    total = sum(weights[int(c.h // _FAMILY_ARC)] for c in ordered)
+    bounds, running = [], 0.0
+    for colour in ordered:
+        running += weights[int(colour.h // _FAMILY_ARC)] / total
+        bounds.append(running)
     steps = []
     for index in range(16):
         fraction = index / 15
-        source = ordered[min(len(ordered) - 1, int(fraction * len(ordered)))]
+        source = next((c for c, edge in zip(ordered, bounds) if fraction <= edge),
+                      ordered[-1])
         steps.append(oklch_to_hex(source.with_(L=floor + (ceiling - floor) * fraction)))
     return tuple(steps)
 

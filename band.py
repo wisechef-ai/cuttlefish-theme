@@ -80,6 +80,26 @@ def family_of(colour: str) -> int:
     return int(hex_to_oklch(colour).h // _FAMILY_ARC)
 
 
+# The hue arcs the acute signals own, widened for the quantiser's reach. THE
+# single definition: `linework` drops resting bar colours inside these, and
+# `resting_families` drops any band family that falls inside one. Two copies of
+# this range drifted apart once already — the bar reserved 350-360/0-50 while
+# identity reserved 5-48, so a hue-49 colour was calm to one and an alarm to the
+# other.
+_ALARM_ARCS: tuple[tuple[float, float], ...] = ((350.0, 410.0), (55.0, 115.0))
+
+
+def reserved_for_alarm(hue: float) -> bool:
+    """Whether `hue` sits in an arc the acute signals own.
+
+    Arcs may run past 360 (the red arc wraps), so the hue is tested at both
+    x and x+360 rather than the arc being normalised — normalising splits one
+    arc into two and the wrap-around case gets silently dropped.
+    """
+    x = hue % 360.0
+    return any(lo <= h <= hi for lo, hi in _ALARM_ARCS for h in (x, x + 360.0))
+
+
 @lru_cache(maxsize=1)
 def families() -> tuple[tuple[str, ...], ...]:
     """The band's colours grouped by hue family, largest family first.
@@ -91,3 +111,32 @@ def families() -> tuple[tuple[str, ...], ...]:
         grouped.setdefault(family_of(colour), []).append(colour)
     return tuple(sorted((tuple(members) for members in grouped.values()),
                         key=len, reverse=True))
+
+
+@lru_cache(maxsize=1)
+def resting_families() -> tuple[tuple[str, ...], ...]:
+    """Families a RESTING session may take as its dominant — alarm hues excluded.
+
+    The readable dark band holds nine colours in three hue families, and one of
+    those families IS the alarm (`#5F0000`/`#870000`, hue 29, inside the arc).
+    Letting a resting session take it costs twice:
+
+    - It breaks the signal. A calm session wearing the fault hue is the defect
+      PLAN-v13 recorded as the unavoidable "one shared index" (contract 9). It is
+      only unavoidable while red is a resting option.
+    - It breaks coherence. `linework` must displace any bar colour sitting in the
+      alarm arc so a resting bar cannot impersonate an alarm, and any such
+      displacement moves the bar off its own mantle's hue.
+
+    Removing red from the resting set fixes both at the source: red belongs to
+    the alarm now, and only to the alarm — which is what makes it mean something.
+
+    The cost is honest and bounded: two dominant families instead of three, and
+    islands drawn from one other family rather than two. Identity separation is
+    carried by shade and island selection WITHIN a family, not by family count.
+    """
+    calm = tuple(group for group in families()
+                 if not any(reserved_for_alarm(hex_to_oklch(c).h) for c in group))
+    # Never return empty: a misconfigured band that reserved everything must
+    # degrade to the full set rather than leave a session with no colour at all.
+    return calm or families()

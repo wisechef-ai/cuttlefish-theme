@@ -39,6 +39,7 @@ if "cuttlefish_theme" not in sys.modules:
     sys.modules["cuttlefish_theme"] = _mod
     _spec.loader.exec_module(_mod)
 
+from cuttlefish_theme.chrome import dominant_hue                # noqa: E402
 from cuttlefish_theme.color.identity import allocate
 from cuttlefish_theme.color.oklab import hex_to_oklch          # noqa: E402
 from cuttlefish_theme.pattern import render                   # noqa: E402
@@ -88,11 +89,19 @@ check("skin activated", get_active_skin().name == skin_name, get_active_skin().n
 # v4: the accent is DERIVED from the identity (contrast-locked, chroma boosted to
 # the animal's measured 0.16-0.24 band), not a copy of sheen_hex. So the contract
 # is "same hue family as the identity", not "equal to a particular field".
+#
+# v14: the hue compared against is the session's DOMINANT hue, not
+# `identity_hex`'s. The identity allocator picks a hue anywhere on the circle to
+# maximise separation between live sessions, but the mantle and the bars can only
+# render what the readable dark band holds — nine cube entries in two usable hue
+# families. Comparing the accent to `identity_hex` therefore asserted that the
+# chrome should match a hue no other surface can paint, which is precisely the
+# incoherence v14 removed (measured live: green chrome, blue bar, six-hue hero).
 _acc = hex_to_oklch(accent_resting)
-_idn = hex_to_oklch(resting.identity_hex)
-_dh = abs(((_acc.h - _idn.h + 180) % 360) - 180)
-check("accent carries the identity hue", _dh < 20,
-      f"{accent_resting} h{_acc.h:.0f} vs identity {resting.identity_hex} h{_idn.h:.0f}")
+_dom = dominant_hue(resting.session_id)
+_dh = abs(((_acc.h - _dom + 180) % 360) - 180)
+check("accent carries the session's dominant hue", _dh < 20,
+      f"{accent_resting} h{_acc.h:.0f} vs dominant h{_dom:.0f}")
 check("accent is vivid (measured animal band C>=0.16)", _acc.C >= 0.15,
       f"C {_acc.C:.3f}")
 check("resting has no acute layer", resting.acute_hex is None)
