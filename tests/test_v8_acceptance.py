@@ -70,12 +70,21 @@ def test_identity_layer_separates_two_session_ids():
     assert a != b
 
 
-def test_status_bar_bg_carries_only_acute_signal():
-    assert plugin.chrome_renderer("status_bar_bg", 20, ctx("idle")) is None
+def test_status_bar_bg_is_themed_in_every_state_and_the_alarms_differ():
+    """The bar paints always; it is the ONLY channel that moves with state.
+
+    This asserted `None` at rest until 2026-09-12, which let the core fall back
+    to stock Hermes gold — invisible while colours were quantised to the 256
+    cube, glaring in truecolor. Adam then moved state entirely onto the bar
+    ("the background change makes the recognition of terminal harder"), so an
+    unthemed resting bar is now a hole in the one surface carrying information.
+    """
+    idle = plugin.chrome_renderer("status_bar_bg", 20, ctx("idle"))
     amber = plugin.chrome_renderer("status_bar_bg", 20, ctx("waiting"))
     red = plugin.chrome_renderer("status_bar_bg", 20, ctx("failed"))
-    assert amber and red and amber != red
-    assert "#" in amber[0][0] and "#" in red[0][0]
+    assert idle and amber and red
+    assert idle != amber != red and idle != red
+    assert all("#" in fragments[0][0] for fragments in (idle, amber, red))
 
 
 @pytest.mark.parametrize("width", [20, 80, 200])

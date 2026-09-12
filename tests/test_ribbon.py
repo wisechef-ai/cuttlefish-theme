@@ -50,16 +50,28 @@ def test_each_row_has_uniform_contrast():
 
 
 def test_session_identity_and_signal_semantics():
+    """Identity lives in the field; state lives in the bar.
+
+    The original v15 cut asserted the opposite — that `fault` and `needs_me`
+    each collapse every session onto ONE field. Adam overturned that on
+    2026-09-12: repainting the background on a state change destroys the only
+    cue you use to recognise a window, exactly when that window needs you. The
+    field is now signal-invariant and `bar_cells` carries the signal; the
+    background half of this test is unchanged and still pins identity.
+    """
     fields = {ribbon_field(f"s{n}", 80, 12, "resting") for n in range(200)}
     assert len(fields) >= 150
-    faults = {ribbon_field(f"s{n}", 80, 12, "fault") for n in range(20)}
-    needs = {ribbon_field(f"s{n}", 80, 12, "needs_me") for n in range(20)}
+    for signal in ("fault", "needs_me"):
+        assert ribbon_field("s0", 80, 12, signal) == ribbon_field("s0", 80, 12, "resting"), (
+            f"{signal} moved the background; identity must survive a state change"
+        )
+    faults = {bar_cells(f"s{n}", 80, "fault") for n in range(20)}
+    needs = {bar_cells(f"s{n}", 80, "needs_me") for n in range(20)}
     assert len(faults) == 1 and len(needs) == 1
-    assert next(iter(faults)) != ribbon_field("s0", 80, 12, "resting")
-    assert next(iter(needs)) != ribbon_field("s0", 80, 12, "resting")
-    fault_hues = {round(hex_to_oklch(c).h) for row in next(iter(faults)) for c in row}
+    assert faults != needs
+    fault_hues = {round(hex_to_oklch(bg).h) for _fg, bg, _g in next(iter(faults))}
     assert max(fault_hues) < 100 or min(fault_hues) > 300
-    need_hues = {round(hex_to_oklch(c).h) for row in next(iter(needs)) for c in row}
+    need_hues = {round(hex_to_oklch(bg).h) for _fg, bg, _g in next(iter(needs))}
     assert min(need_hues) >= 20 and max(need_hues) <= 110
 
 

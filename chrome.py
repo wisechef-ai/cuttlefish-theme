@@ -13,6 +13,7 @@ from .color.oklab import OKLCh, hex_to_oklch, oklch_to_hex
 from .color.terminal import _index_to_hex, contrast_ratio, quantize_256, quantize_cube_256
 from .linework import cells
 from .pattern import ACUTE_AMBER, ACUTE_FAULT
+from .ribbon import bar_cells
 from .session import Signal, collapse
 
 # Anything painted BEHIND TEXT must clear WCAG AA against the body foreground.
@@ -407,16 +408,18 @@ def chrome_renderer(surface: str, width: int, ctx: dict[str, Any]) -> list[tuple
     """Render persistent chrome, failing closed on any repaint-path problem."""
     try:
         signal = collapse(ctx.get("pet_state"))
-        if surface == "status_bar_bg":
-            if signal is Signal.RESTING:
-                return None
-            colour, foreground = _acute_status_bar(signal)
-            # Fill the bar: the core pads a short list with the EMPTY style, so
-            # one cell would leave the rest stock — an alarm you cannot see.
-            return [(f"bg:{colour} {foreground}", " " * max(0, int(width)))]
         session_id = ctx.get("session_id")
         if not isinstance(session_id, str) or not session_id:
             return None
+        if surface == "status_bar_bg":
+            # Rendered in EVERY state, including rest. Returning None at rest let
+            # the core fall back to stock Hermes gold — invisible while colours
+            # were quantised to the 256 cube, glaring in truecolor, and it left
+            # the one surface that carries state looking like no theme at all.
+            # The bar is now the whole state channel (Adam, 2026-09-12: the
+            # background must not move on a state change), so it always paints.
+            return [(f"bg:{bg} fg:{fg}", glyph)
+                    for fg, bg, glyph in bar_cells(session_id, int(width), signal.value)]
         if surface == "transcript_line":
             row_key = ctx.get("row_key")
             row_key = int(row_key) if isinstance(row_key, int) and not isinstance(row_key, bool) else 0

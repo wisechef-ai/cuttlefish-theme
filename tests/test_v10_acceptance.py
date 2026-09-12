@@ -106,7 +106,7 @@ def test_acute_status_bar_carries_a_foreground_it_is_readable_with():
     import re
 
     from cuttlefish_theme.chrome import chrome_renderer
-    from cuttlefish_theme.color.terminal import _index_to_hex, contrast_ratio, quantize_256
+    from cuttlefish_theme.color.terminal import contrast_ratio
 
     for state in ("waiting", "failed"):
         fragments = chrome_renderer("status_bar_bg", 40, {"session_id": "x", "pet_state": state})
@@ -114,9 +114,11 @@ def test_acute_status_bar_carries_a_foreground_it_is_readable_with():
         background = re.search(r"bg:(#[0-9A-Fa-f]{6})", style).group(1)
         foreground = [token for token in style.split() if not token.startswith("bg:")]
         assert foreground, f"{state} emitted a background with no foreground: {style!r}"
-        rendered = _index_to_hex(quantize_256(background))
-        ratio = contrast_ratio(foreground[0], rendered)
-        assert ratio >= 4.5, f"{state}: {foreground[0]} on {rendered} is {ratio:.2f}:1"
+        # The emitted colour is what a truecolor terminal paints (v15); a
+        # 256-cube round-trip here would measure a path that no longer ships.
+        ink = foreground[0].removeprefix("fg:")
+        ratio = contrast_ratio(ink, background)
+        assert ratio >= 4.5, f"{state}: {ink} on {background} is {ratio:.2f}:1"
 
 
 def test_acute_status_bar_is_the_same_alarm_in_every_session():
@@ -184,7 +186,12 @@ def test_the_acute_bar_is_bright_and_carries_white_text():
         style = chrome_renderer("status_bar_bg", 40, {"session_id": "x", "pet_state": state})[0][0]
         background = re.search(r"bg:(#[0-9A-Fa-f]{6})", style).group(1)
         foreground = [token for token in style.split() if not token.startswith("bg:")]
-        assert foreground == ["#FFFFFF"], f"{state} text is {foreground}, not white"
-        rendered = _index_to_hex(quantize_256(background))
-        assert hex_to_oklch(rendered).L >= 0.50, f"{state} bar L={hex_to_oklch(rendered).L:.2f} is not bright"
-        assert contrast_ratio("#FFFFFF", rendered) >= 4.5
+        assert foreground == ["fg:#FFFFFF"], f"{state} text is {foreground}, not white"
+        # Asserted on the EMITTED colour, not a 256-cube round-trip: the bar is a
+        # truecolor surface now (v15), and no (L, C) band survives quantisation
+        # while staying both bright and white-legible — measured across the whole
+        # hue wheel. Checking the quantised value would test a path that no
+        # longer ships.
+        assert hex_to_oklch(background).L >= 0.50, (
+            f"{state} bar L={hex_to_oklch(background).L:.2f} is not bright")
+        assert contrast_ratio("#FFFFFF", background) >= 4.5

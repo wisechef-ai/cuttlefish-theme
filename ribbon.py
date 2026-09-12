@@ -8,6 +8,16 @@ from functools import lru_cache
 from .color.oklab import OKLCh, oklab_to_oklch, oklch_to_hex
 
 _BODY_FOREGROUND = "#E8E6EA"
+# The bar carries WHITE text (Adam: "the bars should be bright and the text is
+# white"), which pins the band from both ends: bright enough to read as a lit
+# strip (L >= 0.50) yet dark enough to hold white at AA. Measured across the
+# whole hue wheel, L .505-.55 at C .115 is the window that satisfies both
+# (worst case 4.57:1); at L .56 white falls to 4.39:1 and at .50 the bar stops
+# being bright. Truecolor only — no (L, C) band survives xterm-256
+# quantisation with both properties intact, which is why this path needs the
+# 24-bit negotiation.
+_BAR_L = (0.505, 0.55)
+_BAR_FOREGROUND = "#FFFFFF"
 _SIGNALS = {"resting", "needs_me", "fault"}
 
 
@@ -27,12 +37,33 @@ def _session_params(session_id: str) -> tuple[float, float, float]:
 
 
 def _hues(session_id: str, signal: str) -> tuple[float, ...]:
-    if signal == "fault":
-        return (4.0, 20.0, 36.0, 52.0, 68.0)
-    if signal == "needs_me":
-        return (38.0, 50.0, 62.0, 74.0, 86.0)
+    """The ribbon lanes — ALWAYS the session's own, in every state.
+
+    Adam, 2026-09-12: "per session no big background changes ... the background
+    change makes the recognition of terminal harder".
+
+    The background is the IDENTITY channel and nothing else. An earlier cut
+    repainted the whole field amber on `needs_me` and red on `fault`, which
+    meant the one surface you use to recognise a window changed the moment that
+    window had something to say — you lost the terminal exactly when you needed
+    to find it. State is carried by `bar_cells`, which replaces the pet's
+    information role; the field stays still underneath it.
+    """
     base, _, _ = _session_params(session_id)
     return tuple((base + i * 58.0) % 360.0 for i in range(6))
+
+
+# Acute bar lanes: fixed, ascending, NON-OVERLAPPING, and identical in every
+# window so "that one needs me" reads the same across six terminals. Fault owns
+# red (<=42), needs_me owns amber (>=60), an 18-degree gap. A first cut spanned
+# 4-68 and 38-86, so the two alarms shared 38-68 and "failed" was unreadable
+# against "waiting" — an alarm you cannot tell from the other alarm is not a
+# signal. Both stay clear of the 0/360 seam, which the lane blend would
+# otherwise cross the long way round.
+_ACUTE_HUES = {
+    "fault": (2.0, 12.0, 22.0, 32.0, 42.0),
+    "needs_me": (60.0, 72.0, 84.0, 96.0, 108.0),
+}
 
 
 def _colour(hue: float, lightness: float) -> str:
@@ -42,15 +73,19 @@ def _colour(hue: float, lightness: float) -> str:
 
 @lru_cache(maxsize=2048)
 def _row_hex(session_id: str, width: int, row: int, signal: str) -> tuple[str, ...]:
+    """One row of the mantle. `signal` is accepted and deliberately unused.
+
+    Kept in the signature because it is part of the cache key and the public
+    surface: callers pass the live signal, and the contract they are relying on
+    is that the answer does NOT change with it. Dropping the parameter would
+    make that guarantee invisible at the call site.
+    """
     if signal not in _SIGNALS:
         raise ValueError(f"unknown signal: {signal!r}")
     width = max(0, int(width))
     if width == 0:
         return ()
-    base_hue, phase, bend = _session_params(session_id)
-    if signal != "resting":
-        # Alarms must be comparable across windows; identity belongs only to calm skin.
-        phase, bend = 0.0, 0.0
+    _, phase, bend = _session_params(session_id)
     hues = _hues(session_id, signal)
     # Frequency rises gently to the right, making the right third visibly denser
     # without introducing a discontinuity at any cell boundary.
@@ -92,9 +127,31 @@ def ribbon_field(session_id: str, width: int, height: int, signal: str) -> tuple
 
 @lru_cache(maxsize=1024)
 def bar_cells(session_id: str, width: int, signal: str) -> tuple[tuple[str, str, str], ...]:
-    """Return a thin status bar using the same mantle colors as the field."""
-    backgrounds = _row_hex(session_id, width, 0, signal)
-    return tuple((_BODY_FOREGROUND, background, "━") for background in backgrounds)
+    """A thin bar: the session's own colours at rest, the shared alarm when acute.
+
+    THIS is the state channel — it replaces what the pet used to tell you, and
+    it is the only surface that moves. At rest it wears the session's ribbon
+    hues so the bar belongs to its window; on `needs_me`/`fault` it takes the
+    fixed amber/red lanes, identical everywhere, so one glance across six
+    terminals answers "which one needs me" without decoding anything.
+
+    Kept thin and multi-toned rather than one flat block (Adam, 2026-09-12:
+    "thin bar but with multiple colors not like a rainbow"): the lanes are
+    neighbours in hue, so it reads as one lit strip with structure, not tinsel.
+    """
+    width = max(0, int(width))
+    if width == 0:
+        return ()
+    hues = _ACUTE_HUES.get(signal) or _hues(session_id, signal)
+    phase = 0.0 if signal in _ACUTE_HUES else _session_params(session_id)[1]
+    floor, ceiling = _BAR_L
+    cells = []
+    for x in range(width):
+        u = x * 0.16 + phase
+        lane = int((u / math.tau) * len(hues)) % len(hues)
+        lightness = floor + (ceiling - floor) * (0.5 + 0.5 * math.sin(u))
+        cells.append((_BAR_FOREGROUND, oklch_to_hex(OKLCh(lightness, 0.115, hues[lane])), "━"))
+    return tuple(cells)
 
 
 __all__ = ["ribbon_row", "ribbon_field", "bar_cells"]
