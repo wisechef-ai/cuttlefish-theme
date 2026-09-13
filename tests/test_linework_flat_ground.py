@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from cuttlefish_theme.color.oklab import hex_to_oklch
-from cuttlefish_theme.color.terminal import _index_to_hex, quantize_cube_256
+from cuttlefish_theme.color.terminal import _index_to_hex, quantize_256, quantize_cube_256
 from cuttlefish_theme.linework import cells
 
 SIGNALS = ("resting", "needs-me", "fault")
@@ -55,5 +55,38 @@ def test_quantised_dots_are_brighter_than_ground() -> None:
 
 
 def test_identity_capacity_does_not_collapse() -> None:
-    grounds = {cells(f"s{n}", "resting", WIDTH)[0][1] for n in range(200)}
-    assert len(grounds) >= 8
+    """Identity rides the DOTS, not the ground — so measure the dots.
+
+    Written against the ground alone, and that was the wrong carrier. Adam,
+    2026-09-13, choosing how this surface should work: "near-black ground, but
+    let the dots themselves carry the per-session identity (fewer, brighter,
+    session-hued)". The ground is deliberately near-uniform — it is one flat
+    line, and its hue is pinned to the shared cross-surface anchor so every
+    window wears one theme — so counting distinct grounds measures the thing the
+    design intends to hold STILL and reports a correct implementation as a
+    collapse (measured: 6 grounds, against 113 distinct dot class-sets).
+
+    What must not collapse is what the user can actually tell apart: the set of
+    dot colours a session paints. Measured on the QUANTISED values, because two
+    dot-sets differing only below the cube's resolution are the same rule to the
+    eye.
+    """
+    dot_sets = {frozenset(quantize_256(fg) for fg, bg, _ in cells(f"s{n}", "resting", WIDTH)
+                          if fg != bg)
+                for n in range(200)}
+    assert len(dot_sets) >= 30, f"only {len(dot_sets)} distinct dot sets over 200 sessions"
+
+
+def test_the_ground_is_deliberately_near_uniform() -> None:
+    """The other half of the contract above, asserted so it cannot drift back.
+
+    A future change that re-derives the ground per session would restore the
+    distinct-ground count and silently break cross-surface hue coherence — the
+    regression this file's own history contains (20/20 sessions sharing a hue
+    family with the palette, down to 4/20). Pin the intent: few grounds, many
+    dot sets.
+    """
+    grounds = {quantize_256(cells(f"s{n}", "resting", WIDTH)[0][1]) for n in range(200)}
+    assert len(grounds) <= 12, (
+        f"{len(grounds)} distinct grounds: the rule's ground should track the "
+        "shared anchor, not the session")

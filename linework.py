@@ -16,10 +16,19 @@ from .color.oklab import OKLCh, hex_to_oklch, oklch_to_hex
 from .pattern import render
 from .patterns import field_for
 
-# A single row keeps isolated accents readable at 10-20% coverage. The ground
-# remains present underneath every other cell, so sparsity no longer creates a
-# perceived trench.
-_VIVID_FRACTION = 0.15
+# Share of columns carrying a dot. The reference renders measure 5-25% lit
+# (docs/reference-structure.md), against the 0.30 this surface used before.
+#
+# NOTE THE QUANTISATION: cells() spends this budget per 10-column SEGMENT, as
+# `round(_VIVID_FRACTION * 10)`, so the knob only moves in steps of 0.1 and
+# 0.15/0.20/0.25 all render identically at 2 dots per 10 columns. 0.20 is
+# written here because it is what the surface actually paints; the other two
+# values would be a comment that disagrees with the screen.
+#
+# It costs identity, measured and accepted: sparser dots mean fewer distinct
+# quantised dot-sets, so rendered rule signatures over 200 sessions fall from
+# 64 (at 0.30) to 39. Adam chose reference-accurate sparsity on 2026-09-13.
+_VIVID_FRACTION = 0.20
 
 # A bar is a LIT strip, not a background behind text, so it ramps bright. These
 # are the bands the pre-v11 bars used; only the hue source changed.
@@ -144,35 +153,44 @@ def _body_field(session_id: str, signal: str, width: int, height: int):
 
 @lru_cache(maxsize=64)
 def _unlit(session_id: str, signal: str) -> str:
-    """The colour between the bar's pigments.
+    """The single flat colour every unlit cell of the rule wears.
 
-    NOT the pre-v13 near-black. v13 moved the mantle's ground into the session's
-    own readable band, but this surface kept painting its unlit cells the flat
-    `#0B0C10` — so 70% of the bar sat at OKLab L .155 beside pigments in the
-    .28-.39 band, and the eye read that trench as holes rather than as skin.
-    Adam, 2026-09-11: "can we make it all colored - without black gaps?"
+    Adam, 2026-09-13: "can we have a thin line in one color - in that case would
+    be that blue and the dots as it is now scattered on that (without this
+    background)". So: ONE colour under the whole rule, dots on top of it, and no
+    second tone anywhere for the eye to read as a gap.
 
-    Filling every column instead (`_VIVID_FRACTION = 1.0`) was the wrong knob: it
-    took dominance to 0.25 against a 0.55 contract and vivid to 1.0 against 0.38,
-    i.e. it deleted the pattern to remove the gaps. Raising the FLOOR keeps the
-    grammar and closes the trench, which is what the animal does — a retracted
-    chromatophore reveals the layer beneath, it does not expose black.
+    HUE COMES FROM THE SHARED ANCHOR, LIGHTNESS IS THIS SURFACE'S OWN. That split
+    is the whole subtlety (§6g of the authoring skill). Deriving the ground from
+    `allocate()` directly — the obvious move, and one that passes every test
+    looking at this surface alone — gives the rule a hue nothing else on screen
+    is using: measured, cross-surface hue agreement fell from 20/20 sessions to
+    4/20, i.e. most windows wore a palette in one family and a rule in another.
+    `_mantle_palette` is the band-derived anchor every other surface reads, so
+    taking the hue from there keeps one theme per window.
+
+    Only the LIGHTNESS is re-derived here, because a rule is a lit strip rather
+    than a background behind text and the band's own floor is darker than this
+    surface wants.
     """
-    # Keep the session identity (hue/chroma) while moving presentation lightness
-    # into the mid-dark ground band. Signals are carried by sparse foreground dots;
-    # the ground is therefore stable across signal states and every unlit cell
-    # receives exactly the same flat colour.
-    identity = allocate(session_id).oklch
+    from .chrome import _mantle_palette
     from .color.terminal import _index_to_hex, quantize_cube_256
-    # Quantised lightness is the contract users actually see. High-chroma hues
-    # can jump upward in the sparse cube, so lower only those identities until
-    # their rendered ground is inside the mid-dark window.
+    from .session import Signal
+    # `cells` takes wire-form signals ("needs-me"/"error"); Signal's values are
+    # canonical ("needs_me"/"fault"). Passing the wire form straight through
+    # raises ValueError inside a repaint, which the renderer swallows as None —
+    # the bar silently reverts to stock on exactly the states that matter.
+    canonical = (Signal.FAULT if signal in ("fault", "error") else
+                 Signal.NEEDS_ME if signal in ("needs-me", "needs_me") else Signal.RESTING)
+    anchor = hex_to_oklch(_mantle_palette(session_id, canonical.value))
+    # Walk DOWN from the top of the window: the quantised value is the contract
+    # the user actually sees, and the cube is sparse enough in this region that a
+    # high-chroma hue can land above where it was aimed.
     for lightness in (0.28 - 0.01 * step for step in range(10)):
-        ground = oklch_to_hex(identity.with_(L=lightness))
-        rendered = _index_to_hex(quantize_cube_256(ground))
-        if 0.20 <= hex_to_oklch(rendered).L <= 0.34:
+        ground = oklch_to_hex(anchor.with_(L=lightness))
+        if 0.20 <= hex_to_oklch(_index_to_hex(quantize_cube_256(ground))).L <= 0.34:
             return ground
-    return oklch_to_hex(identity.with_(L=0.20))
+    return oklch_to_hex(anchor.with_(L=0.20))
 
 
 @lru_cache(maxsize=512)

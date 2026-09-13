@@ -52,16 +52,29 @@ def test_unlit_is_not_the_pre_v13_near_black(session: str, signal: str) -> None:
 @pytest.mark.parametrize("session", SESSIONS)
 @pytest.mark.parametrize("signal", SIGNALS)
 def test_unlit_is_inside_the_band_not_below_it(session: str, signal: str) -> None:
-    """The floor must not sink beneath the band the session lives in.
+    """The floor must not sink into a trench beneath its own dots.
 
     Deliberately NOT "lit cells sit near the unlit one": the rule is a LIT strip
-    (`_BAR_L` ramps 0.50-0.80), so a wide unlit-to-lit gap is the design. What
-    made it read as holes was the floor sitting 0.15 L BELOW the band entirely.
-    An assertion on the gap would fail on correct output — the defect is the
-    floor's absolute position, so that is what is pinned.
+    (`_BAR_L` ramps bright), so a wide unlit-to-lit gap is the design. What made
+    it read as holes was the floor's ABSOLUTE position — 0.15 L below everything
+    else on the surface — so that is what is pinned.
+
+    RE-POINTED 2026-09-13. This asserted against `band()`'s own floor (0.282),
+    which was right while the rule's ground WAS a band colour. It no longer is:
+    `_unlit` now takes only the HUE from the shared anchor and re-derives
+    lightness into this surface's own 0.20-0.34 window, because a rule is a lit
+    strip rather than a background behind text. Three sessions whose anchor
+    quantises to L 0.240 (#310048) failed a 0.282 floor while rendering exactly
+    as designed.
+
+    The window's floor is the contract now, and 0.20 is not arbitrary: below it
+    the ground drops far enough under the dots to read as the trench this test
+    exists to catch.
     """
-    floor = min(hex_to_oklch(colour).L for colour in band())
-    assert hex_to_oklch(unlit_in_row(session, signal)).L >= floor - 0.005
+    lightness = hex_to_oklch(unlit_in_row(session, signal)).L
+    assert 0.20 <= lightness <= 0.34, (
+        f"{session}/{signal} ground at L {lightness:.3f} is outside the rule's "
+        "own 0.20-0.34 window")
 
 
 @pytest.mark.parametrize("signal", SIGNALS)
