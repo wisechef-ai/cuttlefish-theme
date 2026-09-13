@@ -11,7 +11,7 @@ from .band import _FAMILY_ARC, families, family_of, resting_families
 from .color.identity import allocate
 from .color.oklab import OKLCh, hex_to_oklch, oklch_to_hex
 from .color.terminal import _index_to_hex, contrast_ratio, quantize_256, quantize_cube_256
-from .linework import cells
+from .linework import _body_field, cells
 from .pattern import ACUTE_AMBER, ACUTE_FAULT
 from .ribbon import bar_cells
 from .session import Signal, collapse
@@ -321,6 +321,67 @@ def _acute_status_bar(signal: Signal) -> tuple[str, str]:
     return background, _ACUTE_BAR_FOREGROUND
 
 
+def _row_key(ctx: dict[str, Any]) -> int:
+    """The row's stable identity, defaulting to 0 for a caller that sends none."""
+    row_key = ctx.get("row_key")
+    return int(row_key) if isinstance(row_key, int) and not isinstance(row_key, bool) else 0
+
+
+# The transcript mantle's ground. The eight reference renders measure a near-black
+# at OKLab L .05-.10 covering ~100% of the frame (docs/reference-structure.md), and
+# `pattern._ground` already sets exactly that as the terminal's OSC 11 background
+# (#0B0C10, L .155) for every session. Matching it is what makes the pattern read
+# as dots ON the window rather than as a lighter panel laid over it.
+_MANTLE_GROUND = "#0B0C10"
+
+# Share of cells carrying a dot. The renders measure 5-25% lit; this sits at the
+# quiet end because a mottled background costs legibility even when every cell
+# passes a contrast check — measured, contrast swings 3-4x across a single line of
+# text and the eye adapts to the bright cells, then cannot read over the dark ones.
+# Adam's clarify timed out on "how loud"; SUBTLE is the bounded default taken
+# 2026-09-13. Raise toward 0.18 for the renders' fuller look.
+_MANTLE_LIT = 0.06
+
+
+@lru_cache(maxsize=4096)
+def _mantle_row(session_id: str, width: int, row_key: int,
+                signal: str = Signal.RESTING.value) -> tuple[tuple[str, str], ...]:
+    """One transcript row: a near-black ground carrying sparse bright pigment cells.
+
+    THE GROUND IS FIXED AND SHARED. Identity rides the DOTS (Adam, 2026-09-13:
+    "let the dots themselves carry the per-session identity"), never the ground —
+    a per-session ground is a large surface that moves when the user is trying to
+    recognise a window, and it was measured at OKLab L .301 against the renders'
+    .05-.10, which is what made the old mantle read as a bright wash.
+
+    SIGNAL-INVARIANT BY CONTRACT. The rendered row is byte-identical across every
+    signal: the field a user scans to recognise a window must not change at the
+    moment that window has something to say. State rides the status bar alone.
+    The parameter stays in the signature because it is part of the cache key and
+    the public contract.
+
+    Cached whole: this runs once per printed line, and rebuilding a width-long
+    list of f-strings per line is most of the cost at that rate.
+    """
+    width = max(0, int(width))
+    if not width:
+        return ()
+    classes = _mantle_classes(session_id, Signal.RESTING.value)
+    # Rank-based selection, never an absolute threshold on the field: a threshold
+    # makes density seed-dependent, so some sessions render blank and others solid.
+    # Per-segment ranking additionally bounds the gap between dots by construction.
+    field = _body_field(session_id, Signal.RESTING.value, width, 64)
+    values = [field.get(x, row_key % field.height) for x in range(width)]
+    segment = 16
+    per_segment = max(1, round(_MANTLE_LIT * segment))
+    lit = {x for start in range(0, width, segment)
+           for x in sorted(range(start, min(width, start + segment)),
+                           key=lambda i: (values[i], i), reverse=True)[:per_segment]}
+    return tuple(
+        (f"bg:{classes[(x + row_key) % len(classes)] if x in lit else _MANTLE_GROUND}", " ")
+        for x in range(width))
+
+
 def chrome_renderer(surface: str, width: int, ctx: dict[str, Any]) -> list[tuple[str, str]] | None:
     """Render persistent chrome, failing closed on any repaint-path problem."""
     try:
@@ -338,44 +399,7 @@ def chrome_renderer(surface: str, width: int, ctx: dict[str, Any]) -> list[tuple
             return [(f"bg:{bg} fg:{fg}", glyph)
                     for fg, bg, glyph in bar_cells(session_id, int(width), signal.value)]
         if surface == "transcript_line":
-            # DELIBERATELY UNPAINTED. Adam, 2026-09-13, choosing between a
-            # patterned transcript and a still one: "flat near-black behind the
-            # transcript (no pattern, no shimmer, no gaps) — all the art lives
-            # on the fixed rules/bar".
-            #
-            # This is a deletion, not a regression, and it fixes three defects
-            # at once:
-            #
-            # 1. THE GAPS. The mantle painted only lines routed through
-            #    `cli.py::_cprint`. The ~39 bare `print()` calls in core's
-            #    `agent/` (turn_tool_validation.py:95's "Auto-repaired tool
-            #    name" being the one Adam screenshotted) never enter that seam,
-            #    so they rendered on raw terminal background while their
-            #    neighbours were tinted — black holes punched through the skin.
-            #    Painting nothing means the terminal's own OSC 11 background
-            #    (`pattern._ground`, a flat #0B0C10 shared by every session)
-            #    shows through EVERY line identically, hooked or not. The bug
-            #    class is closed by construction rather than by chasing call
-            #    sites in a repo we do not own.
-            #
-            # 2. THE SCROLL. A per-line background is glued to the text, so the
-            #    pattern moved with the transcript. Nothing can pin a wallpaper
-            #    behind a VTE cell grid — there is no layer there — so a still
-            #    background and a patterned transcript are mutually exclusive.
-            #    Adam picked still.
-            #
-            # 3. THE WASH. Measured over 40 sessions (tools/measure_vs_reference.py):
-            #    the mantle's ground sat at OKLab L .301 against the reference
-            #    renders' .05-.10, lit 30% of cells against their 5-25%, and
-            #    offered 4.5 distinct tones against their 7-15. It read as a
-            #    flat bright wash, and it was also the surface forcing a text
-            #    legibility trade nothing else needed.
-            #
-            # Identity did NOT move to the ground (it is uniform by design, see
-            # `pattern._ground`); it lives in the input rules and the status
-            # bar, which are chrome and therefore redrawn on every repaint —
-            # the only surfaces in a classic CLI that hold still.
-            return None
+            return list(_mantle_row(session_id, int(width), _row_key(ctx), signal.value))
         if surface not in {"input_rule_top", "input_rule_bot"}:
             return None
         return [(f"fg:{fg} bg:{bg}", glyph)
