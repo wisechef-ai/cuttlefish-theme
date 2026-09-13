@@ -139,36 +139,39 @@ _UNIVERSAL_KEYS = frozenset({
 def _surfaces(session_id: str) -> dict[str, list[str]]:
     """Every colour a session shows, grouped by the surface that shows it.
 
-    Weighted by what the terminal actually renders, not by distinct colour: the
-    mantle carries a few island colours that occupy ~18% of cells by contract, so
-    counting colours instead of cells reports 50% dominance for a field the eye
+    Weighted by what the terminal actually renders, not by distinct colour: a
+    surface carries a few island colours occupying a small share of cells, so
+    counting colours instead of cells reports 50% dominance for a strip the eye
     reads as one hue.
+
     Every surface is read through the PRODUCTION path. An earlier version of this
     file called `build_palette` directly and so bypassed `Palette.skin_colors`,
     where the session's hue is actually applied — it measured a function no
     terminal ever calls and reported an incoherence the product did not have.
+
+    The MANTLE is deliberately absent. The transcript stopped painting on
+    2026-09-13 (Adam: flat near-black behind the transcript, art on the chrome),
+    so reading `_mantle_row` here would measure the coherence of a surface no
+    terminal renders — the exact bypass the paragraph above warns about. The
+    coherence contract now spans the two surfaces the user actually sees carry
+    the session's colour: the input rule and the skin palette.
     """
-    from cuttlefish_theme.chrome import _mantle_row
     from cuttlefish_theme.color.identity import allocate
     from cuttlefish_theme.linework import cells
     from cuttlefish_theme.pattern import render
     from cuttlefish_theme.session import Signal
 
     palette = render(allocate(session_id), Signal.RESTING).skin_colors()
-    width, rows = 80, 12
+    width = 80
     return {
         "palette": [v for k, v in palette.items() if k not in _UNIVERSAL_KEYS],
         "bar": [bg for _fg, bg, _glyph in cells(session_id, "resting", width)],
-        "mantle": [style.split("bg:")[1].split()[0]
-                   for row in range(rows)
-                   for style, _text in _mantle_row(session_id, width, row, "resting")
-                   if "bg:" in style],
     }
 
 
 @pytest.mark.parametrize("session_id", _SESSIONS)
 def test_every_surface_shares_the_session_dominant_family(session_id):
-    """The bar, the mantle and the palette must speak ONE hue family.
+    """The bar and the palette must speak ONE hue family.
 
     This is the contract nothing measured before. Each surface derived its hue
     from its own hash, so a session could wear a green palette, a blue bar and a

@@ -1,81 +1,26 @@
-"""v9 transcript mantle acceptance tests."""
-from __future__ import annotations
+"""The mantle CLASSES must survive terminal quantisation.
 
-import json
-import os
-import re
-import subprocess
-import sys
+Named for v9, when this file also held the transcript-mantle acceptance tests.
+Those are gone (see the note below); what remains is the guarantee that the
+per-session pigment classes still read as COLOUR rather than grey once the
+terminal has quantised them — a contract the input rule and status bar depend
+on, since both draw from the same classes.
+"""
+from __future__ import annotations
 
 import pytest
 
-from cuttlefish_theme import plugin
-from cuttlefish_theme.color.oklab import hex_to_oklch
-from cuttlefish_theme import chrome as plugin_chrome
-from cuttlefish_theme.color.terminal import contrast_ratio
 
-
-def test_transcript_line_returns_filled_background_fragments():
-    fragments = plugin.chrome_renderer(
-        "transcript_line", 80, {"session_id": "zivyra", "row_key": 7}
-    )
-    assert fragments
-    assert sum(len(text) for style, text in fragments) == 80
-    assert all(re.fullmatch(r"bg:#[0-9A-Fa-f]{6}", style) for style, _ in fragments)
-
-
-def test_transcript_mantle_is_stable_by_row_and_varies_between_rows():
-    ctx = {"session_id": "zivyra", "row_key": 12}
-    first = plugin.chrome_renderer("transcript_line", 80, ctx)
-    assert first == plugin.chrome_renderer("transcript_line", 80, ctx)
-    assert first != plugin.chrome_renderer(
-        "transcript_line", 80, {"session_id": "zivyra", "row_key": 13}
-    )
-
-
-def test_transcript_mantle_is_process_stable():
-    code = """
-import importlib.util, json, sys
-from pathlib import Path
-root = Path(sys.argv[1])
-spec = importlib.util.spec_from_file_location('cuttlefish_theme', root/'__init__.py', submodule_search_locations=[str(root)])
-m = importlib.util.module_from_spec(spec); sys.modules['cuttlefish_theme'] = m; spec.loader.exec_module(m)
-print(json.dumps(m.plugin.chrome_renderer('transcript_line', 80, {'session_id':'zivyra','row_key':12})))
-"""
-    root = str(__import__("cuttlefish_theme").__path__[0])
-    env = dict(os.environ)
-    env["PYTHONHASHSEED"] = "random"
-    out = subprocess.check_output([sys.executable, "-c", code, root], text=True, env=env)
-    assert [tuple(row) for row in json.loads(out)] == plugin.chrome_renderer(
-        "transcript_line", 80, {"session_id": "zivyra", "row_key": 12}
-    )
-
-
-def test_transcript_backgrounds_keep_wcag_aa_against_normal_foreground():
-    normal_foreground = "#E8E6EA"
-    fragments = plugin.chrome_renderer(
-        "transcript_line", 120, {"session_id": "zivyra", "row_key": 12}
-    )
-    ratios = [contrast_ratio(normal_foreground, style.split(":", 1)[1]) for style, _ in fragments]
-    assert min(ratios) >= 4.5
-    # Readability is the contrast assertion above. The lightness bound is the
-    # design ceiling for a background: 0.32 was written when the mantle had ONE
-    # near-black pigment, and the four-class set needs headroom for the
-    # iridophore and the pearl. 0.52 is the cap the renderer enforces; measured,
-    # 30 chromatic cube entries clear AA and the highest sits at L 0.538.
-    assert all(hex_to_oklch(style.split(":", 1)[1]).L <= 0.52 for style, _ in fragments)
-
-
-def test_transcript_mantle_has_about_thirty_percent_pigment():
-    # The ground is the session's own, not a fixed near-black: v13 moved it into
-    # the session's colour band so a line of text no longer crosses a hole.
-    ground = plugin_chrome._mantle_palette("zivyra").lower()
-    fragments = plugin.chrome_renderer(
-        "transcript_line", 200, {"session_id": "zivyra", "row_key": 12}
-    )
-    pigment = sum(style.split(":", 1)[1].lower() != ground for style, _ in fragments)
-    assert 0.22 <= pigment / 200 <= 0.38
-
+# The five v9 transcript-mantle acceptance tests that lived here are DELETED,
+# not weakened. They pinned "the transcript line paints a filled per-cell
+# background" (filled fragments, row-to-row variation, ~30% pigment, AA against
+# the body foreground) — a contract Adam overturned on 2026-09-13 in favour of a
+# flat, unpainted transcript. Their replacement is tests/test_flat_transcript.py,
+# which asserts the opposite and was proven RED against this behaviour.
+#
+# Kept below: the quantisation contract, which is about the mantle CLASSES.
+# Those still ship — the input rule and the status bar draw from them — so the
+# "must not collapse onto the greyscale ramp" guarantee is still load-bearing.
 
 @pytest.mark.parametrize("session_id", [
     "zivyra", "koralen", "tori-main", "chef", "wise", "mantis", "tilola", "sepia"])

@@ -45,10 +45,6 @@ _MIN_PALETTE = 4
 # reaches a fresh cube index while the hue still reads as the family's own.
 _TINT = 0.25
 
-# Share of LIT cells the islands take: the hottest tail of the ramp. The
-# contract wants a 0.75-0.92 dominant share, so islands stay a minority marking.
-_ISLAND_SHARE = 0.12
-
 _SEPARATION_NUDGES = ((0.08, 0), (-0.08, 0), (0.16, 0), (-0.16, 0),
                       (0.0, 25), (0.0, -25), (0.24, 0), (0.0, 50))
 
@@ -307,85 +303,6 @@ def _readable(colour: OKLCh, foreground: str = _BODY_FOREGROUND) -> str:
     return _index_to_hex(quantize_cube_256(oklch_to_hex(colour.with_(L=_DARKENING_STEPS[-1]))))
 
 
-@lru_cache(maxsize=512)
-def _mantle_row(session_id: str, width: int, row_key: int,
-                signal: str = Signal.RESTING.value) -> tuple[tuple[str, str], ...]:
-    """One row of the transcript mantle, as prompt_toolkit fragments.
-
-    WHICH class shows at a cell follows that cell's own pigment, which `cells`
-    already assigns by field intensity — deeper classes for stronger expansion,
-    as the animal recruits them. Never by column index: that is the alternating
-    stripe v7 removed.
-
-    Cached whole: this is called once per printed line, and rebuilding an
-    80-element list of f-strings per line is most of the cost at that rate.
-    """
-    ground = _mantle_palette(session_id, signal)
-    classes = _mantle_classes(session_id, signal)
-    row = cells(session_id, signal, width, row_key)
-    # `cells` marks unlit cells with ITS ground, which is not ours: v13 moved the
-    # mantle ground into the session's band. Comparing against the wrong one made
-    # every cell read as lit and the mantle lost its ground entirely (measured:
-    # 200/200 cells pigment). Take the unlit marker from the row itself.
-    unlit = row[0][1]
-    ramp = sorted({fg for fg, _bg, _g in row if fg != unlit},
-                  key=lambda pigment: hex_to_oklch(pigment).L)
-    # Reserve the islands for the hottest CELLS, not the hottest ramp positions.
-    # The ramp holds only a handful of distinct values, so a top-slice of its
-    # positions caught 38% of cells where 15% was asked for — the confetti Adam
-    # saw. Counting cells makes the share mean what it says.
-    #
-    # The budget is spent per CELL, not per colour: taking the top colours by
-    # lightness promoted every cell wearing them, and a session whose hottest
-    # colour was common ran to 54% islands against a 12% budget.
-    dominant, islands = _split(session_id, classes)
-    order = {pigment: rank for rank, pigment in enumerate(ramp)}
-    # Threshold on the ramp rather than sorting the row: a per-cell sort is
-    # O(width log width) on a path that runs once per printed line, and it put
-    # per-line cost at 16.4us against a 15us budget.
-    lit = [fg for fg, _bg, _g in row if fg != unlit]
-    budget = round(_ISLAND_SHARE * len(lit))
-    hottest = sorted(lit, key=lambda pigment: hex_to_oklch(pigment).L, reverse=True)
-    cutoff = hex_to_oklch(hottest[budget - 1]).L if islands and budget else None
-    shade = {pigment: dominant[min(len(dominant) - 1,
-                                   int(rank / max(1, len(ramp) - 1) * len(dominant)))]
-             for pigment, rank in order.items()}
-    spent = 0
-    painted = []
-    for index, (fg, _bg, _glyph) in enumerate(row):
-        if fg == unlit:
-            painted.append(f"bg:{ground}")
-        elif cutoff is not None and spent < budget and hex_to_oklch(fg).L >= cutoff:
-            painted.append(f"bg:{islands[index % len(islands)]}")
-            spent += 1
-        else:
-            painted.append(f"bg:{shade[fg]}")
-    return tuple((style, " ") for style in painted)
-
-
-def _split(session_id: str, classes: tuple[str, ...]) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    """Separate a palette into its dominant family and its islands.
-
-    The ground is excluded from both: it is the palette's darkest step, so a lit
-    cell painted with it is invisible against the unlit ones. Leaving it in the
-    dominant ramp dropped measured pigment density to 15%.
-
-    The dominant family is the one holding the MOST paints, not the ground's own
-    family. The ground is simply the darkest colour, which is often an island —
-    6 of 40 sessions had a ground whose family held no paint at all, so `_split`
-    found no dominant and every lit cell counted as an island.
-    """
-    from .band import family_of
-    ground = _mantle_palette(session_id)
-    paints = tuple(c for c in classes if c != ground) or classes
-    if len(paints) < 2:
-        return paints, ()
-    home = Counter(family_of(c) for c in paints).most_common(1)[0][0]
-    dominant = tuple(c for c in paints if family_of(c) == home)
-    islands = tuple(c for c in paints if family_of(c) != home)
-    return dominant, islands
-
-
 def _acute_status_bar(signal: Signal) -> tuple[str, str]:
     """The acute bar's background AND the foreground that stays legible on it.
 
@@ -421,9 +338,44 @@ def chrome_renderer(surface: str, width: int, ctx: dict[str, Any]) -> list[tuple
             return [(f"bg:{bg} fg:{fg}", glyph)
                     for fg, bg, glyph in bar_cells(session_id, int(width), signal.value)]
         if surface == "transcript_line":
-            row_key = ctx.get("row_key")
-            row_key = int(row_key) if isinstance(row_key, int) and not isinstance(row_key, bool) else 0
-            return list(_mantle_row(session_id, int(width), row_key, signal.value))
+            # DELIBERATELY UNPAINTED. Adam, 2026-09-13, choosing between a
+            # patterned transcript and a still one: "flat near-black behind the
+            # transcript (no pattern, no shimmer, no gaps) — all the art lives
+            # on the fixed rules/bar".
+            #
+            # This is a deletion, not a regression, and it fixes three defects
+            # at once:
+            #
+            # 1. THE GAPS. The mantle painted only lines routed through
+            #    `cli.py::_cprint`. The ~39 bare `print()` calls in core's
+            #    `agent/` (turn_tool_validation.py:95's "Auto-repaired tool
+            #    name" being the one Adam screenshotted) never enter that seam,
+            #    so they rendered on raw terminal background while their
+            #    neighbours were tinted — black holes punched through the skin.
+            #    Painting nothing means the terminal's own OSC 11 background
+            #    (`pattern._ground`, a flat #0B0C10 shared by every session)
+            #    shows through EVERY line identically, hooked or not. The bug
+            #    class is closed by construction rather than by chasing call
+            #    sites in a repo we do not own.
+            #
+            # 2. THE SCROLL. A per-line background is glued to the text, so the
+            #    pattern moved with the transcript. Nothing can pin a wallpaper
+            #    behind a VTE cell grid — there is no layer there — so a still
+            #    background and a patterned transcript are mutually exclusive.
+            #    Adam picked still.
+            #
+            # 3. THE WASH. Measured over 40 sessions (tools/measure_vs_reference.py):
+            #    the mantle's ground sat at OKLab L .301 against the reference
+            #    renders' .05-.10, lit 30% of cells against their 5-25%, and
+            #    offered 4.5 distinct tones against their 7-15. It read as a
+            #    flat bright wash, and it was also the surface forcing a text
+            #    legibility trade nothing else needed.
+            #
+            # Identity did NOT move to the ground (it is uniform by design, see
+            # `pattern._ground`); it lives in the input rules and the status
+            # bar, which are chrome and therefore redrawn on every repaint —
+            # the only surfaces in a classic CLI that hold still.
+            return None
         if surface not in {"input_rule_top", "input_rule_bot"}:
             return None
         return [(f"fg:{fg} bg:{bg}", glyph)
