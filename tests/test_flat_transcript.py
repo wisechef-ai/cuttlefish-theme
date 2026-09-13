@@ -23,9 +23,8 @@ future "let's put the mantle back" has to argue with a red test:
    .05-.10, 30% of cells lit against their 5-25%, 4.5 distinct tones against
    their 7-15.
 
-These assert the RENDERER's output, not the helper's: `_mantle_row` may well
-survive as dead-ish code for the `watch`/preview surfaces, and a test asking it
-would pass while the transcript was still being painted.
+These assert the RENDERER's output, not a helper's: a test that asked some
+mantle-building helper would pass while the transcript was still being painted.
 """
 
 from __future__ import annotations
