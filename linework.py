@@ -12,25 +12,18 @@ from functools import lru_cache
 
 from .band import _FAMILY_ARC, reserved_for_alarm
 from .color.identity import allocate
-from .color.oklab import OKLCh, oklch_to_hex
+from .color.oklab import OKLCh, hex_to_oklch, oklch_to_hex
 from .pattern import render
 from .patterns import field_for
 
-# Share of columns that carry a pigment. Real Metasepia display measures 11-16%
-# vivid over a 2D patch, but a 2D fraction re-read on ONE row leaves voids the
-# eye reads as emptiness: at 0.16 the longest dark gap on an 80-column rule was
-# 33 cells. 0.30 restores the density a single row needs to read as skin.
-#
-# Adam's "black gaps" (2026-09-11) are NOT this fraction — filling every column
-# was tried and it destroys the grammar the bar is built on (dominance fell to
-# 0.25 against a 0.55 contract, vivid hit 1.0 against 0.38: a rainbow strip, not
-# skin). The gaps were the UNLIT colour, which had been left on the pre-v13
-# near-black while the mantle moved into the session's band. See `_unlit`.
-_VIVID_FRACTION = 0.30
+# A single row keeps isolated accents readable at 10-20% coverage. The ground
+# remains present underneath every other cell, so sparsity no longer creates a
+# perceived trench.
+_VIVID_FRACTION = 0.15
 
 # A bar is a LIT strip, not a background behind text, so it ramps bright. These
 # are the bands the pre-v11 bars used; only the hue source changed.
-_BAR_L = (0.50, 0.80)
+_BAR_L = (0.66, 0.84)
 _ACUTE_BAR_L = (0.62, 0.78)
 
 
@@ -165,15 +158,21 @@ def _unlit(session_id: str, signal: str) -> str:
     grammar and closes the trench, which is what the animal does — a retracted
     chromatophore reveals the layer beneath, it does not expose black.
     """
-    from .chrome import _mantle_palette
-    from .session import Signal
-    # `cells` takes wire-form signals ("needs-me"/"error"); Signal's values are
-    # canonical ("needs_me"/"fault"). Passing the wire form straight through
-    # raises ValueError inside a repaint, which the renderer swallows as None —
-    # the bar silently reverts to stock on exactly the states that matter.
-    canonical = (Signal.FAULT if signal in ("fault", "error") else
-                 Signal.NEEDS_ME if signal in ("needs-me", "needs_me") else Signal.RESTING)
-    return _mantle_palette(session_id, canonical.value)
+    # Keep the session identity (hue/chroma) while moving presentation lightness
+    # into the mid-dark ground band. Signals are carried by sparse foreground dots;
+    # the ground is therefore stable across signal states and every unlit cell
+    # receives exactly the same flat colour.
+    identity = allocate(session_id).oklch
+    from .color.terminal import _index_to_hex, quantize_cube_256
+    # Quantised lightness is the contract users actually see. High-chroma hues
+    # can jump upward in the sparse cube, so lower only those identities until
+    # their rendered ground is inside the mid-dark window.
+    for lightness in (0.28 - 0.01 * step for step in range(10)):
+        ground = oklch_to_hex(identity.with_(L=lightness))
+        rendered = _index_to_hex(quantize_cube_256(ground))
+        if 0.20 <= hex_to_oklch(rendered).L <= 0.34:
+            return ground
+    return oklch_to_hex(identity.with_(L=0.20))
 
 
 @lru_cache(maxsize=512)
