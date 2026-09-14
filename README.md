@@ -16,6 +16,43 @@ hermes cuttlefish legend     learn the language in one screen
 hermes cuttlefish doctor     what your terminal can do
 ```
 
+## Reading it — 30 seconds
+
+Two channels. They answer different questions, and they never share a surface.
+
+**The background is which window this is.** Each session gets its own field of
+colour — a dark ground with sparse bright pigment, unique to that session and
+stable across reconnects. It does **not** change while you work: not when the
+agent thinks, not when a tool runs, not when something breaks. A face that moved
+when a window needed you would lose you the window exactly when you were looking
+for it. Use it to *find* a window, never to learn what it is doing.
+
+**The status bar is whether it wants you.** Unlike the background, it reads the
+same in every window:
+
+| the bar is | it means | do |
+|---|---|---|
+| the session's own colour | resting — working, or idle | nothing |
+| **amber** + `INPUT 4m` | it is waiting on *you*, for 4 minutes | go to that window |
+| **red** + `ERROR 2m` | something failed and stopped | go read the error |
+
+Amber and red are held far apart in hue so you can tell them apart across a room.
+
+**Under text the skin contracts.** Where glyphs sit, the field goes calm; in open
+space it stays loud. The hue is preserved (measured: median shift 0.05°, p95
+0.05°) — it is not a grey scrim, it is the same skin relaxing. Text stays
+readable at 7.30:1 against the busiest background, well past the WCAG AA floor
+of 4.5:1.
+
+**The two-glance workflow.** Scan the *bars* for colour — peripheral vision, no
+reading required. Then use the *backgrounds* to navigate to the right window.
+
+> **In one sentence:** the background tells you which window this is; the bar
+> tells you whether it wants you.
+
+Full reader's guide, including what is deliberately absent and why:
+**[READING-THE-LANGUAGE.md](READING-THE-LANGUAGE.md)**.
+
 ## Why
 
 Three problems, in the order they bite:
