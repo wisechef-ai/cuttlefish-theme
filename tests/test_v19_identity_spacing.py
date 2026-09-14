@@ -99,8 +99,9 @@ class TestStabilityIsPreserved:
     """Outcome 5-7: spacing must not cost determinism."""
 
     def test_the_same_inputs_give_the_same_colour(self):
-        first = identity.identity_for("stable", live=(("x", 0.5, 0.1),))
-        second = identity.identity_for("stable", live=(("x", 0.5, 0.1),))
+        neighbour = ((0.50, 0.05, 0.10),)
+        first = identity.identity_for("stable", live=neighbour)
+        second = identity.identity_for("stable", live=neighbour)
         assert first == second
 
     def test_different_sessions_differ_even_with_no_neighbours(self):
@@ -110,7 +111,7 @@ class TestStabilityIsPreserved:
 
     def test_a_reconnecting_session_keeps_its_colour(self):
         """Same id, same neighbours, same face — that is what reconnect means."""
-        neighbours = (("a", 0.4, 0.05), ("b", 0.6, -0.05))
+        neighbours = ((0.40, 0.03, 0.05), (0.60, -0.02, -0.05))
         before = identity.identity_for("returning", live=neighbours)
         after = identity.identity_for("returning", live=neighbours)
         assert before == after
