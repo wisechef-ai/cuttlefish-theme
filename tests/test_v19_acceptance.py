@@ -46,6 +46,7 @@ RUN:  cd ~/.hermes/plugins/cuttlefish-theme && make test
 from __future__ import annotations
 
 import math
+import time
 
 import pytest
 
@@ -278,34 +279,37 @@ class TestAnimation:
 # ===========================================================================
 
 class TestPerformance:
-    def test_a_cached_row_is_effectively_free(self):
-        import time
-        renderer.transcript_row(session_id="perf", width=200, row=3, time_ms=0, occupied=False)
-        start = time.perf_counter()
-        for _ in range(200):
-            renderer.transcript_row(session_id="perf", width=200, row=3, time_ms=0, occupied=False)
-        per_call_us = (time.perf_counter() - start) / 200 * 1e6
-        assert per_call_us < 200, f"{per_call_us:.0f} us/row cached"
+    @staticmethod
+    def _best_cpu_us(repeats: int, render) -> float:
+        """Best-of-5 CPU microseconds per call.
 
-    def test_a_cold_row_fits_inside_a_frame(self):
-        """A never-before-rendered row must fit inside one 60fps frame.
-
-        Measured as the BEST of several runs, on process CPU time rather than
-        wall clock. A wall-clock single shot measures the machine, not the
-        renderer: at load average 10 this same code timed 19.9 ms and at rest
-        13.5 ms, so the assertion decided whether the box was busy. Best-of
-        removes scheduler noise; process time removes everything but us.
+        Wall clock measures the MACHINE, not the renderer: this same code timed
+        13.5 ms at rest and 19.9 ms at load average 10, so a single-shot
+        assertion decided whether the box was busy. Best-of drops scheduler
+        noise; `process_time` drops everything that is not us.
         """
-        import time
-
-        best_ms = float("inf")
+        best = float("inf")
         for attempt in range(5):
             start = time.process_time()
-            for row in range(50):
-                renderer.transcript_row(session_id=f"cold-{attempt}-{row}", width=200,
-                                        row=row, time_ms=0, occupied=False)
-            best_ms = min(best_ms, (time.process_time() - start) / 50 * 1e3)
-        assert best_ms < 16.7, f"{best_ms:.1f} ms/row cold (best of 5, CPU time)"
+            for i in range(repeats):
+                render(attempt, i)
+            best = min(best, (time.process_time() - start) / repeats * 1e6)
+        return best
+
+    def test_a_cached_row_is_effectively_free(self):
+        def row(_attempt: int, _i: int) -> None:
+            renderer.transcript_row(session_id="perf", width=200, row=3, time_ms=0, occupied=False)
+
+        row(0, 0)  # warm the cache; a cold first call is the other test's job
+        assert self._best_cpu_us(200, row) < 200
+
+    def test_a_cold_row_fits_inside_a_frame(self):
+        """A never-before-rendered row must fit inside one 60fps frame."""
+        def row(attempt: int, i: int) -> None:
+            renderer.transcript_row(session_id=f"cold-{attempt}-{i}", width=200, row=i,
+                                    time_ms=0, occupied=False)
+
+        assert self._best_cpu_us(50, row) / 1e3 < 16.7
 
 
 # ===========================================================================
