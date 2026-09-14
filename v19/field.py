@@ -6,19 +6,39 @@ from functools import lru_cache
 
 from . import contraction, noise, oklab, palette
 
-# WHY: these values keep the identity field dark enough for terminal text.
-LEUCOPHORE_LIGHTNESS = 0.25
-IRIDOPHORE_LIGHTNESS = 0.06
+# The reference structure measures most of the frame at OKLab L .05-.10 — a
+# dark window carrying sparse pigment. The leucophore is the PALE layer that
+# contraction reveals, not a base coat: at L .25 / alpha .88 it lifted the
+# darkest cell of a 200-cell row to L .138 (median .243), so every cell read
+# as lit and the field became a panel laid over the terminal.
+LEUCOPHORE_LIGHTNESS = 0.09
+IRIDOPHORE_LIGHTNESS = 0.05
 PIGMENT_BASE_LIGHTNESS = 0.025
 # WHY: bounded chroma keeps the sparse pigment colourful without glare.
 LEUCOPHORE_CHROMA = 0.055
 IRIDOPHORE_CHROMA = 0.05
 PIGMENT_CHROMA = 0.08
 # WHY: compositing ceilings preserve distinct layers while avoiding whiteout.
-LEUCOPHORE_ALPHA = 0.88
-IRIDOPHORE_ALPHA = 0.72
+# Leucophore alpha. This layer is the PALE one, and painting it everywhere at
+# high alpha lifts the whole frame off the window: measured at 0.88 the darkest
+# cell in a 200-cell row was OKLab L 0.138 with a median of 0.243, against a
+# reference structure that wants most of the frame at L .05-.10. It is a
+# BACKDROP revealed by contraction, not a base coat.
+LEUCOPHORE_ALPHA = 0.55
+IRIDOPHORE_ALPHA = 0.45
 PIGMENT_ALPHA_CEILING = 0.76
 NOISE_TIME_SCALE = 0.000018
+
+# The colour the theme sets as the terminal's OSC-11 background. Cells with no
+# pigment MUST land here exactly: a field whose unlit ground differs from the
+# window behind it reads as a lighter PANEL laid on the terminal, with visible
+# edges wherever painting stops. Measured before this was pinned: per-session
+# grounds of #050a09 / #05090e against a #0B0C10 window.
+TERMINAL_GROUND = (0x0B, 0x0C, 0x10)
+
+# Below this composited lightness a cell carries no visible pigment, so it is
+# snapped to the window colour rather than left a near-miss.
+GROUND_SNAP_LIGHTNESS = 0.11
 
 
 @dataclass(frozen=True)
@@ -81,12 +101,29 @@ def _field_layers(request: _SampleRequest) -> list[tuple[tuple[int, int, int], f
 
 
 def _composite(request: _SampleRequest, disable: str | None = None) -> tuple[int, int, int]:
-    """Composite the canonical stack, optionally omitting one layer."""
+    """Composite the canonical stack, optionally omitting one layer.
+
+    Snapping happens in `_snap_to_window`, applied to the colour that actually
+    reaches the screen — contraction runs after this and would otherwise move a
+    snapped cell straight back off the window colour.
+    """
     out = (0, 0, 0)
     for color, alpha, name in _field_layers(request):
         if disable != name:
             out = _blend(out, color, max(0.0, alpha))
     return out
+
+
+def _snap_to_window(rgb: tuple[int, int, int]) -> tuple[int, int, int]:
+    """Land an unlit cell exactly on the window colour.
+
+    A field whose unlit ground merely APPROXIMATES the terminal background reads
+    as a lighter panel laid over it, with visible edges wherever painting stops.
+    Applied last, to the colour that actually reaches the screen.
+    """
+    if oklab.srgb8_to_oklch(*rgb).L < GROUND_SNAP_LIGHTNESS:
+        return TERMINAL_GROUND
+    return rgb
 
 
 def _contract(rgb: tuple[int, int, int], strength: float, fine: float) -> tuple[int, int, int]:
@@ -108,7 +145,8 @@ def sample(session_id: str, x: int, y: int, width: int, height: int,
            row: int, time_ms: float, disable: str | None = None) -> tuple[int, int, int]:
     """Sample one composited identity cell, optionally omitting a layer."""
     request = _request(session_id, x, y, width, height, row, time_ms)
-    return _composite(request, disable)
+    composited = _composite(request, disable)
+    return composited if disable else _snap_to_window(composited)
 
 
 def sample_contracted(session_id: str, x: int, y: int, width: int, height: int,
@@ -119,8 +157,9 @@ def sample_contracted(session_id: str, x: int, y: int, width: int, height: int,
     disable = options.get("disable")
     composited = _composite(request, disable)
     if strength <= 0.0:
-        return composited
+        return composited if disable else _snap_to_window(composited)
     fine = _texture(request, palette.seed_of(session_id))[1]
     # WHY: the public strength is a signal; the mask supplies finite support.
     distance = 0.0 if strength > 0.0 else contraction.RADIUS
-    return _contract(composited, contraction.weight(distance), fine)
+    contracted = _contract(composited, contraction.weight(distance), fine)
+    return contracted if disable else _snap_to_window(contracted)
