@@ -49,18 +49,32 @@ import pytest
 
 identity = pytest.importorskip("cuttlefish_theme.v19.identity")
 
-# A just-noticeable difference in OKLab is ~0.02. The floor is set at 0.04 so a
-# pair must be comfortably apart, not merely technically distinct: measured, an
-# unspaced allocator produced 0.0035 at worst.
+# Twice the JND, so a pair must be comfortably apart rather than merely
+# technically distinct: measured, an unspaced allocator produced 0.0035.
 MIN_SEPARATION = 0.04
 
 # Six windows is the case the README's own "Why" section describes.
 DESKTOP_SIZE = 6
 
+# A crowded desktop may lose comfort but never legibility: twelve sessions must
+# still clear the ~0.02 just-noticeable difference, where v19 measured 0.0035.
+CROWDED_SIZE = 12
+JND = 0.02
 
-def _separation(left: tuple[float, float, float], right: tuple[float, float, float]) -> float:
-    """Euclidean OKLab distance between two identity centroids."""
-    return math.dist(left, right)
+
+Centroid = tuple[float, float, float]
+
+
+def _worst_separation(count: int) -> float:
+    """Fill a desktop of *count* sessions and return its closest pair's distance.
+
+    Each session is allocated against the ones already placed, which is what a
+    real desktop does as windows open one at a time.
+    """
+    placed: list[Centroid] = []
+    for n in range(count):
+        placed.append(identity.identity_for(f"desk-{n}", live=tuple(placed)))
+    return min(math.dist(a, b) for a, b in combinations(placed, 2))
 
 
 class TestSpacingAgainstLiveSessions:
@@ -73,20 +87,13 @@ class TestSpacingAgainstLiveSessions:
 
     def test_six_concurrent_sessions_are_all_distinguishable(self):
         """The README's promise, measured."""
-        ids = [f"desk-{n}" for n in range(DESKTOP_SIZE)]
-        placed: list[tuple[float, float, float]] = []
-        for session_id in ids:
-            placed.append(identity.identity_for(session_id, live=tuple(placed)))
-        worst = min(_separation(a, b) for a, b in combinations(placed, 2))
+        worst = _worst_separation(DESKTOP_SIZE)
         assert worst >= MIN_SEPARATION, f"closest pair only {worst:.4f} apart"
 
     def test_crowding_degrades_gracefully_not_catastrophically(self):
         """Twelve sessions still may not produce an invisible pair."""
-        placed: list[tuple[float, float, float]] = []
-        for n in range(12):
-            placed.append(identity.identity_for(f"crowd-{n}", live=tuple(placed)))
-        worst = min(_separation(a, b) for a, b in combinations(placed, 2))
-        assert worst >= 0.02, f"closest pair only {worst:.4f} apart — below JND"
+        worst = _worst_separation(CROWDED_SIZE)
+        assert worst >= JND, f"closest pair only {worst:.4f} apart — below JND"
 
     def test_a_session_alone_still_gets_a_colour(self):
         """No registry, no neighbours, still a usable identity."""
