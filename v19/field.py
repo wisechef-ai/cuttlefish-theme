@@ -91,14 +91,21 @@ def _layer(lightness: float, chroma: float, hue: float) -> tuple[int, int, int]:
     return oklab.oklch_to_srgb8(max(0.0, lightness), chroma, hue)
 
 
-def _texture(request: _SampleRequest, seed: int) -> tuple[float, float, float, float]:
-    """Return broad, fine, pearl, and wave organic texture signals."""
-    texture = _field_sample(seed, request.x, request.row, request.time_ms)
-    broad = texture
-    fine = texture
-    # WHY: reusing one sampled field preserves motion at cell speed cheaply.
-    wave = texture
-    return broad, fine, fine, wave
+def _texture(request: _SampleRequest, seed: int) -> float:
+    """One organic field sample for this cell.
+
+    Returns a SINGLE value, not four. An earlier signature returned
+    `(broad, fine, pearl, wave)` — four names implying four independent
+    spatial frequencies — while handing back the same number four times. The
+    output was correct and the shape was a lie, and it cost real time: a sweep
+    of `broad * 0.95 + wave * 0.52` looked like two knobs and was one,
+    `texture * 1.47`, so the tuning barely moved and the reason was invisible.
+
+    Genuine multi-frequency texture (mottle / passing-cloud / pearl scatter at
+    different octaves) is a real improvement available here, but it CHANGES THE
+    LOOK, so it is Adam's call rather than a silent refactor.
+    """
+    return _field_sample(seed, request.x, request.row, request.time_ms)
 
 
 @lru_cache(maxsize=512)
@@ -179,9 +186,11 @@ def _pigment_alpha(request: _SampleRequest) -> float:
 def _field_layers(request: _SampleRequest) -> list[tuple[tuple[int, int, int], float, str]]:
     """Build the one canonical leucophore/iridophore/pigment stack."""
     leuc, iri, palette_value = _static_layers(request.session_id)
-    broad, fine, pearl, wave = _texture(request, palette.seed_of(request.session_id))
-    pigment_l = PIGMENT_BASE_LIGHTNESS + max(0.0, broad - 0.18) * 1.35 + max(0.0, wave - 0.58) * 0.62
-    pigment_c = PIGMENT_CHROMA + fine * 0.10 + pearl * 0.025
+    texture = _texture(request, palette.seed_of(request.session_id))
+    pigment_l = (PIGMENT_BASE_LIGHTNESS
+                 + max(0.0, texture - 0.18) * 1.35
+                 + max(0.0, texture - 0.58) * 0.62)
+    pigment_c = PIGMENT_CHROMA + texture * 0.125
     pigment = _layer(pigment_l, pigment_c, palette_value.hue + (palette_value.accent - 0.5) * 1.4)
     return [(leuc, LEUCOPHORE_ALPHA, "leucophore"),
             (iri, IRIDOPHORE_ALPHA, "iridophore"),
@@ -258,7 +267,7 @@ def sample_contracted(session_id: str, x: int, y: int, width: int, height: int,
     composited = _composite(request, disable)
     if strength <= 0.0:
         return composited if disable else _snap_to_window(composited)
-    fine = _texture(request, palette.seed_of(session_id))[1]
+    fine = _texture(request, palette.seed_of(session_id))
     # WHY: the public strength is a signal; the mask supplies finite support.
     distance = 0.0 if strength > 0.0 else contraction.RADIUS
     contracted = _contract(composited, contraction.weight(distance), fine)
