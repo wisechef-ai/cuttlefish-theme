@@ -38,10 +38,12 @@ def _as_oklab(identity_colour: IdentityColor) -> tuple[float, float, float]:
 def identity_for(
     session_id: str,
     live: tuple[tuple[float, float, float], ...],
+    candidate_count: int = 96,
 ) -> tuple[float, float, float]:
     """Return a deterministic OKLab identity spaced from live centroids."""
     allocated = allocate(session_id, _allocator_live(live),
-                         min_distance=MIN_CONCURRENT_SEPARATION)
+                         min_distance=MIN_CONCURRENT_SEPARATION,
+                         candidate_count=candidate_count)
     return _as_oklab(allocated)
 
 

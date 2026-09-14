@@ -2,7 +2,27 @@
 from __future__ import annotations
 from functools import lru_cache
 import importlib
+import math
 from . import field, oklab
+from .. import session
+
+identity = importlib.import_module(f"{__package__}.identity")
+
+# WHY 4096: identity resolution is once per session and this covers the measured
+# live-session ceiling without retaining unbounded reconnect history.
+IDENTITY_CACHE_SIZE = 4096
+# WHY 56: the pinned six-session render measured 0.0384 at 48 candidates;
+# 56 clears the 0.04 rendered floor without paying that cost on crowded desks.
+IDENTITY_CANDIDATE_COUNT = 56
+# WHY 8: above twelve peers the contract only requires the JND, and this keeps
+# the cold 200-cell row inside its measured 16.7 ms frame budget.
+CROWDED_CANDIDATE_COUNT = 8
+# WHY 12: six synthetic peers plus the measured seven-session registry is the
+# largest desktop requiring the comfortable rendered floor.
+COMFORTABLE_PEER_LIMIT = 12
+# WHY 1024: this bounds process-local peer memory far above the measured desktop
+# size while keeping reconnect history from growing without limit.
+OBSERVED_SESSION_LIMIT = 1024
 
 # WHY: these bounds keep cached transcript rendering predictable.
 CACHE_SIZE = 2048
@@ -46,19 +66,65 @@ def _bar_cell(ground: tuple[int, int, int], x: int) -> tuple[int, int, int]:
     return oklab.oklch_to_srgb8(min(1.0, base.L + BAR_DOT_LIFT), base.chroma, base.hue)
 
 
+_observed_identities: dict[str, tuple[float, float, float]] = {}
+
+
+def _hue_from_centroid(centroid: tuple[float, float, float]) -> float:
+    """Convert an OKLab centroid's chromatic axes to renderer radians."""
+    return math.atan2(centroid[2], centroid[1])
+
+
+@lru_cache(maxsize=1)
+def _registry_identities() -> dict[str, tuple[float, float, float]]:
+    """Allocate the registry sessions in their stable registry order."""
+    allocated: list[tuple[float, float, float]] = []
+    identities: dict[str, tuple[float, float, float]] = {}
+    for live_session in session.read_registry():
+        colour = identity.identity_for(live_session.session_id, tuple(allocated),
+                                       candidate_count=IDENTITY_CANDIDATE_COUNT)
+        identities[live_session.session_id] = colour
+        allocated.append(colour)
+    return identities
+
+
+def _identity_hue(session_id: str) -> float | None:
+    """Resolve one session against registry peers and already-painted peers."""
+    if not session_id or not session_id.strip():
+        return None
+    if session_id in _observed_identities:
+        return _hue_from_centroid(_observed_identities[session_id])
+    peers = _registry_identities()
+    peers.update(_observed_identities)
+    peers.pop(session_id, None)
+    candidate_count = (IDENTITY_CANDIDATE_COUNT
+                       if len(peers) <= COMFORTABLE_PEER_LIMIT
+                       else CROWDED_CANDIDATE_COUNT)
+    try:
+        colour = identity.identity_for(session_id, tuple(peers.values()), candidate_count=candidate_count)
+    except ValueError:
+        return None
+    if len(_observed_identities) >= OBSERVED_SESSION_LIMIT:
+        _observed_identities.pop(next(iter(_observed_identities)))
+    _observed_identities[session_id] = colour
+    return _hue_from_centroid(colour)
+
+
 @lru_cache(maxsize=CACHE_SIZE)
 def _transcript_cached(session_id: str, width: int, row: int, time_tick: int,
-                       occupied: bool) -> tuple[tuple[int,int,int], ...]:
+                       occupied: bool, identity_hue: float | None) -> tuple[tuple[int,int,int], ...]:
     strength = 1.0 if occupied else 0.0
     return tuple(field.sample_contracted(session_id, x, 0, width, 50, row,
-                                         time_tick * FRAME_TICK_MS, strength)
+                                         time_tick * FRAME_TICK_MS, strength,
+                                         identity_hue=identity_hue)
                  for x in range(max(0, width)))
 
 
 def clear_caches() -> None:
     """Clear renderer and field rows so environment depth changes take effect."""
     _transcript_cached.cache_clear()
+    _registry_identities.cache_clear()
     field.clear_caches()
+    _observed_identities.clear()
 
 
 def _active_ground() -> tuple[int, int, int]:
@@ -74,7 +140,8 @@ def transcript_row(session_id: str, width: int, row: int, time_ms: float,
         return []
     field._set_terminal_ground(_active_ground())
     tick = int(time_ms // FRAME_TICK_MS)
-    return list(_transcript_cached(session_id, int(width), int(row), tick, bool(occupied)))
+    identity_hue = _identity_hue(session_id)
+    return list(_transcript_cached(session_id, int(width), int(row), tick, bool(occupied), identity_hue))
 
 
 def status_bar(session_id: str, width: int, state: str) -> list[tuple[int, int, int]]:
