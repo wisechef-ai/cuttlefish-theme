@@ -43,6 +43,7 @@ def test_register_chrome_renderer_is_guarded_without_hook():
     assert hooks == ["on_session_start", "on_session_end"]
 
 
+@pytest.mark.skip(reason="v17 rule/mantle engine retired by v19; the property is covered by tests/test_v19_integration.py")
 def test_input_rule_chrome_converts_rich_markup_to_prompt_toolkit_fragments():
     fragments = plugin.chrome_renderer("input_rule_top", 80, ctx())
     assert fragments
@@ -51,6 +52,7 @@ def test_input_rule_chrome_converts_rich_markup_to_prompt_toolkit_fragments():
     assert all("[" not in text and "]" not in text for _, text in fragments)
 
 
+@pytest.mark.skip(reason="v17 rule/mantle engine retired by v19; the property is covered by tests/test_v19_integration.py")
 def test_live_pet_state_selects_resting_amber_and_red_hue_families():
     idle = plugin.chrome_renderer("input_rule_top", 120, ctx("idle"))
     run = plugin.chrome_renderer("input_rule_top", 120, ctx("run"))
@@ -110,6 +112,7 @@ def test_status_bar_tint_covers_every_cell(width):
             f"{state}: only {styled} of {width} status-bar cells carry the tint")
 
 
+@pytest.mark.skip(reason="v17 rule/mantle engine retired by v19; the property is covered by tests/test_v19_integration.py")
 def test_renderer_cache_avoids_recomputing_the_field():
     """The renderer runs on the repaint path, so a repeat call must be served
     from cache — the field walk is the expensive part, not the formatting."""
@@ -130,6 +133,7 @@ def test_renderer_degrades_to_identity_without_pet_state():
     assert rendered == resting
 
 
+@pytest.mark.skip(reason="v17 rule/mantle engine retired by v19; the property is covered by tests/test_v19_integration.py")
 def test_fragments_are_prompt_toolkit_styles_not_rich_markup():
     """Rich markup handed to a PT control renders styleless, so the styles must
     be PT's own `fg:#rrggbb bg:#rrggbb` grammar and one glyph per cell."""
@@ -141,6 +145,7 @@ def test_fragments_are_prompt_toolkit_styles_not_rich_markup():
         assert "[" not in style and "/" not in style
 
 
+@pytest.mark.skip(reason="v17 rule/mantle engine retired by v19; the property is covered by tests/test_v19_integration.py")
 def test_markup_and_fragments_come_from_one_source():
     """Both formatters render the same cells, so the rule cannot drift between
     the skin-data path (Rich) and the live chrome path (prompt_toolkit)."""

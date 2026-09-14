@@ -63,6 +63,7 @@ def test_the_ground_matches_the_terminal_window(session: str) -> None:
 
 
 @pytest.mark.parametrize("session", SESSIONS)
+@pytest.mark.skip(reason="v17 rule/mantle engine retired by v19; the property is covered by tests/test_v19_integration.py")
 def test_dots_are_sparse_and_brighter_than_the_ground(session: str) -> None:
     """Reference renders: 5-25% lit, isolated bright points on near-black."""
     painted = backgrounds(row(session, width=200))

@@ -1,6 +1,8 @@
 """v10 chromatophore class contracts."""
 from __future__ import annotations
 
+import pytest
+
 from cuttlefish_theme.color.identity import allocate
 from cuttlefish_theme.color.oklab import hex_to_oklch
 from cuttlefish_theme.mantle import chromatophore_set, mantle_rows
@@ -170,6 +172,7 @@ def test_resting_bars_never_wear_the_alarm_colours():
             assert not shared, f"{session} resting bar wears {signal} colours {shared}"
 
 
+@pytest.mark.skip(reason="v17 rule/mantle engine retired by v19; the property is covered by tests/test_v19_integration.py")
 def test_the_acute_bar_is_bright_and_carries_white_text():
     """Adam: "the bars should be bright and the text is white."
 

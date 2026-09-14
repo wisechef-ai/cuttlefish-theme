@@ -26,9 +26,11 @@ import sys
 import time
 from collections import Counter
 
+RGB = tuple[int, int, int]
+
 # The window colour the theme sets via OSC 11, and therefore the background the
 # field's unlit cells must land on exactly.
-TERMINAL_GROUND = (0x0B, 0x0C, 0x10)
+TERMINAL_GROUND: RGB = (0x0B, 0x0C, 0x10)
 
 # Stock Hermes gold. If these dominate, the theme did not load and the host's
 # own palette is on screen — the failure mode that looks like success.
@@ -78,11 +80,12 @@ def _capture(master: int, seconds: float) -> bytes:
     return b"".join(chunks)
 
 
-def _backgrounds(captured: bytes) -> tuple[list[tuple[int, int, int]], int]:
+def _backgrounds(captured: bytes) -> tuple[list[RGB], int]:
     """Every background colour the terminal was asked to paint."""
-    truecolor = [tuple(int(c) for c in m.groups()) for m in _TRUECOLOR_BG.finditer(captured)]
-    indexed = len(_INDEXED_BG.findall(captured))
-    return truecolor, indexed
+    truecolor: list[RGB] = [
+        (int(r), int(g), int(b)) for r, g, b in (m.groups() for m in _TRUECOLOR_BG.finditer(captured))
+    ]
+    return truecolor, len(_INDEXED_BG.findall(captured))
 
 
 def main() -> int:
