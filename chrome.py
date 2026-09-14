@@ -15,6 +15,7 @@ from .linework import _body_field, cells
 from .pattern import ACUTE_AMBER, ACUTE_FAULT
 from .ribbon import bar_cells
 from .session import Signal, collapse
+from .v19_adapter import render as _render_v19
 
 # Anything painted BEHIND TEXT must clear WCAG AA against the body foreground.
 # A lightness ceiling only approximates this: at L .52 a dark red clears 4.6:1
@@ -383,27 +384,14 @@ def _mantle_row(session_id: str, width: int, row_key: int,
 
 
 def chrome_renderer(surface: str, width: int, ctx: dict[str, Any]) -> list[tuple[str, str]] | None:
-    """Render persistent chrome, failing closed on any repaint-path problem."""
+    """Render persistent chrome, failing closed on any repaint-path problem.
+
+    Delegates to the v19 engine through `v19_adapter`. An exception here would
+    disable the renderer for the whole session, so a broken theme must never
+    become a broken terminal: any failure declines the surface instead.
+    """
     try:
-        signal = collapse(ctx.get("pet_state"))
-        session_id = ctx.get("session_id")
-        if not isinstance(session_id, str) or not session_id:
-            return None
-        if surface == "status_bar_bg":
-            # Rendered in EVERY state, including rest. Returning None at rest let
-            # the core fall back to stock Hermes gold — invisible while colours
-            # were quantised to the 256 cube, glaring in truecolor, and it left
-            # the one surface that carries state looking like no theme at all.
-            # The bar is now the whole state channel (Adam, 2026-09-12: the
-            # background must not move on a state change), so it always paints.
-            return [(f"bg:{bg} fg:{fg}", glyph)
-                    for fg, bg, glyph in bar_cells(session_id, int(width), signal.value)]
-        if surface == "transcript_line":
-            return list(_mantle_row(session_id, int(width), _row_key(ctx), signal.value))
-        if surface not in {"input_rule_top", "input_rule_bot"}:
-            return None
-        return [(f"fg:{fg} bg:{bg}", glyph)
-                for fg, bg, glyph in cells(session_id, signal.value, int(width))]
+        return _render_v19(surface, width, ctx)
     except Exception:
         return None
 
