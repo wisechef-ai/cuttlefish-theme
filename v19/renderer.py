@@ -1,6 +1,7 @@
 """Cached transcript and state-bar renderers."""
 from __future__ import annotations
 from functools import lru_cache
+import importlib
 from . import field, oklab
 
 # WHY: these bounds keep cached transcript rendering predictable.
@@ -37,17 +38,13 @@ _BAR_DOT_STRIDE = 7
 
 
 def _bar_cell(ground: tuple[int, int, int], x: int) -> tuple[int, int, int]:
-    """One bar cell: the state's ground, lifted where a dot falls.
-
-    Only LIGHTNESS moves. Hue and chroma are the state's identity — an amber
-    warning whose dots drifted toward red would blur the one distinction the
-    two alarms exist to make.
-    """
+    """One bar cell: the state's ground, lifted where a dot falls."""
     lit = (x * BAR_LIT_FRACTION) % 1.0 < BAR_LIT_FRACTION or x % _BAR_DOT_STRIDE == 0
     if not lit:
         return ground
     base = oklab.srgb8_to_oklch(*ground)
     return oklab.oklch_to_srgb8(min(1.0, base.L + BAR_DOT_LIFT), base.chroma, base.hue)
+
 
 @lru_cache(maxsize=CACHE_SIZE)
 def _transcript_cached(session_id: str, width: int, row: int, time_tick: int,
@@ -57,13 +54,28 @@ def _transcript_cached(session_id: str, width: int, row: int, time_tick: int,
                                          time_tick * FRAME_TICK_MS, strength)
                  for x in range(max(0, width)))
 
+
+def clear_caches() -> None:
+    """Clear renderer and field rows so environment depth changes take effect."""
+    _transcript_cached.cache_clear()
+    field.clear_caches()
+
+
+def _active_ground() -> tuple[int, int, int]:
+    """Resolve depth policy without coupling field's inner layer outward."""
+    policy = importlib.import_module(f"{__package__}.depth")
+    return policy.ground_for(policy.current_depth())
+
+
 def transcript_row(session_id: str, width: int, row: int, time_ms: float,
                    occupied: bool, state: str = 'resting') -> list[tuple[int,int,int]]:
     """Render exactly width identity cells; state intentionally has no effect."""
     if width <= MIN_RENDER_WIDTH:
         return []
+    field._set_terminal_ground(_active_ground())
     tick = int(time_ms // FRAME_TICK_MS)
     return list(_transcript_cached(session_id, int(width), int(row), tick, bool(occupied)))
+
 
 def status_bar(session_id: str, width: int, state: str) -> list[tuple[int, int, int]]:
     """Render the state bar: a lit ground carrying sparse brighter pigment.
@@ -79,6 +91,7 @@ def status_bar(session_id: str, width: int, state: str) -> list[tuple[int, int, 
     del session_id
     ground, _ = _BAR[_normal_state(state)]
     return [_bar_cell(ground, x) for x in range(max(MIN_RENDER_WIDTH, width))]
+
 
 def status_bar_foreground(state: str) -> tuple[int,int,int]:
     """Return readable foreground colour for a state bar."""

@@ -118,6 +118,15 @@ def _texture(request: _SampleRequest, seed: int) -> float:
     return _field_sample(seed, request.x, request.row, request.time_ms)
 
 
+def _set_terminal_ground(ground: tuple[int, int, int]) -> None:
+    """Set the ground selected by the outer renderer for this render pass."""
+    global _active_ground
+    _active_ground = ground
+
+
+_active_ground = TERMINAL_GROUND
+
+
 @lru_cache(maxsize=512)
 def _static_layers(session_id: str) -> tuple[tuple[int, int, int], tuple[int, int, int], palette.Palette]:
     """Cache identity layers that do not vary from cell to cell."""
@@ -216,7 +225,7 @@ def _composite(request: _SampleRequest, disable: str | None = None) -> tuple[int
     diagnostic, so it always takes the full path.
     """
     if disable is None and not _pigment_selected(request):
-        return TERMINAL_GROUND
+        return _active_ground
     out = (0, 0, 0)
     for color, alpha, name in _field_layers(request):
         if disable != name:
@@ -246,7 +255,7 @@ def _snap_to_window(rgb: tuple[int, int, int], *, selected: bool = False) -> tup
     if selected:
         return rgb
     if sum(rgb) <= GROUND_SNAP_LUMA:
-        return TERMINAL_GROUND
+        return _active_ground
     return rgb
 
 
@@ -306,3 +315,10 @@ def sample_contracted(session_id: str, x: int, y: int, width: int, height: int,
     fine = _texture(request, palette.seed_of(session_id))
     contracted = _contract(composited, contraction.weight(MASK_CENTRE), fine)
     return _finish(request, contracted, disable)
+
+
+def clear_caches() -> None:
+    """Clear field caches that may contain colours from an old terminal depth."""
+    _static_layers.cache_clear()
+    _field_sample.cache_clear()
+    _pigment_winners.cache_clear()
