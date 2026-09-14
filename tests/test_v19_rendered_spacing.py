@@ -45,10 +45,18 @@ SAMPLE_WIDTH = 120
 Centroid = tuple[float, float, float]
 
 
+def _as_oklab(cell: tuple[int, int, int]) -> Centroid:
+    """One painted cell as OKLab. Hue is RADIANS, so a/b are its components."""
+    colour = oklab.srgb8_to_oklch(*cell)
+    return (colour.L,
+            colour.chroma * math.cos(colour.hue),
+            colour.chroma * math.sin(colour.hue))
+
+
 def _rendered_centroid(session_id: str) -> Centroid:
     """The mean OKLab of the pigment this session actually paints."""
     lit = [
-        cell
+        _as_oklab(cell)
         for row in range(SAMPLE_ROWS)
         for cell in renderer.transcript_row(
             session_id=session_id, width=SAMPLE_WIDTH, row=row, time_ms=0, occupied=False
@@ -56,14 +64,7 @@ def _rendered_centroid(session_id: str) -> Centroid:
         if cell != GROUND
     ]
     assert lit, f"{session_id} painted no pigment at all"
-    lightness, a_axis, b_axis = [], [], []
-    for cell in lit:
-        colour = oklab.srgb8_to_oklch(*cell)
-        lightness.append(colour.L)
-        a_axis.append(colour.chroma * math.cos(colour.hue))
-        b_axis.append(colour.chroma * math.sin(colour.hue))
-    count = len(lit)
-    return (sum(lightness) / count, sum(a_axis) / count, sum(b_axis) / count)
+    return tuple(sum(axis) / len(lit) for axis in zip(*lit))  # type: ignore[return-value]
 
 
 def _worst_rendered_separation(session_ids: list[str]) -> float:
@@ -76,8 +77,7 @@ class TestTheUserCanTellWindowsApart:
     """The README's promise, asserted on rendered output."""
 
     def test_six_rendered_sessions_are_distinguishable(self):
-        ids = [f"render-{n}" for n in range(DESKTOP_SIZE)]
-        worst = _worst_rendered_separation(ids)
+        worst = _worst_rendered_separation([f"render-{n}" for n in range(DESKTOP_SIZE)])
         assert worst >= MIN_RENDERED_SEPARATION, (
             f"two windows render only {worst:.4f} apart — the user cannot tell them apart")
 
