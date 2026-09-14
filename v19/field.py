@@ -86,6 +86,7 @@ class _SampleRequest:
     height: int
     row: int
     time_ms: float
+    identity_hue: float | None
 
 
 def _blend(a: tuple[int, int, int], b: tuple[int, int, int], alpha: float) -> tuple[int, int, int]:
@@ -128,9 +129,9 @@ _active_ground = TERMINAL_GROUND
 
 
 @lru_cache(maxsize=512)
-def _static_layers(session_id: str) -> tuple[tuple[int, int, int], tuple[int, int, int], palette.Palette]:
+def _static_layers(session_id: str, identity_hue: float | None) -> tuple[tuple[int, int, int], tuple[int, int, int], palette.Palette]:
     """Cache identity layers that do not vary from cell to cell."""
-    palette_value = palette.for_session(session_id)
+    palette_value = palette.for_session(session_id, identity_hue)
     leuc = _layer(LEUCOPHORE_LIGHTNESS, LEUCOPHORE_CHROMA, palette_value.hue + 1.2)
     iri = _layer(IRIDOPHORE_LIGHTNESS, IRIDOPHORE_CHROMA, palette_value.hue + 4.0)
     return leuc, iri, palette_value
@@ -204,7 +205,7 @@ def _pigment_alpha(request: _SampleRequest) -> float:
 
 def _field_layers(request: _SampleRequest) -> list[tuple[tuple[int, int, int], float, str]]:
     """Build the one canonical leucophore/iridophore/pigment stack."""
-    leuc, iri, palette_value = _static_layers(request.session_id)
+    leuc, iri, palette_value = _static_layers(request.session_id, request.identity_hue)
     texture = _texture(request, palette.seed_of(request.session_id))
     pigment_l = (PIGMENT_BASE_LIGHTNESS
                  + max(0.0, texture - 0.18) * 1.35
@@ -274,9 +275,9 @@ def _contract(rgb: tuple[int, int, int], strength: float, fine: float) -> tuple[
     return _blend(rgb, calm, strength)
 
 
-def _request(session_id: str, x: int, y: int, width: int, height: int, row: int, time_ms: float) -> _SampleRequest:
+def _request(session_id: str, x: int, y: int, width: int, height: int, row: int, time_ms: float, identity_hue: float | None) -> _SampleRequest:
     """Package public coordinates for internal helpers."""
-    return _SampleRequest(session_id, x, y, width, height, row, time_ms)
+    return _SampleRequest(session_id, x, y, width, height, row, time_ms, identity_hue)
 
 
 def _finish(request: _SampleRequest, rgb: tuple[int, int, int],
@@ -293,18 +294,27 @@ def _finish(request: _SampleRequest, rgb: tuple[int, int, int],
 
 
 def sample(session_id: str, x: int, y: int, width: int, height: int,
-           row: int, time_ms: float, disable: str | None = None) -> tuple[int, int, int]:
+           row: int, time_ms: float, disable: str | None = None,
+           **options: float | str | None) -> tuple[int, int, int]:
     """Sample one composited identity cell, optionally omitting a layer."""
-    request = _request(session_id, x, y, width, height, row, time_ms)
+    identity_hue = options.get("identity_hue")
+    if not isinstance(identity_hue, (float, int)):
+        identity_hue = None
+    request = _request(session_id, x, y, width, height, row, time_ms, identity_hue)
     return _finish(request, _composite(request, disable), disable)
 
 
 def sample_contracted(session_id: str, x: int, y: int, width: int, height: int,
                       row: int, time_ms: float, strength: float,
-                      **options: str | None) -> tuple[int, int, int]:
+                      **options: float | str | None) -> tuple[int, int, int]:
     """Sample one cell and apply contraction strength to its canonical stack."""
-    request = _request(session_id, x, y, width, height, row, time_ms)
+    identity_hue = options.get("identity_hue")
+    if not isinstance(identity_hue, (float, int)):
+        identity_hue = None
+    request = _request(session_id, x, y, width, height, row, time_ms, identity_hue)
     disable = options.get("disable")
+    if not isinstance(disable, str):
+        disable = None
     composited = _composite(request, disable)
     if strength <= 0.0:
         return _finish(request, composited, disable)
