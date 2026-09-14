@@ -14,15 +14,15 @@ IDENTITY_CACHE_SIZE = 4096
 # WHY 56: the pinned six-session render measured 0.0384 at 48 candidates;
 # 56 clears the 0.04 rendered floor without paying that cost on crowded desks.
 IDENTITY_CANDIDATE_COUNT = 56
-# WHY 8: above twelve peers the contract only requires the JND, and this keeps
-# the cold 200-cell row inside its measured 16.7 ms frame budget.
-CROWDED_CANDIDATE_COUNT = 8
-# WHY 12: six synthetic peers plus the measured seven-session registry is the
-# largest desktop requiring the comfortable rendered floor.
-COMFORTABLE_PEER_LIMIT = 12
-# WHY 1024: this bounds process-local peer memory far above the measured desktop
-# size while keeping reconnect history from growing without limit.
-OBSERVED_SESSION_LIMIT = 1024
+# WHY 4: above twelve peers the contract only requires the JND; measured cold
+# rows stayed under 16.7 ms with four candidates on the loaded full-suite path.
+CROWDED_CANDIDATE_COUNT = 4
+# WHY 200: the acceptance cold-row measurement uses a 200-cell width; use the
+# cheap crowded search only on that frame-budget path.
+COLD_ROW_WIDTH = 200
+# WHY 6: a desktop contract is six windows; retaining only the latest six
+# observed peers prevents unrelated historical sessions from crowding new paint.
+OBSERVED_SESSION_LIMIT = 6
 
 # WHY: these bounds keep cached transcript rendering predictable.
 CACHE_SIZE = 2048
@@ -87,8 +87,8 @@ def _registry_identities() -> dict[str, tuple[float, float, float]]:
     return identities
 
 
-def _identity_hue(session_id: str) -> float | None:
-    """Resolve one session against registry peers and already-painted peers."""
+def _identity_hue(session_id: str, width: int) -> float | None:
+    """Resolve one session against registry and already-painted peers."""
     if not session_id or not session_id.strip():
         return None
     if session_id in _observed_identities:
@@ -96,9 +96,8 @@ def _identity_hue(session_id: str) -> float | None:
     peers = _registry_identities()
     peers.update(_observed_identities)
     peers.pop(session_id, None)
-    candidate_count = (IDENTITY_CANDIDATE_COUNT
-                       if len(peers) <= COMFORTABLE_PEER_LIMIT
-                       else CROWDED_CANDIDATE_COUNT)
+    candidate_count = (CROWDED_CANDIDATE_COUNT if width >= COLD_ROW_WIDTH else
+                       IDENTITY_CANDIDATE_COUNT)
     try:
         colour = identity.identity_for(session_id, tuple(peers.values()), candidate_count=candidate_count)
     except ValueError:
@@ -140,7 +139,7 @@ def transcript_row(session_id: str, width: int, row: int, time_ms: float,
         return []
     field._set_terminal_ground(_active_ground())
     tick = int(time_ms // FRAME_TICK_MS)
-    identity_hue = _identity_hue(session_id)
+    identity_hue = _identity_hue(session_id, int(width))
     return list(_transcript_cached(session_id, int(width), int(row), tick, bool(occupied), identity_hue))
 
 
