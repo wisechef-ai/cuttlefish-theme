@@ -36,6 +36,10 @@ _INPUT_RULES = frozenset({"input_rule_top", "input_rule_bot"})
 # The rules are a thin lit strip, so they read as the bar's sibling rather than
 # as a slice of transcript: same state channel, one cell tall.
 _RULE_GLYPH = "─"
+
+# The transcript row the rules sample. A fixed row keeps top and bottom rules
+# identical to each other and stable across repaints.
+_RULE_ROW = 0
 _CELL = " "
 
 
@@ -81,10 +85,24 @@ def _transcript_fragments(session_id: str, width: int, row: int) -> tuple[tuple[
 
 
 @lru_cache(maxsize=64)
-def _bar_fragments(session_id: str, width: int, state: str, glyph: str) -> tuple[tuple[str, str], ...]:
-    """Cached fragments for the state bar and the input rules."""
+def _bar_fragments(session_id: str, width: int, state: str) -> tuple[tuple[str, str], ...]:
+    """Cached fragments for the state bar."""
     cells = renderer.status_bar(session_id=session_id, width=width, state=state)
-    return tuple(_painted(cells, glyph, renderer.status_bar_foreground(state)))
+    return tuple(_painted(cells, _CELL, renderer.status_bar_foreground(state)))
+
+
+@lru_cache(maxsize=64)
+def _rule_fragments(session_id: str, width: int, state: str) -> tuple[tuple[str, str], ...]:
+    """Cached fragments for an input rule.
+
+    The rule frames the transcript, so it wears the session's OWN skin rather
+    than repeating the state bar: two windows side by side must be tellable
+    apart by their rule alone. State still tints its foreground, which is why
+    it takes the state at all.
+    """
+    cells = renderer.transcript_row(session_id=session_id, width=width, row=_RULE_ROW,
+                                    time_ms=0.0, occupied=False)
+    return tuple(_painted(cells, _RULE_GLYPH, renderer.status_bar_foreground(state)))
 
 
 def render(surface: str, width: int, ctx: dict[str, Any]) -> list[tuple[str, str]] | None:
@@ -114,10 +132,10 @@ def render(surface: str, width: int, ctx: dict[str, Any]) -> list[tuple[str, str
     if surface == _STATUS_BAR:
         # The STATE channel, and the only one. It paints in every state,
         # including rest, or the host falls back to stock gold.
-        return list(_bar_fragments(session_id, width, state, _CELL))
+        return list(_bar_fragments(session_id, width, state))
 
     if surface in _INPUT_RULES:
-        return list(_bar_fragments(session_id, width, state, _RULE_GLYPH))
+        return list(_rule_fragments(session_id, width, state))
 
     return None
 
