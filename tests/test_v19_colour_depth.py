@@ -31,15 +31,21 @@ depth = pytest.importorskip("cuttlefish_theme.v19.depth")
 
 CUBE_GROUND_MISMATCH = "the 256-cube has no exact #0b0c10; the theme must adapt, not hope"
 
+# xterm's 6x6x6 cube is a fixed table, not a formula. Six pigments spanning the
+# hue circle, used to prove quantisation neither hides them nor merges them.
+CUBE_LEVELS = (0, 95, 135, 175, 215, 255)
+GREY_RAMP_BASE, GREY_RAMP_STEP, GREY_RAMP_START = 8, 10, 232
+PIGMENTS = ((0x8A, 0x6F, 0x21), (0x2E, 0x5D, 0x8A), (0xC2, 0xC2, 0x57),
+            (0x6F, 0x52, 0x01), (0x1E, 0x09, 0x41), (0xA0, 0x40, 0x70))
+
 
 def _cube_rgb(index: int) -> tuple[int, int, int]:
     """The sRGB an xterm-256 index actually paints."""
-    if index >= 232:
-        value = 8 + (index - 232) * 10
+    if index >= GREY_RAMP_START:
+        value = GREY_RAMP_BASE + (index - GREY_RAMP_START) * GREY_RAMP_STEP
         return (value, value, value)
     offset = index - 16
-    level = lambda n: 0 if n == 0 else 55 + 40 * n  # noqa: E731 - table, not logic
-    return (level(offset // 36), level((offset % 36) // 6), level(offset % 6))
+    return (CUBE_LEVELS[offset // 36], CUBE_LEVELS[(offset % 36) // 6], CUBE_LEVELS[offset % 6])
 
 
 class TestDepthIsKnown:
@@ -85,22 +91,13 @@ class TestPigmentSurvivesQuantisation:
 
     def test_pigment_does_not_collapse_onto_the_ground(self):
         """Quantisation must not turn lit cells back into unlit ones."""
-        cube_ground = depth.ground_for(depth.Depth.INDEXED_256)
-        ground_index = depth.nearest_cube_index(cube_ground)
-        lit = [
-            (0x8A, 0x6F, 0x21), (0x2E, 0x5D, 0x8A), (0xC2, 0xC2, 0x57),
-            (0x6F, 0x52, 0x01), (0x1E, 0x09, 0x41), (0xA0, 0x40, 0x70),
-        ]
-        collapsed = [c for c in lit if depth.nearest_cube_index(c) == ground_index]
+        ground_index = depth.nearest_cube_index(depth.ground_for(depth.Depth.INDEXED_256))
+        collapsed = [c for c in PIGMENTS if depth.nearest_cube_index(c) == ground_index]
         assert not collapsed, f"{len(collapsed)} lit colours quantised onto the ground"
 
     def test_distinct_pigments_stay_distinct(self):
         """Six clearly different pigments must not become one cube entry."""
-        lit = [
-            (0x8A, 0x6F, 0x21), (0x2E, 0x5D, 0x8A), (0xC2, 0xC2, 0x57),
-            (0x6F, 0x52, 0x01), (0x1E, 0x09, 0x41), (0xA0, 0x40, 0x70),
-        ]
-        assert len({depth.nearest_cube_index(c) for c in lit}) >= 5
+        assert len({depth.nearest_cube_index(c) for c in PIGMENTS}) >= 5
 
     def test_nearest_cube_index_is_in_range(self):
         for colour in ((0, 0, 0), (255, 255, 255), (11, 12, 16), (130, 90, 40)):
