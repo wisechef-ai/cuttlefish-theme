@@ -288,13 +288,24 @@ class TestPerformance:
         assert per_call_us < 200, f"{per_call_us:.0f} us/row cached"
 
     def test_a_cold_row_fits_inside_a_frame(self):
+        """A never-before-rendered row must fit inside one 60fps frame.
+
+        Measured as the BEST of several runs, on process CPU time rather than
+        wall clock. A wall-clock single shot measures the machine, not the
+        renderer: at load average 10 this same code timed 19.9 ms and at rest
+        13.5 ms, so the assertion decided whether the box was busy. Best-of
+        removes scheduler noise; process time removes everything but us.
+        """
         import time
-        start = time.perf_counter()
-        for row in range(50):
-            renderer.transcript_row(session_id=f"cold-{row}", width=200, row=row,
-                                    time_ms=0, occupied=False)
-        per_row_ms = (time.perf_counter() - start) / 50 * 1e3
-        assert per_row_ms < 16.7, f"{per_row_ms:.1f} ms/row cold"
+
+        best_ms = float("inf")
+        for attempt in range(5):
+            start = time.process_time()
+            for row in range(50):
+                renderer.transcript_row(session_id=f"cold-{attempt}-{row}", width=200,
+                                        row=row, time_ms=0, occupied=False)
+            best_ms = min(best_ms, (time.process_time() - start) / 50 * 1e3)
+        assert best_ms < 16.7, f"{best_ms:.1f} ms/row cold (best of 5, CPU time)"
 
 
 # ===========================================================================

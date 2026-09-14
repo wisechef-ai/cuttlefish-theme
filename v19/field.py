@@ -191,10 +191,13 @@ def _field_layers(request: _SampleRequest) -> list[tuple[tuple[int, int, int], f
 def _composite(request: _SampleRequest, disable: str | None = None) -> tuple[int, int, int]:
     """Composite the canonical stack, optionally omitting one layer.
 
-    Snapping happens in `_snap_to_window`, applied to the colour that actually
-    reaches the screen — contraction runs after this and would otherwise move a
-    snapped cell straight back off the window colour.
+    An unselected cell short-circuits to the window colour: ~84% of cells carry
+    no pigment, and compositing three OKLab layers only to snap the result back
+    to the ground was most of the cold-row budget. Omitting a layer is a
+    diagnostic, so it always takes the full path.
     """
+    if disable is None and not _pigment_selected(request):
+        return TERMINAL_GROUND
     out = (0, 0, 0)
     for color, alpha, name in _field_layers(request):
         if disable != name:
