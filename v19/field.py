@@ -55,6 +55,8 @@ TERMINAL_GROUND = (0x0B, 0x0C, 0x10)
 # matches the OKLab L .11 this was originally expressed as, measured against the
 # composited field; a sum is ~20x cheaper and this runs once per cell.
 GROUND_SNAP_LUMA = 28
+# WHY: the contraction mask is radial; its centre is full weight by definition.
+MASK_CENTRE = 0.0
 
 # The lightness a fully contracted cell settles toward, and how much of its own
 # lightness it keeps on the way. Quantising into CALM_STEPS levels is what makes
@@ -268,14 +270,24 @@ def _request(session_id: str, x: int, y: int, width: int, height: int, row: int,
     return _SampleRequest(session_id, x, y, width, height, row, time_ms)
 
 
+def _finish(request: _SampleRequest, rgb: tuple[int, int, int],
+            disable: str | None) -> tuple[int, int, int]:
+    """Land a sampled colour on the screen.
+
+    One seam for both samplers: a layer-disabled probe is returned raw so a test
+    can see the layer it asked about, and every real cell goes through the snap
+    with its selection state, so a winner is never erased on the way out.
+    """
+    if disable:
+        return rgb
+    return _snap_to_window(rgb, selected=_pigment_selected(request))
+
+
 def sample(session_id: str, x: int, y: int, width: int, height: int,
            row: int, time_ms: float, disable: str | None = None) -> tuple[int, int, int]:
     """Sample one composited identity cell, optionally omitting a layer."""
     request = _request(session_id, x, y, width, height, row, time_ms)
-    composited = _composite(request, disable)
-    if disable:
-        return composited
-    return _snap_to_window(composited, selected=_pigment_selected(request))
+    return _finish(request, _composite(request, disable), disable)
 
 
 def sample_contracted(session_id: str, x: int, y: int, width: int, height: int,
@@ -285,15 +297,12 @@ def sample_contracted(session_id: str, x: int, y: int, width: int, height: int,
     request = _request(session_id, x, y, width, height, row, time_ms)
     disable = options.get("disable")
     composited = _composite(request, disable)
-    if disable:
-        return composited
-    selected = _pigment_selected(request)
     if strength <= 0.0:
-        return _snap_to_window(composited, selected=selected)
+        return _finish(request, composited, disable)
+    # `strength` gates contraction; the mask supplies the finite support, so an
+    # applied cell contracts at the mask centre. (The previous
+    # `0.0 if strength > 0.0 else RADIUS` could not reach its else branch —
+    # this line runs only when strength > 0.0.)
     fine = _texture(request, palette.seed_of(session_id))
-    # WHY: the public strength is a signal; the mask supplies finite support.
-    distance = 0.0 if strength > 0.0 else contraction.RADIUS
-    contracted = _contract(composited, contraction.weight(distance), fine)
-    # The snap applies to BOTH paths: snapping only the open path cost it
-    # tones the contracted path kept, inverting 'open is richer than text'.
-    return _snap_to_window(contracted, selected=selected)
+    contracted = _contract(composited, contraction.weight(MASK_CENTRE), fine)
+    return _finish(request, contracted, disable)
