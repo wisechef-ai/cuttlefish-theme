@@ -13,7 +13,15 @@ from . import contraction, noise, oklab, palette
 # as lit and the field became a panel laid over the terminal.
 LEUCOPHORE_LIGHTNESS = 0.09
 IRIDOPHORE_LIGHTNESS = 0.05
-PIGMENT_BASE_LIGHTNESS = 0.025
+# WHY 0.22: this is the floor for a cell that selection has already decided to
+# light, so it must be VISIBLY pigmented — being spared the ground-snap is not
+# the same as being seen. At the old 0.025 a winner in a low-texture cell
+# composited to (0,1,1): lit by construction, invisible on screen. Measured
+# across 8 sessions x 5 rows, winners landing below the snap luma (sum rgb <= 28)
+# went 102 -> 52 (0.10) -> 7 (0.16) -> 0 (0.22). 0.28 also gives 0 and costs
+# contrast headroom for no gain, so 0.22 is the smallest value that makes every
+# selected cell actually appear.
+PIGMENT_BASE_LIGHTNESS = 0.22
 # WHY: bounded chroma keeps the sparse pigment colourful without glare.
 LEUCOPHORE_CHROMA = 0.055
 IRIDOPHORE_CHROMA = 0.05
@@ -214,17 +222,27 @@ def _composite(request: _SampleRequest, disable: str | None = None) -> tuple[int
     return out
 
 
-def _snap_to_window(rgb: tuple[int, int, int]) -> tuple[int, int, int]:
+def _snap_to_window(rgb: tuple[int, int, int], *, selected: bool = False) -> tuple[int, int, int]:
     """Land an unlit cell exactly on the window colour.
 
     A field whose unlit ground merely APPROXIMATES the terminal background reads
     as a lighter panel laid over it, with visible edges wherever painting stops.
     Applied last, to the colour that actually reaches the screen.
 
+    `selected` cells are EXEMPT. Pigment density is guaranteed by construction —
+    the top-k cell of every fixed segment is lit — and a blanket luma test
+    silently broke that guarantee: a winner that happened to be dark was snapped
+    back to ground like any unlit cell. Measured on the shipped code, 8 of 24
+    winners were erased in one row, which is what opened a 44-cell unlit gap
+    against a ~25-cell ceiling. Whatever selection lights, snapping must not
+    take away.
+
     The darkness test uses a cheap luma sum rather than a full OKLab transform:
     this runs once per cell, and the conversion cost showed up directly in the
     cold-row budget (measured 19.9 ms/row against a 16.7 ms frame).
     """
+    if selected:
+        return rgb
     if sum(rgb) <= GROUND_SNAP_LUMA:
         return TERMINAL_GROUND
     return rgb
@@ -255,7 +273,9 @@ def sample(session_id: str, x: int, y: int, width: int, height: int,
     """Sample one composited identity cell, optionally omitting a layer."""
     request = _request(session_id, x, y, width, height, row, time_ms)
     composited = _composite(request, disable)
-    return composited if disable else _snap_to_window(composited)
+    if disable:
+        return composited
+    return _snap_to_window(composited, selected=_pigment_selected(request))
 
 
 def sample_contracted(session_id: str, x: int, y: int, width: int, height: int,
@@ -265,12 +285,15 @@ def sample_contracted(session_id: str, x: int, y: int, width: int, height: int,
     request = _request(session_id, x, y, width, height, row, time_ms)
     disable = options.get("disable")
     composited = _composite(request, disable)
+    if disable:
+        return composited
+    selected = _pigment_selected(request)
     if strength <= 0.0:
-        return composited if disable else _snap_to_window(composited)
+        return _snap_to_window(composited, selected=selected)
     fine = _texture(request, palette.seed_of(session_id))
     # WHY: the public strength is a signal; the mask supplies finite support.
     distance = 0.0 if strength > 0.0 else contraction.RADIUS
     contracted = _contract(composited, contraction.weight(distance), fine)
     # The snap applies to BOTH paths: snapping only the open path cost it
     # tones the contracted path kept, inverting 'open is richer than text'.
-    return contracted if disable else _snap_to_window(contracted)
+    return _snap_to_window(contracted, selected=selected)
