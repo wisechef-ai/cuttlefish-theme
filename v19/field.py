@@ -27,6 +27,12 @@ PIGMENT_CHROMA = 0.08
 LEUCOPHORE_ALPHA = 0.55
 IRIDOPHORE_ALPHA = 0.45
 PIGMENT_ALPHA_CEILING = 0.76
+
+# Pigment is selected as the top-k cells WITHIN each fixed segment, which
+# fixes density at k/segment by construction and bounds the dark gap. The
+# reference structure measures 5-25% of the frame lit; 1-in-5 lands at 20%.
+PIGMENT_SEGMENT_WIDTH = 5
+PIGMENT_TOP_K = 1
 NOISE_TIME_SCALE = 0.000018
 
 # The colour the theme sets as the terminal's OSC-11 background. Cells with no
@@ -87,9 +93,7 @@ def _layer(lightness: float, chroma: float, hue: float) -> tuple[int, int, int]:
 
 def _texture(request: _SampleRequest, seed: int) -> tuple[float, float, float, float]:
     """Return broad, fine, pearl, and wave organic texture signals."""
-    nx = request.x / max(1, request.width)
-    t = request.time_ms * NOISE_TIME_SCALE
-    texture = noise.fractal(seed + 17, request.x * 0.075 + t * 0.4, request.row * 0.27)
+    texture = _field_sample(seed, request.x, request.row, request.time_ms)
     broad = texture
     fine = texture
     # WHY: reusing one sampled field preserves motion at cell speed cheaply.
@@ -106,6 +110,72 @@ def _static_layers(session_id: str) -> tuple[tuple[int, int, int], tuple[int, in
     return leuc, iri, palette_value
 
 
+@lru_cache(maxsize=16384)
+def _field_sample(seed: int, x: int, row: int, time_ms: float) -> float:
+    """One organic field sample, memoised.
+
+    Each cell is sampled twice — once to rank it within its pigment segment and
+    once to render it — and the duplicate call was the cold-row budget: 18.5 ms
+    against a 16.7 ms frame. Memoising drops the second to a dict lookup.
+    """
+    return noise.fractal(seed + 17, x * 0.075 + time_ms * NOISE_TIME_SCALE * 0.4, row * 0.27)
+
+
+def _pigment_signal(seed: int, x: int, row: int, time_ms: float) -> float:
+    """Rank one cell for pigment selection.
+
+    Takes scalars, not a `_SampleRequest`: ranking touches every cell of every
+    row, and building a frozen dataclass per cell to reach a single noise
+    sample cost 5.1 ms/row against a 16.7 ms frame budget.
+    """
+    return _field_sample(seed, x, row, time_ms)
+
+
+def _segment_width(width: int) -> int:
+    """Return the fixed segment size for deterministic pigment density."""
+    return PIGMENT_SEGMENT_WIDTH
+
+
+@lru_cache(maxsize=2048)
+def _pigment_winners(session_id: str, width: int, height: int,
+                    row: int, time_ms: float) -> frozenset[int]:
+    """Return selected x coordinates once for a whole render row."""
+    winners: set[int] = set()
+    seed = palette.seed_of(session_id)
+    segment_width = _segment_width(width)
+    for start in range(0, max(0, width), segment_width):
+        stop = min(start + segment_width, width)
+        if PIGMENT_TOP_K == 1:
+            # The common case, and the hot one: max() is a single O(n) pass
+            # where sorting the segment is O(n log n) for the same answer.
+            winners.add(max(range(start, stop),
+                            key=lambda x: (_pigment_signal(seed, x, row, time_ms), -x)))
+            continue
+        ranked = sorted(
+            range(start, stop),
+            key=lambda x: (-_pigment_signal(seed, x, row, time_ms), x),
+        )
+        winners.update(ranked[:PIGMENT_TOP_K])
+    return frozenset(winners)
+
+
+def _pigment_selected(request: _SampleRequest) -> bool:
+    """Select exactly the strongest cells in the request's fixed segment."""
+    return request.x in _pigment_winners(
+        request.session_id, request.width, request.height, request.row, request.time_ms)
+
+
+def _pigment_alpha(request: _SampleRequest) -> float:
+    """Full pigment on the segment's winners, none anywhere else.
+
+    Selecting the top-k WITHIN fixed segments fixes density by construction and
+    bounds the dark gap between lit cells. A threshold on an absolute value
+    cannot: it makes density seed-dependent, so some sessions render nearly
+    blank and others nearly solid.
+    """
+    return PIGMENT_ALPHA_CEILING if _pigment_selected(request) else 0.0
+
+
 def _field_layers(request: _SampleRequest) -> list[tuple[tuple[int, int, int], float, str]]:
     """Build the one canonical leucophore/iridophore/pigment stack."""
     leuc, iri, palette_value = _static_layers(request.session_id)
@@ -115,7 +185,7 @@ def _field_layers(request: _SampleRequest) -> list[tuple[tuple[int, int, int], f
     pigment = _layer(pigment_l, pigment_c, palette_value.hue + (palette_value.accent - 0.5) * 1.4)
     return [(leuc, LEUCOPHORE_ALPHA, "leucophore"),
             (iri, IRIDOPHORE_ALPHA, "iridophore"),
-            (pigment, min(PIGMENT_ALPHA_CEILING, broad * 0.95 + wave * 0.52 - 0.42), "chromatophore")]
+            (pigment, _pigment_alpha(request), "chromatophore")]
 
 
 def _composite(request: _SampleRequest, disable: str | None = None) -> tuple[int, int, int]:
