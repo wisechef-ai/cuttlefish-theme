@@ -2,7 +2,7 @@
 
 Ambient session identity for [Hermes](https://github.com/NousResearch/hermes-agent), modelled on cuttlefish skin.
 
-Every chat session gets its own colour, its own near-black mantle, and its own pronounceable name, held for the life of the session. When a session needs you, an acute signal **blanches** across the whole terminal — fast and direct, the way the animal does it — and is **released** again afterwards, the identity recovering underneath.
+Every chat session gets its own colour, its own near-black mantle, and its own pronounceable name, held for the life of the session. When a session needs you, the **status bar** turns amber (waiting on you) or red (something failed) — while the background, the thing you use to recognise the window, stays exactly where it was.
 
 ![cuttlefish-theme demo](docs/demo.gif)
 
@@ -38,6 +38,21 @@ Every appearance is one rule:
 ```
 PATTERN = CHRONIC(identity) + [ACUTE(signal) only when needed]
 ```
+
+**The two channels never share a surface.** Identity must be unique per window
+and must not move; state must be identical in every window and must move. Put
+them on one surface and each ruins the other — so the transcript background
+carries identity and *never* changes on a state change, while the status bar
+carries state and reads the same in every session.
+
+> *"per session no big background changes — the background change makes the
+> recognition of terminal harder"* — Adam, 2026-09-12
+
+That correction is why the acute signal lives on the bar rather than blanching
+the whole terminal: the surface you scan to *find* a window must not move at the
+moment that window needs you.
+
+Full reader's guide: **[READING-THE-LANGUAGE.md](READING-THE-LANGUAGE.md)**.
 
 ### Identity — endless, never doubling
 
