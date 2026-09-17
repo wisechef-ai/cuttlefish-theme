@@ -13,6 +13,8 @@ import time
 from itertools import pairwise
 from pathlib import Path
 
+import pytest
+
 from cuttlefish_theme.color.oklab import hex_to_oklch
 from cuttlefish_theme.color.terminal import contrast_ratio
 from cuttlefish_theme.seed import seed_for
@@ -226,7 +228,12 @@ def test_skin_file_carries_input_rule_art_and_older_cores_ignore_it(tmp_path, mo
     assert len(set(_HEX.findall(art))) >= 8         # rows of chromatophores, not a line
     assert data["banner_hero"] and data["banner_logo"]  # the two precedents still present
     # the installed core (any version) loads the file without choking on the key
-    from hermes_cli.skin_engine import load_skin  # real engine, read-only
+    # Real engine, read-only. Absent only when this interpreter has no Hermes
+    # on its path — `make test` picks one that does; see `make python`.
+    load_skin = pytest.importorskip(
+        "hermes_cli.skin_engine",
+        reason="no hermes_cli on this interpreter — run `make test` (see `make python`)",
+    ).load_skin
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     skin = load_skin("cuttlefish")
     assert skin.banner_hero

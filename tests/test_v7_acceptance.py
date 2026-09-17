@@ -29,31 +29,72 @@ def mean_run(row: list[int]) -> float:
     return len(row) / runs
 
 
+def unlit_of(row: list[int]) -> int:
+    """The row's OWN unlit colour: its modal entry.
+
+    Not `render(allocate(session)).ground_hex`. That near-black stopped being
+    this surface's floor when the unlit cells moved into the session's readable
+    band, and a metric still referencing it counts every cell as vivid (measured:
+    vivid_share 1.0 against a 0.38 ceiling) — the surface looks broken while it
+    is the yardstick that moved. Read the fill from the rendered row.
+    """
+    return Counter(row).most_common(1)[0][0]
+
+
 @pytest.mark.parametrize("session", SESSIONS)
 @pytest.mark.parametrize("signal", SIGNALS)
 @pytest.mark.parametrize("width", WIDTHS)
 def test_quantised_rule_meets_measured_grammar(session: str, signal: str, width: int) -> None:
     row = quantised_row(session, signal, width)
-    ground = quantize_256(render(allocate(session)).ground_hex)
+    ground = unlit_of(row)
     modal_share = Counter(row).most_common(1)[0][1] / width
     vivid_share = sum(colour != ground for colour in row) / width
 
     assert len(row) == width
     assert modal_share >= 0.55
-    # 0.08-0.20 was read off a 2D Metasepia patch. Re-applied to ONE row it
-    # leaves voids the eye reads as emptiness (measured: a 33-cell dark gap on
-    # an 80-column rule; Adam: "very scattered with a lot of black spaces").
-    # A single row needs ~0.30 to read as skin; the ceiling stays low enough
-    # that ground still dominates.
-    assert 0.22 <= vivid_share <= 0.38
+    # 0.08-0.20 was read off a 2D Metasepia patch. Re-applied to ONE row it left
+    # voids the eye read as emptiness (measured: a 33-cell dark gap on an
+    # 80-column rule; Adam: "very scattered with a lot of black spaces"), so
+    # this floor was raised to 0.22 and the surface painted ~0.30.
+    #
+    # RE-POINTED 2026-09-13. That reasoning assumed the unlit cells were a
+    # TRENCH — a near-black the eye read as a hole — so density was the only
+    # way to hide them. It no longer holds: `_unlit` now paints one flat
+    # mid-dark ground under the whole rule and every dot sits ON that ground,
+    # so a gap between dots is more ground rather than a void. With the trench
+    # gone, the 2D reference figure is reachable on one row after all, and the
+    # eight design renders Adam is working from measure 5-25% lit
+    # (docs/reference-structure.md).
+    #
+    # The floor moves to 0.15 rather than to the reference's 0.05 because the
+    # budget is spent per 10-column segment (`round(f * 10)`), so the reachable
+    # values are 0.1, 0.2, 0.3...: 0.15 admits the 2-dots-per-10 the surface now
+    # paints while still failing a surface that drops to one.
+    #
+    # Cost, measured and accepted: distinct rendered rule signatures over 200
+    # sessions fall from 64 to 39, because sparser dots mean fewer distinct
+    # quantised dot-sets. Identity still rides the dots (their class-set carries
+    # 113 distinct values); the ground is deliberately near-uniform.
+    assert 0.15 <= vivid_share <= 0.38
     assert mean_run(row) >= 2.0
-    # No void may swallow the pattern. The bound is structural: with 10-column
-    # segments, two picks at opposite ends of adjacent segments sit at most
-    # ~18 apart, and measured worst case across every session/signal/width is 13.
+    # No void may swallow the pattern. The bound is arithmetic, not taste: with
+    # S-column segments and k picks each, two picks at opposite ends of adjacent
+    # segments sit at most 2*(S-k) apart. The surface uses S=10 and
+    # k=round(_VIVID_FRACTION*10), so the bound MOVES WITH THE DENSITY — it was
+    # 14 at k=3 (vivid 0.30) and is 16 at k=2 (vivid 0.20, set 2026-09-13).
+    #
+    # Derive it here rather than hardcoding, so the next density change cannot
+    # leave a stale number that either passes a genuine void or fails correct
+    # output. Measured worst case across every session/signal/width equals the
+    # bound exactly, which is what "structural" means: it is reached, not
+    # approached.
+    from cuttlefish_theme.linework import _VIVID_FRACTION
+    segment = 10
+    bound = 2 * (segment - max(1, round(_VIVID_FRACTION * segment)))
     gap = max(len(run) for run in "".join(
         "." if colour == ground else "#" for colour in row).split("#")) if any(
         colour != ground for colour in row) else width
-    assert gap <= 14, f"longest dark gap {gap} reads as emptiness"
+    assert gap <= bound, f"longest dark gap {gap} exceeds the structural bound {bound}"
 
 
 def test_fault_is_never_a_flat_line_and_has_sparse_vivid_cells() -> None:
@@ -110,11 +151,36 @@ def test_acute_input_rule_uses_quantised_amber_and_red_without_identity_mix() ->
 
 
 def test_ten_sessions_have_distinct_vivid_pigment_sets_and_separated_accents() -> None:
+    """Distinct pigment sets per session, and accents that stay apart.
+
+    THE EXACT-DISTINCTNESS ARM IS NOW A RATE, and the reason is arithmetic
+    rather than a tuning failure. `_VIVID_FRACTION` dropped to 0.20 on
+    2026-09-13 to match the reference renders' 5-25% lit, which spends 2 dots
+    per 10 columns instead of 3. Fewer dots sample fewer of the session's
+    pigment variants, and after quantisation the surviving sets collide:
+    measured over a 200-session corpus, 37 distinct sets at every width tested
+    (40/80/200), with 188 of 200 sessions sharing a set with someone.
+
+    `== len(sessions)` on a 10-session sample is therefore unsatisfiable — it
+    passed before only because a denser rule sampled more variants. Asserting it
+    anyway would invite the next agent to "fix" it by putting the density back,
+    undoing the change Adam asked for.
+
+    So this pins what is real and still load-bearing: a floor on distinct sets
+    over a CORPUS (a rate, not a single sample), plus the accent separation,
+    which sparsity does not affect. The known ceiling is recorded above so the
+    number is not mistaken for a target anyone should tune toward.
+    """
+    from cuttlefish_theme.color.oklab import delta_e_ok
+
+    corpus = [f"s{n}" for n in range(200)]
+    corpus_sets = {frozenset(_vivid_indices(session, "resting")) for session in corpus}
+    assert len(corpus_sets) >= 30, (
+        f"only {len(corpus_sets)} distinct pigment sets over {len(corpus)} sessions")
+
     sessions = ("tori-main", "zivyra", "tilola", "chef", "wise", "session-six",
                 "mantis", "adam-chef-01", "alpha", "beta")
     sets = [_vivid_indices(session, "resting") for session in sessions]
-    assert len({frozenset(colours) for colours in sets}) == len(sessions)
-    from cuttlefish_theme.color.oklab import delta_e_ok
     assert min(max(delta_e_ok(_xterm_oklch(a), _xterm_oklch(b))
                    for a in left for b in right)
                for i, left in enumerate(sets) for right in sets[i + 1:]) >= 0.170

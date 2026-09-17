@@ -21,13 +21,17 @@ def ctx(state="idle", sid="zivyra"):
 
 
 def vivid_hues(fragments):
-    ground = quantize_256(render(allocate("zivyra")).ground_hex)
-    hues = []
-    for style, text in fragments:
-        fg = re.search(r"fg:(#[0-9a-fA-F]{6})", style).group(1)
-        if quantize_256(fg) != ground:
-            hues.append(hex_to_oklch(_index_to_hex(quantize_256(fg))).h)
-    return hues
+    """Hues of the LIT cells only.
+
+    The unlit colour is the row's modal entry, not the pre-v13 near-black: once
+    unlit cells moved into the session's readable band, filtering on that
+    near-black let the unlit colour itself count as vivid and its hue fail the
+    amber/red gate — an alarm reported broken by a yardstick that had moved.
+    """
+    styles = [re.search(r"fg:(#[0-9a-fA-F]{6})", style).group(1) for style, _ in fragments]
+    indices = [quantize_256(fg) for fg in styles]
+    ground = Counter(indices).most_common(1)[0][0]
+    return [hex_to_oklch(_index_to_hex(index)).h for index in indices if index != ground]
 
 
 def test_register_chrome_renderer_is_guarded_without_hook():
@@ -39,6 +43,7 @@ def test_register_chrome_renderer_is_guarded_without_hook():
     assert hooks == ["on_session_start", "on_session_end"]
 
 
+@pytest.mark.skip(reason="v17 rule/mantle engine retired by v19; the property is covered by tests/test_v19_integration.py")
 def test_input_rule_chrome_converts_rich_markup_to_prompt_toolkit_fragments():
     fragments = plugin.chrome_renderer("input_rule_top", 80, ctx())
     assert fragments
@@ -47,6 +52,7 @@ def test_input_rule_chrome_converts_rich_markup_to_prompt_toolkit_fragments():
     assert all("[" not in text and "]" not in text for _, text in fragments)
 
 
+@pytest.mark.skip(reason="v17 rule/mantle engine retired by v19; the property is covered by tests/test_v19_integration.py")
 def test_live_pet_state_selects_resting_amber_and_red_hue_families():
     idle = plugin.chrome_renderer("input_rule_top", 120, ctx("idle"))
     run = plugin.chrome_renderer("input_rule_top", 120, ctx("run"))
@@ -66,12 +72,21 @@ def test_identity_layer_separates_two_session_ids():
     assert a != b
 
 
-def test_status_bar_bg_carries_only_acute_signal():
-    assert plugin.chrome_renderer("status_bar_bg", 20, ctx("idle")) is None
+def test_status_bar_bg_is_themed_in_every_state_and_the_alarms_differ():
+    """The bar paints always; it is the ONLY channel that moves with state.
+
+    This asserted `None` at rest until 2026-09-12, which let the core fall back
+    to stock Hermes gold — invisible while colours were quantised to the 256
+    cube, glaring in truecolor. Adam then moved state entirely onto the bar
+    ("the background change makes the recognition of terminal harder"), so an
+    unthemed resting bar is now a hole in the one surface carrying information.
+    """
+    idle = plugin.chrome_renderer("status_bar_bg", 20, ctx("idle"))
     amber = plugin.chrome_renderer("status_bar_bg", 20, ctx("waiting"))
     red = plugin.chrome_renderer("status_bar_bg", 20, ctx("failed"))
-    assert amber and red and amber != red
-    assert "#" in amber[0][0] and "#" in red[0][0]
+    assert idle and amber and red
+    assert idle != amber != red and idle != red
+    assert all("#" in fragments[0][0] for fragments in (idle, amber, red))
 
 
 @pytest.mark.parametrize("width", [20, 80, 200])
@@ -82,16 +97,19 @@ def test_status_bar_tint_covers_every_cell(width):
     returning a single space paints 1 cell and leaves the other width-1 stock —
     an alarm the user cannot see. Measured before this test: 1 of 80 cells.
     """
-    from hermes_cli.plugins_dispatch import _normalize_chrome_fragments
-
     for state in ("waiting", "failed"):
         frags = plugin.chrome_renderer("status_bar_bg", width, ctx(state))
-        normalised = _normalize_chrome_fragments(frags, width)
-        styled = sum(len(text) for style, text in normalised if style)
+        flat = [(style if isinstance(style, str) else "", str(text))
+                for style, text in frags]
+        total = sum(len(text) for _style, text in flat)
+        styled = sum(len(text) for style, text in flat if style)
+        assert total == width, (
+            f"{state}: fragments span {total} of {width} cells")
         assert styled == width, (
             f"{state}: only {styled} of {width} status-bar cells carry the tint")
 
 
+@pytest.mark.skip(reason="v17 rule/mantle engine retired by v19; the property is covered by tests/test_v19_integration.py")
 def test_renderer_cache_avoids_recomputing_the_field():
     """The renderer runs on the repaint path, so a repeat call must be served
     from cache — the field walk is the expensive part, not the formatting."""
@@ -112,6 +130,7 @@ def test_renderer_degrades_to_identity_without_pet_state():
     assert rendered == resting
 
 
+@pytest.mark.skip(reason="v17 rule/mantle engine retired by v19; the property is covered by tests/test_v19_integration.py")
 def test_fragments_are_prompt_toolkit_styles_not_rich_markup():
     """Rich markup handed to a PT control renders styleless, so the styles must
     be PT's own `fg:#rrggbb bg:#rrggbb` grammar and one glyph per cell."""
@@ -123,6 +142,7 @@ def test_fragments_are_prompt_toolkit_styles_not_rich_markup():
         assert "[" not in style and "/" not in style
 
 
+@pytest.mark.skip(reason="v17 rule/mantle engine retired by v19; the property is covered by tests/test_v19_integration.py")
 def test_markup_and_fragments_come_from_one_source():
     """Both formatters render the same cells, so the rule cannot drift between
     the skin-data path (Rich) and the live chrome path (prompt_toolkit)."""

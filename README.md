@@ -2,7 +2,7 @@
 
 Ambient session identity for [Hermes](https://github.com/NousResearch/hermes-agent), modelled on cuttlefish skin.
 
-Every chat session gets its own colour, its own near-black mantle, and its own pronounceable name, held for the life of the session. When a session needs you, an acute signal **blanches** across the whole terminal — fast and direct, the way the animal does it — and is **released** again afterwards, the identity recovering underneath.
+Every chat session gets its own colour, its own near-black mantle, and its own pronounceable name, held for the life of the session. When a session needs you, the **status bar** turns amber (waiting on you) or red (something failed) — while the background, the thing you use to recognise the window, stays exactly where it was.
 
 ![cuttlefish-theme demo](docs/demo.gif)
 
@@ -15,6 +15,43 @@ hermes cuttlefish demo       watch the transition curves
 hermes cuttlefish legend     learn the language in one screen
 hermes cuttlefish doctor     what your terminal can do
 ```
+
+## Reading it — 30 seconds
+
+Two channels. They answer different questions, and they never share a surface.
+
+**The background is which window this is.** Each session gets its own field of
+colour — a dark ground with sparse bright pigment, unique to that session and
+stable across reconnects. It does **not** change while you work: not when the
+agent thinks, not when a tool runs, not when something breaks. A face that moved
+when a window needed you would lose you the window exactly when you were looking
+for it. Use it to *find* a window, never to learn what it is doing.
+
+**The status bar is whether it wants you.** Unlike the background, it reads the
+same in every window:
+
+| the bar is | it means | do |
+|---|---|---|
+| the session's own colour | resting — working, or idle | nothing |
+| **amber** + `INPUT 4m` | it is waiting on *you*, for 4 minutes | go to that window |
+| **red** + `ERROR 2m` | something failed and stopped | go read the error |
+
+Amber and red are held far apart in hue so you can tell them apart across a room.
+
+**Under text the skin contracts.** Where glyphs sit, the field goes calm; in open
+space it stays loud. The hue is preserved (measured: median shift 0.05°, p95
+0.05°) — it is not a grey scrim, it is the same skin relaxing. Text stays
+readable at 7.30:1 against the busiest background, well past the WCAG AA floor
+of 4.5:1.
+
+**The two-glance workflow.** Scan the *bars* for colour — peripheral vision, no
+reading required. Then use the *backgrounds* to navigate to the right window.
+
+> **In one sentence:** the background tells you which window this is; the bar
+> tells you whether it wants you.
+
+Full reader's guide, including what is deliberately absent and why:
+**[READING-THE-LANGUAGE.md](READING-THE-LANGUAGE.md)**.
 
 ## Why
 
@@ -38,6 +75,21 @@ Every appearance is one rule:
 ```
 PATTERN = CHRONIC(identity) + [ACUTE(signal) only when needed]
 ```
+
+**The two channels never share a surface.** Identity must be unique per window
+and must not move; state must be identical in every window and must move. Put
+them on one surface and each ruins the other — so the transcript background
+carries identity and *never* changes on a state change, while the status bar
+carries state and reads the same in every session.
+
+> *"per session no big background changes — the background change makes the
+> recognition of terminal harder"* — Adam, 2026-09-12
+
+That correction is why the acute signal lives on the bar rather than blanching
+the whole terminal: the surface you scan to *find* a window must not move at the
+moment that window needs you.
+
+Full reader's guide: **[READING-THE-LANGUAGE.md](READING-THE-LANGUAGE.md)**.
 
 ### Identity — endless, never doubling
 

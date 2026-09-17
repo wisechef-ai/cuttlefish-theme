@@ -7,73 +7,101 @@ instead of cycling a palette by x-coordinate (the old output was terminal tinsel
 """
 from __future__ import annotations
 
+from collections import Counter
 from functools import lru_cache
 
+from .band import _FAMILY_ARC, reserved_for_alarm
 from .color.identity import allocate
-from .color.oklab import OKLCh, oklch_to_hex
+from .color.oklab import OKLCh, hex_to_oklch, oklch_to_hex
 from .pattern import render
 from .patterns import field_for
 
-# Share of columns that carry a pigment. Real Metasepia display measures 11-16%
-# vivid over a 2D patch, but a 2D fraction re-read on ONE row leaves voids the
-# eye reads as emptiness: at 0.16 the longest dark gap on an 80-column rule was
-# 33 cells. 0.30 restores the density a single row needs to read as skin.
-_VIVID_FRACTION = 0.30
+# Share of columns carrying a dot. The reference renders measure 5-25% lit
+# (docs/reference-structure.md), against the 0.30 this surface used before.
+#
+# NOTE THE QUANTISATION: cells() spends this budget per 10-column SEGMENT, as
+# `round(_VIVID_FRACTION * 10)`, so the knob only moves in steps of 0.1 and
+# 0.15/0.20/0.25 all render identically at 2 dots per 10 columns. 0.20 is
+# written here because it is what the surface actually paints; the other two
+# values would be a comment that disagrees with the screen.
+#
+# It costs identity, measured and accepted: sparser dots mean fewer distinct
+# quantised dot-sets, so rendered rule signatures over 200 sessions fall from
+# 64 (at 0.30) to 39. Adam chose reference-accurate sparsity on 2026-09-13.
+_VIVID_FRACTION = 0.20
 
 # A bar is a LIT strip, not a background behind text, so it ramps bright. These
 # are the bands the pre-v11 bars used; only the hue source changed.
-_BAR_L = (0.50, 0.80)
+_BAR_L = (0.66, 0.84)
 _ACUTE_BAR_L = (0.62, 0.78)
 
 
 def _identity_variants(session_id: str) -> tuple[str, ...]:
-    """The bars' ramp, drawn from the SAME four chromatophore classes as the mantle.
+    """The bars' ramp, drawn from the SAME palette the mantle paints.
 
     Adam, 2026-09-11: "there should be a general colour palette per session and
-    this should reflect that." The bars used to ramp one hue by lightness while
-    the mantle painted four hue families, so the two surfaces shared a session
-    but not a look. Drawing both from `chromatophore_set` gives one palette per
-    session across both surfaces.
+    this should reflect that." Both surfaces read `mantle_palette._mantle_classes`, so a
+    bar colour is always a mantle colour. Sourcing them separately is what made
+    koralen's bar sit at hues 180/210/330 while its mantle sat at 30/270/300/360
+    — one session wearing two unrelated skins.
 
-    Classes whose hue falls in the ALARM bands are dropped. A session can
-    legitimately own hue 99-106, which quantises into the same cube entries as
-    the amber alert (#AF8700 at hue 88) — measured, one session's resting bar
-    shared a quarter of its palette with the alarm. The mantle can afford that
-    ambiguity because an alarm repaints the whole background; a one-row bar
-    cannot, so it gives up a hue rather than the signal.
+    The bar re-spreads those hues across its own lightness range: the mantle sits
+    BEHIND TEXT and must stay dark, a bar is a lit strip and should read bright.
+
+    A colour inside the alarm arc is pushed to the arc's NEAREST EDGE, not
+    rotated 180 degrees. Rotation was the old fix and it cost more than it
+    bought: a mantle red at hue 354 became a bar CYAN at 174, so the bar left
+    its own session's hue family entirely. Measured 2026-09-12, that fired on
+    9 of 12 sessions — the single largest source of "the bar doesn't match".
+    Displacing to the edge keeps the colour adjacent to where it started, which
+    is all the alarm separation needs.
     """
-    from .mantle import chromatophore_set
-    from .session import Signal
-    classes = chromatophore_set(allocate(session_id), Signal.RESTING)
-    calm = [c for c in classes if not _reserved_for_alarm(c.oklch.h)]
-    return _class_ramp(calm or list(classes), _BAR_L)
+    from .mantle_palette import _mantle_classes
+    from .color.oklab import hex_to_oklch
+    palette = [hex_to_oklch(colour) for colour in _mantle_classes(session_id, "resting")]
+    # Alarm-hued islands are DROPPED here, not displaced. The mantle may carry a
+    # red fleck — it is one dark cell among many and reads as a marking. The bar
+    # is a LIT strip at L .50-.80, where the same hue reads as the alarm itself,
+    # so `test_resting_bars_never_wear_the_alarm_colours` is right to refuse it.
+    # Displacing instead of dropping was tried: it moves the colour off its own
+    # family and puts the bar back out of step with the mantle.
+    calm = [c for c in palette if not reserved_for_alarm(c.h)]
+    return _ramp(calm or palette, _BAR_L)
 
 
-def _reserved_for_alarm(hue: float) -> bool:
-    """Hues the acute bars own, widened for the quantiser's reach."""
-    return 55 <= hue <= 115 or hue >= 350 or hue <= 50
-
-
-def _class_ramp(classes, lightness: tuple[float, float]) -> tuple[str, ...]:
-    """16 steps across the class set, darkest to brightest.
+def _ramp(colours, lightness: tuple[float, float]) -> tuple[str, ...]:
+    """16 steps across `colours` (OKLCh), darkest to brightest.
 
     Lightness is re-spread across `lightness` while each step keeps ITS OWN
-    class's hue and chroma. The two surfaces share a palette but not a
-    brightness: the mantle sits BEHIND TEXT and must stay dark, whereas a bar is
-    a lit strip and should read bright.
+    hue and chroma. The two surfaces share a palette but not a brightness: the
+    mantle sits BEHIND TEXT and must stay dark, whereas a bar is a lit strip and
+    should read bright.
 
-    Hue is NOT interpolated between classes. Blending a violet class into an
-    amber one walks the whole colour circle and lands the resting bar on the
-    alarm hues — measured, a resting bar hit 14 distinct hues and collided with
-    the amber alarm on half its palette. The animal shows its classes side by
-    side; it does not cross-fade them.
+    Hue is NOT interpolated between colours. Blending a violet into an amber
+    walks the whole colour circle and lands the resting bar on the alarm hues —
+    measured, a resting bar hit 14 distinct hues and collided with the amber
+    alarm on half its palette. The animal shows its classes side by side; it does
+    not cross-fade them.
+
+    Steps are allocated by the palette's own DOMINANCE, not one slice each. An
+    even split hands a single island colour 4 of 16 cells — 25% of the bar to a
+    colour the mantle spends ~18% of its cells on — and that is what left six
+    sessions' bars reading as a different hue family from their own mantle.
     """
-    ordered = sorted(classes, key=lambda c: c.oklch.L)
+    ordered = sorted(colours, key=lambda c: c.L)
     floor, ceiling = lightness
+    weights = Counter(int(c.h // _FAMILY_ARC) for c in ordered)
+    # Cumulative share of the strip each colour owns, in palette order.
+    total = sum(weights[int(c.h // _FAMILY_ARC)] for c in ordered)
+    bounds, running = [], 0.0
+    for colour in ordered:
+        running += weights[int(colour.h // _FAMILY_ARC)] / total
+        bounds.append(running)
     steps = []
     for index in range(16):
         fraction = index / 15
-        source = ordered[min(len(ordered) - 1, int(fraction * len(ordered)))].oklch
+        source = next((c for c, edge in zip(ordered, bounds) if fraction <= edge),
+                      ordered[-1])
         steps.append(oklch_to_hex(source.with_(L=floor + (ceiling - floor) * fraction)))
     return tuple(steps)
 
@@ -102,7 +130,7 @@ def _acute_variants(signal: str) -> tuple[str, ...]:
     from .session import Signal
     collapsed = Signal.FAULT if signal in ("fault", "error") else Signal.NEEDS_ME
     classes = chromatophore_set(allocate("acute"), collapsed)
-    return _class_ramp([c for c in classes if c.family in ("amber", "red")], _ACUTE_BAR_L)
+    return _ramp([c.oklch for c in classes if c.family in ("amber", "red")], _ACUTE_BAR_L)
 
 
 def _signal_time(signal: str) -> float:
@@ -121,6 +149,48 @@ def _body_field(session_id: str, signal: str, width: int, height: int):
     printed line, so rebuilding per row_key put that on every line of output.
     """
     return field_for(session_id, width, height, t=_signal_time(signal))[1]
+
+
+@lru_cache(maxsize=64)
+def _unlit(session_id: str, signal: str) -> str:
+    """The single flat colour every unlit cell of the rule wears.
+
+    Adam, 2026-09-13: "can we have a thin line in one color - in that case would
+    be that blue and the dots as it is now scattered on that (without this
+    background)". So: ONE colour under the whole rule, dots on top of it, and no
+    second tone anywhere for the eye to read as a gap.
+
+    HUE COMES FROM THE SHARED ANCHOR, LIGHTNESS IS THIS SURFACE'S OWN. That split
+    is the whole subtlety (§6g of the authoring skill). Deriving the ground from
+    `allocate()` directly — the obvious move, and one that passes every test
+    looking at this surface alone — gives the rule a hue nothing else on screen
+    is using: measured, cross-surface hue agreement fell from 20/20 sessions to
+    4/20, i.e. most windows wore a palette in one family and a rule in another.
+    `_mantle_palette` is the band-derived anchor every other surface reads, so
+    taking the hue from there keeps one theme per window.
+
+    Only the LIGHTNESS is re-derived here, because a rule is a lit strip rather
+    than a background behind text and the band's own floor is darker than this
+    surface wants.
+    """
+    from .mantle_palette import _mantle_palette
+    from .color.terminal import _index_to_hex, quantize_cube_256
+    from .session import Signal
+    # `cells` takes wire-form signals ("needs-me"/"error"); Signal's values are
+    # canonical ("needs_me"/"fault"). Passing the wire form straight through
+    # raises ValueError inside a repaint, which the renderer swallows as None —
+    # the bar silently reverts to stock on exactly the states that matter.
+    canonical = (Signal.FAULT if signal in ("fault", "error") else
+                 Signal.NEEDS_ME if signal in ("needs-me", "needs_me") else Signal.RESTING)
+    anchor = hex_to_oklch(_mantle_palette(session_id, canonical.value))
+    # Walk DOWN from the top of the window: the quantised value is the contract
+    # the user actually sees, and the cube is sparse enough in this region that a
+    # high-chroma hue can land above where it was aimed.
+    for lightness in (0.28 - 0.01 * step for step in range(10)):
+        ground = oklch_to_hex(anchor.with_(L=lightness))
+        if 0.20 <= hex_to_oklch(_index_to_hex(quantize_cube_256(ground))).L <= 0.34:
+            return ground
+    return oklch_to_hex(anchor.with_(L=0.20))
 
 
 @lru_cache(maxsize=512)
@@ -151,7 +221,7 @@ def cells(session_id: str, signal: str, width: int,
              for x in hottest(range(start, min(width, start + segment)),
                               max(1, round(_VIVID_FRACTION * segment)))}
 
-    ground = render(allocate(session_id)).ground_hex
+    ground = _unlit(session_id, signal)
     variants = (_acute_variants(signal) if signal in ("fault", "error", "needs-me", "needs_me")
                 else _identity_variants(session_id))
     rank = {x: i for i, x in enumerate(hottest(vivid, len(vivid)))}
