@@ -39,7 +39,7 @@ if "cuttlefish_theme" not in sys.modules:
     sys.modules["cuttlefish_theme"] = _mod
     _spec.loader.exec_module(_mod)
 
-from cuttlefish_theme.chrome import dominant_hue                # noqa: E402
+from cuttlefish_theme.mantle_palette import dominant_hue                # noqa: E402
 from cuttlefish_theme.color.identity import allocate
 from cuttlefish_theme.color.oklab import hex_to_oklch          # noqa: E402
 from cuttlefish_theme.pattern import render                   # noqa: E402

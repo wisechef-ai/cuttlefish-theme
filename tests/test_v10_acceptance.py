@@ -49,7 +49,7 @@ def test_acute_sets_survive_quantisation_as_distinct_readable_hues():
     110, which reads green and says the opposite of "needs you". The design
     values were fine; only the quantised output showed it.
     """
-    from cuttlefish_theme.chrome import _mantle_classes
+    from cuttlefish_theme.mantle_palette import _mantle_classes
     from cuttlefish_theme.color.oklab import hex_to_oklch
 
     for signal, low, high in (("needs_me", 40, 115), ("fault", 340, 45)):
@@ -62,7 +62,7 @@ def test_acute_sets_survive_quantisation_as_distinct_readable_hues():
 
 
 def test_every_acute_class_stays_readable_behind_body_text():
-    from cuttlefish_theme.chrome import _mantle_classes
+    from cuttlefish_theme.mantle_palette import _mantle_classes
     from cuttlefish_theme.color.terminal import contrast_ratio
 
     for signal in ("resting", "needs_me", "fault"):
@@ -81,14 +81,14 @@ def test_resting_classes_stay_four_distinct_colours_across_many_sessions():
     three colours where four were designed. A collapsed class is a session that
     looks like another session.
     """
-    from cuttlefish_theme.chrome import _mantle_classes
+    from cuttlefish_theme.mantle_palette import _mantle_classes
 
     collapsed = [sid for sid in _CORPUS if len(set(_mantle_classes(sid, "resting"))) < 4]
     assert not collapsed, f"{len(collapsed)} sessions lost a class, e.g. {collapsed[:3]}"
 
 
 def test_every_visible_background_is_readable_in_every_signal():
-    from cuttlefish_theme.chrome import _mantle_classes
+    from cuttlefish_theme.mantle_palette import _mantle_classes
     from cuttlefish_theme.color.terminal import contrast_ratio
 
     for sid in _CORPUS:
@@ -142,7 +142,7 @@ def test_bars_and_mantle_are_drawn_from_one_session_palette():
     alarm-band classes — but a bar hue must never be foreign to the session.
     """
     from cuttlefish_theme.linework import _identity_variants
-    from cuttlefish_theme.chrome import _mantle_classes
+    from cuttlefish_theme.mantle_palette import _mantle_classes
     from cuttlefish_theme.color.oklab import hex_to_oklch
 
     for session in ("chef", "tori-main", "zivyra", "koralen"):

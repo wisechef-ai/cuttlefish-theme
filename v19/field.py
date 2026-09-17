@@ -207,11 +207,30 @@ def _field_layers(request: _SampleRequest) -> list[tuple[tuple[int, int, int], f
     """Build the one canonical leucophore/iridophore/pigment stack."""
     leuc, iri, palette_value = _static_layers(request.session_id, request.identity_hue)
     texture = _texture(request, palette.seed_of(request.session_id))
-    pigment_l = (PIGMENT_BASE_LIGHTNESS
-                 + max(0.0, texture - 0.18) * 1.35
-                 + max(0.0, texture - 0.58) * 0.62)
+    # WHY THE CEILING: pigment lightness is driven by texture, and the raw
+    # formula reaches ~1.6 at high texture, where sRGB clamps to the SAME
+    # near-white (194,194,195) for every session. Measured on the awkward
+    # desktop, 17 of 72 lit cells were that white — an identity-carrying cell
+    # washed out to a session-independent colour dominates the centroid and
+    # two windows read as one. 0.72 is the highest L that still holds the
+    # pigment's chroma (measured: hue survives gamut mapping at C>=0.08),
+    # so a bright winner stays in its session's hue family.
+    PIGMENT_LIGHTNESS_CEILING = 0.72
+    pigment_l = min(PIGMENT_LIGHTNESS_CEILING,
+                    PIGMENT_BASE_LIGHTNESS
+                    + max(0.0, texture - 0.18) * 1.35
+                    + max(0.0, texture - 0.58) * 0.62)
     pigment_c = PIGMENT_CHROMA + texture * 0.125
-    pigment = _layer(pigment_l, pigment_c, palette_value.hue + (palette_value.accent - 0.5) * 1.4)
+    # WHY 0.36: the hue wobble must stay well inside the allocator's spacing.
+    # Measured on the awkward desktop: a 1.4-radian (80-degree) wobble smeared
+    # each session's pigment across ~80 degrees while the allocator spaces
+    # identities ~50 degrees apart, so neighbouring sessions' arcs overlapped
+    # and the closest rendered pair met at 0.0105 OKLab — visually one window.
+    # 0.36 radians (~21 degrees) total spread keeps texture variety while the
+    # rendered centroid stays in its own session's hue family.
+    PIGMENT_HUE_WOBBLE = 0.36
+    pigment = _layer(pigment_l, pigment_c,
+                     palette_value.hue + (palette_value.accent - 0.5) * PIGMENT_HUE_WOBBLE)
     return [(leuc, LEUCOPHORE_ALPHA, "leucophore"),
             (iri, IRIDOPHORE_ALPHA, "iridophore"),
             (pigment, _pigment_alpha(request), "chromatophore")]

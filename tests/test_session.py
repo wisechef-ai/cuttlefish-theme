@@ -159,6 +159,7 @@ def test_bare_list_shape_accepted(tmp_path):
 
 def test_default_path_honours_hermes_home(tmp_path, monkeypatch):
     # Profiles redirect HERMES_HOME; the reader must follow, not assume ~/.hermes.
+    monkeypatch.delenv("CUTTLEFISH_SESSION_REGISTRY", raising=False)
     home = tmp_path / "profile-home"
     monkeypatch.setenv("HERMES_HOME", str(home))
     write_registry(home, {"entries": [{"session_id": "prof", "pid": 1}]})

@@ -236,7 +236,7 @@ def test_sessions_still_differ_after_coherence():
     islands, in which order. That is where the real separation lives, and it is
     what stops two windows looking alike.
     """
-    from cuttlefish_theme.chrome import _dominant_palette, dominant_hue
+    from cuttlefish_theme.mantle_palette import _dominant_palette, dominant_hue
 
     families_seen = {int(dominant_hue(s) // _FAMILY_ARC) for s in _SESSIONS}
     palettes = {_dominant_palette(s) for s in _SESSIONS}

@@ -93,8 +93,8 @@ def _identity_hue(session_id: str, width: int) -> float | None:
         return None
     if session_id in _observed_identities:
         return _hue_from_centroid(_observed_identities[session_id])
-    peers = _registry_identities()
-    peers.update(_observed_identities)
+    # The cached registry is a snapshot, not scratch space for a paint call.
+    peers = {**_registry_identities(), **_observed_identities}
     peers.pop(session_id, None)
     candidate_count = (CROWDED_CANDIDATE_COUNT if width >= COLD_ROW_WIDTH else
                        IDENTITY_CANDIDATE_COUNT)

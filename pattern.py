@@ -103,7 +103,7 @@ class Palette:
         # The band is arithmetic and cannot move, so the chrome follows it.
         # Chroma and lightness are untouched: only the hue is re-pointed.
         try:
-            from .chrome import dominant_hue
+            from .mantle_palette import dominant_hue
 
             identity = identity.with_(h=dominant_hue(self.session_id))
         except Exception:  # pragma: no cover - chrome is optional at import time

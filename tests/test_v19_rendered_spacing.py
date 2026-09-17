@@ -29,10 +29,14 @@ import pytest
 
 renderer = pytest.importorskip("cuttlefish_theme.v19.renderer")
 oklab = pytest.importorskip("cuttlefish_theme.v19.oklab")
+depth = pytest.importorskip("cuttlefish_theme.v19.depth")
 
 # The unlit ground; excluded so a centroid describes the PIGMENT, not the
-# terminal background that every session shares by design.
-GROUND = (0x0B, 0x0C, 0x10)
+# terminal background every session shares by design. Depth-aware: an indexed
+# (8-bit) session paints ground #080808 — the nearest xterm-256 entry — so
+# pinning the truecolor hex there counts every unlit cell as pigment and the
+# separation metric collapses on a healthy renderer.
+GROUND = depth.ground_for(depth.current_depth())
 
 # A just-noticeable difference in OKLab is ~0.02. The renderer must clear it
 # with margin: measured, an unwired renderer produced 0.0035 at worst.

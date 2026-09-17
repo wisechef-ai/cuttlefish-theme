@@ -24,10 +24,21 @@ import pytest
 
 from cuttlefish_theme.chrome import _MANTLE_GROUND, chrome_renderer
 from cuttlefish_theme.color.oklab import hex_to_oklch
+from cuttlefish_theme.v19 import depth as depth_policy
 
 SESSIONS = ("tori-main", "zivyra", "tilola", "chef", "wise", "rinera")
 SIGNALS = ("resting", "needs_me", "fault")
 CORPUS = [f"s{n}" for n in range(200)]
+
+
+def mantle_ground() -> str:
+    """The ground the mantle must match at the CURRENT terminal depth.
+
+    An indexed (8-bit) terminal snaps the window colour to the nearest
+    xterm-256 entry (#080808), and the mantle follows — pinning the truecolor
+    hex there fails a healthy renderer on every non-truecolor session.
+    """
+    return "#%02X%02X%02X" % depth_policy.ground_for(depth_policy.current_depth())
 
 
 def row(session: str, signal: str = "resting", width: int = 100, row_key: int = 0):
@@ -58,7 +69,7 @@ def test_the_ground_matches_the_terminal_window(session: str) -> None:
     every session; the mantle must agree exactly.
     """
     ground, count = Counter(backgrounds(row(session))).most_common(1)[0]
-    assert ground.upper() == _MANTLE_GROUND.upper()
+    assert ground.upper() == mantle_ground()
     assert count / 100 >= 0.70, "the ground must dominate; this is a dotted field, not a wash"
 
 

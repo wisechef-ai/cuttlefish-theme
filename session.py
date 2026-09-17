@@ -46,7 +46,14 @@ def _default_registry_path() -> Path:
     would read the ROOT registry while colouring a PROFILE session (the exact
     bug class Hermes' own AGENTS.md bans). Only when no override is set do we
     fall back to the default home.
+
+    ``CUTTLEFISH_SESSION_REGISTRY`` overrides both: it exists so the test
+    suite can pin a deterministic registry instead of reading whatever
+    sessions happen to be live on the host running the tests.
     """
+    override = os.environ.get("CUTTLEFISH_SESSION_REGISTRY")
+    if override:
+        return Path(override)
     home = os.environ.get("HERMES_HOME")
     root = Path(home) if home else Path.home() / ".hermes"
     return root / _REGISTRY_RELATIVE

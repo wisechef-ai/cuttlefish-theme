@@ -35,7 +35,7 @@ def test_mantle_pigment_survives_terminal_quantisation(session_id):
 
     Assert on the QUANTISED index, the way the terminal actually sees it.
     """
-    from cuttlefish_theme.chrome import _mantle_classes, _mantle_palette
+    from cuttlefish_theme.mantle_palette import _mantle_classes, _mantle_palette
     from cuttlefish_theme.color.terminal import quantize_256
 
     ground_index = quantize_256(_mantle_palette(session_id))

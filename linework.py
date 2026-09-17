@@ -40,7 +40,7 @@ def _identity_variants(session_id: str) -> tuple[str, ...]:
     """The bars' ramp, drawn from the SAME palette the mantle paints.
 
     Adam, 2026-09-11: "there should be a general colour palette per session and
-    this should reflect that." Both surfaces read `chrome._mantle_classes`, so a
+    this should reflect that." Both surfaces read `mantle_palette._mantle_classes`, so a
     bar colour is always a mantle colour. Sourcing them separately is what made
     koralen's bar sit at hues 180/210/330 while its mantle sat at 30/270/300/360
     — one session wearing two unrelated skins.
@@ -56,7 +56,7 @@ def _identity_variants(session_id: str) -> tuple[str, ...]:
     Displacing to the edge keeps the colour adjacent to where it started, which
     is all the alarm separation needs.
     """
-    from .chrome import _mantle_classes
+    from .mantle_palette import _mantle_classes
     from .color.oklab import hex_to_oklch
     palette = [hex_to_oklch(colour) for colour in _mantle_classes(session_id, "resting")]
     # Alarm-hued islands are DROPPED here, not displaced. The mantle may carry a
@@ -173,7 +173,7 @@ def _unlit(session_id: str, signal: str) -> str:
     than a background behind text and the band's own floor is darker than this
     surface wants.
     """
-    from .chrome import _mantle_palette
+    from .mantle_palette import _mantle_palette
     from .color.terminal import _index_to_hex, quantize_cube_256
     from .session import Signal
     # `cells` takes wire-form signals ("needs-me"/"error"); Signal's values are
