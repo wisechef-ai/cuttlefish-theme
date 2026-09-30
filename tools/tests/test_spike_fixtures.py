@@ -90,9 +90,15 @@ def test_runner_parses():
 
 def test_every_spike_dir_has_a_run_entrypoint():
     dirs = [d for d in SPIKES.iterdir() if d.is_dir() and d.name[:2].isdigit()]
-    assert {d.name[:2] for d in dirs} >= {"07", "08", "09", "10", "14"}
+    desktop = {"07", "08", "09", "10", "14"}
+    assert {d.name[:2] for d in dirs} >= desktop
     for d in dirs:
-        assert (d / "run.ts").is_file(), d.name
+        if d.name[:2] in desktop:
+            # run-desktop.sh invokes <spike>/run.ts, so desktop spikes need exactly that.
+            assert (d / "run.ts").is_file(), d.name
+        else:
+            # Terminal spikes (12, 15, ...) run outside Electron via their own run-*.sh.
+            assert (d / "run.ts").is_file() or any(d.glob("run*.sh")), d.name
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
