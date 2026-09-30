@@ -27,7 +27,7 @@ def _make(name):
             n = _seq
         row = {"ts": round(time.time(), 3), "seq": n, "pid": os.getpid(), "hook": name,
                "keys": {k: _summ(v) for k, v in kw.items()},
-               "ids": {k: kw[k] for k in _ID_KEYS if k in kw and isinstance(kw[k], (str, int, bool, type(None)))}}
+               "env_active_file": os.environ.get("HERMES_TUI_ACTIVE_SESSION_FILE"), "ids": {k: kw[k] for k in _ID_KEYS if k in kw and isinstance(kw[k], (str, int, bool, type(None)))}}
         try:
             with open(os.environ.get("HOOKDUMP_FILE", "/tmp/hookdump.jsonl"), "a") as f:
                 f.write(json.dumps(row, default=str) + "\n")

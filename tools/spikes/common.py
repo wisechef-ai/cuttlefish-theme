@@ -76,7 +76,7 @@ def enable_plugin(home, name, src_dir):
     with open(f"{home}/config.yaml", "a") as f:
         f.write(f"plugins:\n  enabled:\n    - {name}\n")
 
-def boot(t, timeout=240):
+def boot(t, timeout=900):
     """Wait until the TUI status bar says ready (cold home boot takes ~2 min)."""
     end = time.time() + timeout
     while time.time() < end:

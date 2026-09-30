@@ -62,7 +62,7 @@ def report(label, home, **tuis):
         say("  db:", r[:4])
 
 
-home = make_home(extra_cfg=f"compression:\n  in_place: {in_place}\n  threshold: 0.5\n")
+home = make_home(extra_cfg=f"compression:\n  in_place: {in_place}\n  protect_last_n: 2\n  protect_first_n: 1\n")
 say(f"HOME {home}  compression.in_place={in_place}")
 A = Tui(home, "A"); assert boot(A), "A boot"
 B = Tui(home, "B"); assert boot(B), "B boot"
@@ -75,17 +75,18 @@ B.line("Reply with exactly: bravo"); wait_idle(B)
 report("(a) after first turn in each", home, A=A, B=B)
 a1 = json.loads(content(fa))["session_id"] if content(fa).startswith("{") else None
 
-A.line("/new"); A.pump(6)
+A.send("/new"); time.sleep(1); A.send("\r"); A.pump(3); A.send("y"); A.pump(8)
 A.line("Reply with exactly: alpha-two"); wait_idle(A)
 report("(a') A after /new + turn (new session)", home, A=A, B=B)
 a2 = json.loads(content(fa))["session_id"] if content(fa).startswith("{") else None
 
 if a1:
-    A.line(f"/resume {a1}"); A.pump(10)
+    A.send(f"/resume {a1}"); time.sleep(1); A.send("\r"); A.pump(10)
     report(f"(b) A after /resume {a1} (older session)", home, A=A, B=B)
 
 A.line("Reply with exactly: alpha-three"); wait_idle(A)
-A.line("/compress"); A.pump(15); wait_idle(A, 180)
+for i in range(3): A.line(f"Write a 40 word sentence about the number {i}."); wait_idle(A)
+A.send("/compress"); time.sleep(1); A.send("\r"); A.pump(20); wait_idle(A, 240)
 report("(c) A after /compress", home, A=A, B=B)
 A.line("Reply with exactly: post-compress"); wait_idle(A)
 report("(c') A after a turn following /compress", home, A=A, B=B)
