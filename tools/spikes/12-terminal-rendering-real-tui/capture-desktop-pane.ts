@@ -36,6 +36,10 @@ const { values } = parseArgs({
     renderer: { type: 'string', default: 'dom' },
     // mantle.mjs (▀ half blocks, default) or mantle-bg.mjs (background-coloured spaces)
     widget: { type: 'string', default: 'mantle.mjs' },
+    // Run this shell command in the pane instead of the TUI (e.g. spike 15's pattern.py);
+    // shots are then named desktop-*.<renderer>.<tag>.png.
+    cmd: { type: 'string' },
+    tag: { type: 'string' },
   },
 })
 if (!values.out) throw new Error('--out DIR is required')
@@ -64,6 +68,7 @@ async function launchGpu() {
   const page = await app.firstWindow({ timeout: 120_000 })
   return { app, page, sandbox, checkout, sha: checkoutSha(checkout), close: async () => { await app.close().catch(() => undefined) } }
 }
+const suffix = values.tag ? `.${values.tag}` : values.widget === 'mantle.mjs' ? '' : `.${path.basename(values.widget!, '.mjs')}`
 const launched = values.renderer === 'gpu'
   ? await launchGpu()
   : await launchDesktop({ runtime: values.runtime, display: values.display, width: 1600, height: 1000 })
@@ -96,7 +101,7 @@ try {
   await xterm.click()
   await page.waitForTimeout(1500)
   const node = process.execPath
-  const cmd = `HERMES_HOME=${tuiHome} CF_NODE=${node} CF_HERMES_SRC=${launched.checkout} ` +
+  const cmd = values.cmd ?? `HERMES_HOME=${tuiHome} CF_NODE=${node} CF_HERMES_SRC=${launched.checkout} ` +
     `exec bash ${path.join(HERE, 'launch-tui.sh')}`
   await page.keyboard.type(cmd, { delay: 5 })
   await page.keyboard.press('Enter')
@@ -114,11 +119,11 @@ try {
       accessibleText: (document.querySelector('.xterm-accessibility-tree') as HTMLElement | null)?.innerText?.slice(0, 400) ?? null,
     }
   })
-  const win = path.join(out, `desktop-window.${values.renderer}${values.widget === 'mantle.mjs' ? '' : '.' + path.basename(values.widget!, '.mjs')}.png`)
+  const win = path.join(out, `desktop-window.${values.renderer}${suffix}.png`)
   await page.screenshot({ path: win })
   shots.push(win)
   // Clip from the page (not xterm.screenshot): element shots came out offset under the GPU path.
-  const pane = path.join(out, `desktop-pane.${values.renderer}${values.widget === 'mantle.mjs' ? '' : '.' + path.basename(values.widget!, '.mjs')}.png`)
+  const pane = path.join(out, `desktop-pane.${values.renderer}${suffix}.png`)
   const pb = await xterm.boundingBox()
   await page.screenshot({ path: pane, clip: pb! })
   shots.push(pane)
