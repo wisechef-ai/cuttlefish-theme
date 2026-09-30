@@ -15,7 +15,7 @@ export default function register(sdk) {
     const cloud = 0.5 + 0.5 * Math.sin(x * 0.13 - tt * 0.9 + Math.sin(y * 1.7 + tt * 0.3) * 1.3)
     return hex(30 + 90 * cloud, 60 + 110 * cloud, 110 + 120 * cloud * (0.6 + 0.4 * Math.sin(x * 0.05 + y)))
   }
-  const Mantle = ({ w, m }) => {
+  const MantleInner = ({ w, m }) => {
     const [frame, setFrame] = React.useState(0)
     React.useEffect(() => {
       if (m !== 'anim') return
@@ -23,10 +23,19 @@ export default function register(sdk) {
       return () => clearInterval(id)
     }, [m])
     const tt = m === 'anim' ? frame / FPS : 0
-    const rows = [0, 1].map(r => h(Box, { key: r, width: w, height: 1 },
-      ...Array.from({ length: w }, (_, x) => h(Text, { key: x, color: px(x, r * 2, tt), backgroundColor: px(x, r * 2 + 1, tt) }, '▀'))))
+    // CF_RLE=1: merge horizontal runs of identical (fg,bg) into ONE <Text> — far fewer Ink/yoga nodes per frame
+    const rowNodes = r => {
+      const cells = Array.from({ length: w }, (_, x) => [px(x, r * 2, tt), px(x, r * 2 + 1, tt)])
+      if (process.env.CF_RLE !== '1') return cells.map(([f, b], x) => h(Text, { key: x, color: f, backgroundColor: b }, '▀'))
+      const runs = []
+      for (const [f, b] of cells) { const l = runs[runs.length - 1]; if (l && l.f === f && l.b === b) l.n++; else runs.push({ f, b, n: 1 }) }
+      return runs.map((u, i) => h(Text, { key: i, color: u.f, backgroundColor: u.b }, '▀'.repeat(u.n)))
+    }
+    const rows = [0, 1].map(r => h(Box, { key: r, width: w, height: 1 }, ...rowNodes(r)))
     return h(Box, { flexDirection: 'column', width: w }, ...rows)
   }
+  // CF_MEMO=1: React.memo => a composer keystroke re-rendering the dock does NOT re-render the 236 Text nodes
+  const Mantle = process.env.CF_MEMO === '1' ? React.memo(MantleInner) : MantleInner
   const app = defineWidgetApp({
     id: 'mantle13', help: 'spike 13', mode: 'ambient', zone: 'dock-top', init: () => ({}), reduce: s => s,
     render: ({ cols }) => mode() === 'off' ? h(Text, null, '') : h(Mantle, { w: cols - 2, m: mode() })
