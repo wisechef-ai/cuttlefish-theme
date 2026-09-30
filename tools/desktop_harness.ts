@@ -176,6 +176,9 @@ export function writeConfig(sandbox: Sandbox, opts: { modelBaseUrl?: string; ext
 
   const yaml = [
     '# written by cuttlefish-theme tools/desktop_harness.ts (throwaway home)',
+    // 48 = installed 7bf352567f0, 49 = upstream f42f579; any value >= the migration
+    // floor (12) lets the backend migrate forward instead of skipping with a warning.
+    '_config_version: 48',
     'model:',
     `  default: ${QWEN38.model}`,
     `  provider: custom:${QWEN38.name}`,
@@ -289,7 +292,7 @@ export async function launchDesktop(opts: LaunchOptions = {}): Promise<Launched>
  * is on top of it. Same predicate as upstream tests-js/scripts/desktop-chat-smoke.ts
  * `waitForChatReady`. A bare `textarea` query passes behind the boot overlay.
  */
-export async function waitForShell(page: Page, timeoutMs = 180_000): Promise<number> {
+export async function waitForShell(page: Page, timeoutMs = 300_000): Promise<number> {
   const t0 = Date.now()
   const composer = page
     .locator('[data-slot="composer-root"]')
