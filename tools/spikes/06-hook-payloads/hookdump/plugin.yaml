@@ -1,0 +1,3 @@
+name: hookdump
+version: "0.1"
+description: P0 spike 06 - append every hook payload (keys, types, ids) to $HOOKDUMP_FILE as JSONL
