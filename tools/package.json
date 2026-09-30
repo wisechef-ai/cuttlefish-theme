@@ -1,0 +1,13 @@
+{
+  "name": "cuttlefish-theme-tools",
+  "private": true,
+  "type": "module",
+  "description": "Capture + spike harnesses for cuttlefish-theme. Not shipped with the plugin.",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "capture:desktop": "node capture_desktop.ts"
+  },
+  "dependencies": {
+    "@playwright/test": "1.62.1"
+  }
+}

@@ -1,0 +1,4 @@
+name: cf-spike
+version: 0.0.1
+description: "Scratch unified package for cuttlefish P0 desktop spikes (tools/spikes). Not the product."
+author: "cuttlefish-theme tools"
