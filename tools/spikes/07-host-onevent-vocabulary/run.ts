@@ -196,7 +196,7 @@ if (phases.includes('error')) {
   try {
     await mark(p, 'E start')
     await send(p, 'hello')
-    r.turn = await waitTurn(p, 150_000)
+    r.turn = await waitTurn(p, 540_000)
     await p.waitForTimeout(3000)
     r.dom = await domDots(p)
     r.text = (await p.evaluate(() => document.body.innerText)).slice(-600)
