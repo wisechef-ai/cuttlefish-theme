@@ -34,6 +34,8 @@ const { values } = parseArgs({
     // 'dom' = the harness default (--disable-gpu: xterm falls back to its DOM renderer);
     // 'gpu' = no --disable-gpu, so xterm tries its WebGL addon (SwiftShader on Xvfb).
     renderer: { type: 'string', default: 'dom' },
+    // mantle.mjs (▀ half blocks, default) or mantle-bg.mjs (background-coloured spaces)
+    widget: { type: 'string', default: 'mantle.mjs' },
   },
 })
 if (!values.out) throw new Error('--out DIR is required')
@@ -43,7 +45,7 @@ fs.mkdirSync(out, { recursive: true })
 // The TUI's throwaway home (separate from the desktop sandbox's home on purpose).
 const tuiHome = fs.mkdtempSync(path.join(process.env.TMPDIR || os.tmpdir(), 'cf-spike12-pane-'))
 fs.mkdirSync(path.join(tuiHome, 'tui-widgets'))
-fs.copyFileSync(path.join(HERE, 'mantle.mjs'), path.join(tuiHome, 'tui-widgets', 'cfmantle.mjs'))
+fs.copyFileSync(path.join(HERE, values.widget!), path.join(tuiHome, 'tui-widgets', 'cfmantle.mjs'))
 fs.writeFileSync(path.join(tuiHome, 'config.yaml'),
   'model:\n  default: stub\n  provider: custom\n  base_url: http://127.0.0.1:9/v1\n  api_key: stub\ndisplay:\n  interface: tui\n')
 
@@ -112,11 +114,11 @@ try {
       accessibleText: (document.querySelector('.xterm-accessibility-tree') as HTMLElement | null)?.innerText?.slice(0, 400) ?? null,
     }
   })
-  const win = path.join(out, `desktop-window.${values.renderer}.png`)
+  const win = path.join(out, `desktop-window.${values.renderer}${values.widget === 'mantle.mjs' ? '' : '.' + path.basename(values.widget!, '.mjs')}.png`)
   await page.screenshot({ path: win })
   shots.push(win)
   // Clip from the page (not xterm.screenshot): element shots came out offset under the GPU path.
-  const pane = path.join(out, `desktop-pane.${values.renderer}.png`)
+  const pane = path.join(out, `desktop-pane.${values.renderer}${values.widget === 'mantle.mjs' ? '' : '.' + path.basename(values.widget!, '.mjs')}.png`)
   const pb = await xterm.boundingBox()
   await page.screenshot({ path: pane, clip: pb! })
   shots.push(pane)
