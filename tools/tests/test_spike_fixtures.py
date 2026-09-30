@@ -97,8 +97,11 @@ def test_every_spike_dir_has_a_run_entrypoint():
             # run-desktop.sh invokes <spike>/run.ts, so desktop spikes need exactly that.
             assert (d / "run.ts").is_file(), d.name
         else:
-            # Terminal spikes (12, 15, ...) run outside Electron via their own run-*.sh.
-            assert (d / "run.ts").is_file() or any(d.glob("run*.sh")), d.name
+            # Terminal/TUI/binding spikes run outside Electron via their own
+            # run-*.sh (12, 15) or run*.py (01-06, 11, 13) entrypoint.
+            assert (
+                (d / "run.ts").is_file() or any(d.glob("run*.sh")) or any(d.glob("run*.py"))
+            ), d.name
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="node not installed")
