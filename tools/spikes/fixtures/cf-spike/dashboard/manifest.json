@@ -1,0 +1,9 @@
+{
+  "name": "cf-spike",
+  "label": "CF Spike",
+  "description": "Scratch backend for cuttlefish P0 spike 08 (ctx.rest).",
+  "version": "0.0.1",
+  "tab": { "hidden": true },
+  "entry": "dist/index.js",
+  "api": "plugin_api.py"
+}
