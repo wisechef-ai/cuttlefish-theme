@@ -1,0 +1,30 @@
+name: capture-tui
+
+# Tests for tools/capture_tui.py (pure parts + a real-pty smoke of the virtual backend).
+# Scoped to the capture tool on purpose: 4 pre-existing tests in tests/ import `hermes_cli`
+# (the hermes-agent package) and need it installed; wiring that is the phase-gate card's call.
+on:
+  push:
+    branches: [v22, "agent/**"]
+    paths: ["tools/capture_tui.py", "tools/requirements-capture.txt", "tests/test_capture_tui.py",
+            "tools/spikes/12-terminal-rendering-real-tui/**", ".github/workflows/capture-tui.yml"]
+  pull_request:
+    branches: [v22]
+    paths: ["tools/capture_tui.py", "tools/requirements-capture.txt", "tests/test_capture_tui.py",
+            "tools/spikes/12-terminal-rendering-real-tui/**", ".github/workflows/capture-tui.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r tools/requirements-capture.txt
+      - run: python tools/capture_tui.py --help
+      - run: python -m pytest tests/test_capture_tui.py -v

@@ -9,3 +9,4 @@ build/
 .worktrees/
 gate-*.txt
 tools/.venv/
+tools/node_modules/
