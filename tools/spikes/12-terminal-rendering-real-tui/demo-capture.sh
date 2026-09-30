@@ -6,7 +6,7 @@
 #
 # Captures the same TUI twice in the pty+pyte backend: truecolor (COLORTERM=truecolor) and the
 # 256-colour rung (COLORTERM unset), then checks the mantle rows are pixel-identical in both.
-# With CF_TERMINATOR=1 it also captures a real Terminator window on Xvfb ($CF_DISPLAY, default :92).
+# With CF_TERMINATOR=1 it also captures a real Terminator window on its own Xvfb ($CF_DISPLAY, default :112; capture_tui starts and stops it if not running).
 #
 # Outputs per run: <name>.png  <name>.sgr (raw SGR byte log)  <name>.txt (screen text).
 # Env: CF_COLS (120) CF_ROWS (40) CF_TIMEOUT (180) CF_PYTHON (python with pyte+Pillow;
@@ -55,7 +55,8 @@ cap virtual-256 --no-colorterm
 "$PY" "$HERE/compare_mantle.py" "$OUT/virtual-truecolor.sgr" "$OUT/virtual-256.sgr" --cols "$COLS" --rows "$ROWS"
 
 if [[ "${CF_TERMINATOR:-0}" == 1 ]]; then
-  cap terminator-truecolor --mode terminator --display "${CF_DISPLAY:-:92}"
+  cap terminator-truecolor --mode terminator --display "${CF_DISPLAY:-:112}"
+  "$PY" "$HERE/compare_mantle.py" "$OUT/virtual-truecolor.sgr" "$OUT/terminator-truecolor.sgr" --cols "$COLS" --rows "$ROWS"
 fi
 echo "artifacts in $OUT" >&2
 ls -1 "$OUT"

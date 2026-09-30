@@ -6,8 +6,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-import PIL.Image  # hard dependency: a missing Pillow/pyte must fail, never skip
-import pyte  # noqa: F401
+import PIL.Image
+import pyte  # noqa: F401  (hard dependency of the tool; fail collection, never skip)
 import pytest
 
 TOOL = Path(__file__).resolve().parents[1] / "tools" / "capture_tui.py"
@@ -81,8 +81,8 @@ def test_child_env_no_colorterm_removes_inherited_value():
 def test_terminator_keeps_vte_term_unless_overridden():
     cfg = ct.parse_args(_args("--mode", "terminator"))
     assert cfg.effective_term is None
-    inner = ct.terminator_inner_command(cfg)
-    assert inner[:2] == ["script", "-q"] and inner[-1] == "o.sgr"
+    inner = ct.terminator_inner_command(cfg, Path("s.log"))
+    assert inner[:2] == ["script", "-q"] and inner[-1] == "s.log"
     words = inner[-2].split()
     assert not any(w.startswith("TERM=") for w in words) and "COLORTERM=truecolor" in words
 
@@ -90,9 +90,31 @@ def test_terminator_keeps_vte_term_unless_overridden():
 def test_terminator_inner_command_quotes_and_unsets():
     cfg = ct.parse_args(_args("--mode", "terminator", "--no-colorterm", "--term", "xterm",
                               cmd=("sh", "-c", "echo 'a b'; sleep 1")))
-    shell = ct.terminator_inner_command(cfg)[-2]
+    shell = ct.terminator_inner_command(cfg, Path("s.log"))[-2]
     assert shell.startswith("env -u COLORTERM TERM=xterm sh -c ")
     assert "'echo '\"'\"'a b'\"'\"'; sleep 1'" in shell
+
+
+SCRIPT_LOG = (b'Script started on 2026-09-30 16:28:30+02:00 [COMMAND="sh -c \'x\'" TERM="xterm-256color" '
+              b'TTY="/dev/pts/2" COLUMNS="63" LINES="5"]\n'
+              b"\x1b[31mhello\x1b[0m\r\n"
+              b'\nScript done on 2026-09-30 16:28:40+02:00 [COMMAND_EXIT_CODE="0"]\n')
+
+
+def test_parse_script_log_strips_header_and_trailer_and_reads_real_size():
+    payload, dims = ct.parse_script_log(SCRIPT_LOG)
+    assert payload == b"\x1b[31mhello\x1b[0m\r\n"
+    assert dims == (63, 5)
+
+
+def test_parse_script_log_while_still_running_and_empty():
+    running = SCRIPT_LOG.split(b"\nScript done")[0]
+    assert ct.parse_script_log(running) == (b"\x1b[31mhello\x1b[0m\r\n", (63, 5))
+    assert ct.parse_script_log(b"") == (b"", None)
+
+
+def test_parse_script_log_leaves_plain_bytes_alone():
+    assert ct.parse_script_log(b"no header here") == (b"no header here", None)
 
 
 def test_terminator_config_sets_font():
@@ -100,10 +122,22 @@ def test_terminator_config_sets_font():
     assert "font = Noto Mono 11" in text and "use_system_font = False" in text
 
 
-def test_default_geometry_scales_with_grid():
-    w1, h1 = map(int, ct.default_geometry(80, 24, "Mono 12").split("x"))
-    w2, h2 = map(int, ct.default_geometry(160, 48, "Mono 12").split("x"))
-    assert w2 > 1.9 * w1 and h2 > 1.9 * h1
+def test_default_geometry_grows_per_cell_and_with_font():
+    def wh(cols, rows, font):
+        return tuple(map(int, ct.default_geometry(cols, rows, font).split("x")))
+    w1, h1 = wh(80, 24, "Mono 14")
+    w2, h2 = wh(81, 25, "Mono 14")
+    assert 10 <= w2 - w1 <= 12 and 19 <= h2 - h1 <= 21      # one VTE cell at 14pt
+    w3, h3 = wh(80, 24, "Mono 28")
+    assert w3 > 1.9 * w1 and h3 > h1
+
+
+def test_corrected_geometry_moves_by_whole_cells():
+    assert ct.corrected_geometry("1000x800", (120, 40), (120, 40), "Mono 14") == "1000x800"
+    w, h = map(int, ct.corrected_geometry("1000x800", (120, 40), (118, 37), "Mono 14").split("x"))
+    assert (w, h) == (1000 + round(2 * 11.05), 800 + 3 * 20)
+    w, h = map(int, ct.corrected_geometry("1000x800", (80, 24), (81, 26), "Mono 28").split("x"))
+    assert (w, h) == (1000 - round(2 * 11.05), 800 - 2 * 40)
 
 
 # ----------------------------------------------------------------- screen model + predicate
@@ -220,3 +254,21 @@ def test_virtual_capture_times_out_with_exit_2_and_keeps_log(tmp_path):
 def test_virtual_capture_command_exit_before_match_is_timeout(tmp_path):
     rc, _, _ = _run(tmp_path, "--wait-for", "NEVER", "--timeout", "10", cmd=("true",))
     assert rc == ct.EXIT_TIMEOUT
+
+
+def test_virtual_capture_reaps_grandchildren(tmp_path):
+    # the grandchild ignores SIGHUP (like a daemonised gateway), so only a group kill ends it
+    import os
+    import time
+    pidfile = tmp_path / "grandchild.pid"
+    rc, _, _ = _run(tmp_path, "--wait-for", "READY", "--timeout", "10", "--settle", "0",
+                    cmd=("sh", "-c", f"(trap '' HUP; exec sleep 300) & echo $! > {pidfile}; echo READY; wait"))
+    assert rc == 0
+    pid = int(pidfile.read_text())
+    for _ in range(20):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        time.sleep(0.1)
+    raise AssertionError(f"grandchild {pid} outlived the capture")

@@ -68,6 +68,7 @@ class Config:
     display: str = ":92"
     font: str = DEFAULT_FONT
     geometry: str | None = None      # terminator window WxH in pixels; default derived from cols/rows
+    actual_grid: tuple[int, int] | None = None   # set by the backend: the grid the terminal really had
 
     @property
     def effective_term(self) -> str | None:
@@ -166,9 +167,10 @@ def child_env(base: dict[str, str], cfg: Config) -> dict[str, str]:
     return env
 
 
-def terminator_inner_command(cfg: Config) -> list[str]:
+def terminator_inner_command(cfg: Config, script_log: Path) -> list[str]:
     """What Terminator runs: `env` applies TERM/COLORTERM overrides on top of VTE's, `script`
-    records the raw bytes the command writes to the terminal."""
+    records the raw bytes the command writes to the terminal (into `script_log`, which carries
+    script's own header/trailer; parse_script_log strips them)."""
     env_args = ["env"]
     if cfg.colorterm is None:
         env_args += ["-u", "COLORTERM"]
@@ -178,7 +180,7 @@ def terminator_inner_command(cfg: Config) -> list[str]:
         env_args.append(f"TERM={cfg.term}")
     env_args += [f"{k}={v}" for k, v in cfg.env.items()]
     inner = shlex.join(env_args + cfg.command)
-    return ["script", "-q", "-f", "-e", "-c", inner, str(cfg.raw_log)]
+    return ["script", "-q", "-f", "-e", "-c", inner, str(script_log)]
 
 
 def terminator_config(font: str) -> str:
@@ -190,11 +192,42 @@ def terminator_config(font: str) -> str:
 
 
 def default_geometry(cols: int, rows: int, font: str) -> str:
-    """Approximate window pixels for cols x rows at the font's point size (VTE cell ~0.6em x 1.2em @96dpi)."""
+    """Window pixels for cols x rows. Calibrated on Terminator/VTE 0.76 with DejaVu Sans Mono 14 on
+    Xvfb (96 dpi): cell ~11.05 x 20 px, ~120 px of fixed vertical chrome (measured: 1330x860 -> 120x37,
+    1338x900 -> 121x39). Cell size scales with point size. Other fonts differ, so this is only an
+    estimate: the real grid is read back from script(1)'s log header and reported (see
+    parse_script_log); pass --geometry to pin it."""
     m = re.search(r"(\d+(?:\.\d+)?)\s*$", font)
-    pt = float(m.group(1)) if m else 12.0
-    px = pt * 96 / 72
-    return f"{int(cols * px * 0.62) + 4}x{int(rows * px * 1.2) + 4}"
+    scale = (float(m.group(1)) if m else 14.0) / 14.0
+    return f"{round(cols * 11.05 * scale) + 6}x{round(rows * 20 * scale) + 128}"
+
+
+def corrected_geometry(geometry: str, want: tuple[int, int], got: tuple[int, int], font: str) -> str:
+    """Next window size to try: shift by the cell delta between the grid we got and the one we want."""
+    w, h = map(int, geometry.split("x"))
+    m = re.search(r"(\d+(?:\.\d+)?)\s*$", font)
+    scale = (float(m.group(1)) if m else 14.0) / 14.0
+    return f"{w + round((want[0] - got[0]) * 11.05 * scale)}x{h + round((want[1] - got[1]) * 20 * scale)}"
+
+
+_SCRIPT_HEADER = re.compile(rb"\AScript started on [^\n]*?\[(?P<meta>[^\n]*)\]\r?\n")
+_SCRIPT_TRAILER = re.compile(rb"\r?\nScript done on [^\n]*\[[^\n]*\]\r?\n?\Z")
+_SCRIPT_DIM = re.compile(rb'\b(COLUMNS|LINES)="(\d+)"')
+
+
+def parse_script_log(data: bytes) -> tuple[bytes, tuple[int, int] | None]:
+    """util-linux script(1) log -> (terminal bytes only, (cols, rows) of the real pty or None).
+
+    script writes `Script started on DATE [COMMAND=".." TERM=".." TTY=".." COLUMNS="c" LINES="r"]`
+    before the payload and `Script done on ...` after it; neither was ever on the screen."""
+    dims = None
+    head = _SCRIPT_HEADER.match(data)
+    if head:
+        found = dict(_SCRIPT_DIM.findall(head.group("meta")))
+        if b"COLUMNS" in found and b"LINES" in found:
+            dims = (int(found[b"COLUMNS"]), int(found[b"LINES"]))
+        data = data[head.end():]
+    return _SCRIPT_TRAILER.sub(b"", data), dims
 
 
 # --------------------------------------------------------------------------- screen model
@@ -361,9 +394,11 @@ def capture_virtual(cfg: Config) -> None:
             alive = read_once(min(0.1, max(0.0, settle_end - time.monotonic())))
         _write_outputs(cfg, model)
     finally:
+        # pty.fork() makes the child a session + process-group leader: signal the whole group so
+        # grandchildren (the TUI's tui_gateway python, node workers) never outlive the capture.
         for sig in (signal.SIGTERM, signal.SIGKILL):
             try:
-                os.kill(pid, sig)
+                os.killpg(pid, sig)
                 time.sleep(0.2)
             except OSError:
                 break
@@ -399,6 +434,46 @@ def _screenshot(display: str, out: Path, size: str) -> None:
     subprocess.run([convert, "xwd:-", "-crop", f"{size}+0+0", f"png:{out}"], input=shot.stdout, check=True)
 
 
+def _probe_grid(geometry: str, env: dict[str, str], log: Path) -> tuple[int, int] | None:
+    """Open Terminator at `geometry` just long enough for script(1) to log the pty size. (script
+    only flushes its header together with the first output, hence the `echo`.)"""
+    import signal, subprocess, time
+    log.unlink(missing_ok=True)
+    proc = subprocess.Popen(["dbus-run-session", "--", "terminator", "-u", f"--geometry={geometry}+0+0",
+                             "-x", "script", "-q", "-f", "-c", "echo; sleep 5", str(log)],
+                            env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+    try:
+        for _ in range(100):
+            time.sleep(0.1)
+            if log.exists():
+                dims = parse_script_log(log.read_bytes())[1]
+                if dims:
+                    return dims
+        return None
+    finally:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except OSError:
+            pass
+        proc.wait()
+
+
+def _calibrate_geometry(cfg: Config, geometry: str, env: dict[str, str], log: Path) -> str:
+    """Closed loop: VTE's window chrome and minimum size vary, so measure instead of trusting a formula."""
+    want = (cfg.cols, cfg.rows)
+    got = None
+    for _ in range(4):
+        got = _probe_grid(geometry, env, log)
+        if got is None or got == want:
+            break
+        geometry = corrected_geometry(geometry, want, got, cfg.font)
+    if got != want:
+        raise RuntimeError(f"Terminator cannot show a {want[0]}x{want[1]} grid on {cfg.display} with font "
+                           f"{cfg.font!r} (last probe {geometry} -> {got}); the screen may be too small, or "
+                           f"pass --geometry explicitly")
+    return geometry
+
+
 def capture_terminator(cfg: Config) -> None:
     import shutil, subprocess, tempfile, time
 
@@ -418,41 +493,64 @@ def capture_terminator(cfg: Config) -> None:
                 break
             time.sleep(0.1)
     cfgdir = tempfile.mkdtemp(prefix="capture-tui-xdg-")
-    (Path(cfgdir) / "terminator").mkdir()
-    (Path(cfgdir) / "terminator" / "config").write_text(terminator_config(cfg.font))
-    cfg.raw_log.unlink(missing_ok=True)
-    env = {k: v for k, v in os.environ.items() if k not in ("TERM", "COLORTERM")}
-    env.update(DISPLAY=cfg.display, XDG_CONFIG_HOME=cfgdir)
+    try:
+        _run_terminator(cfg, geometry, Path(cfgdir))
+    finally:
+        if xvfb_proc:
+            xvfb_proc.terminate()
+            xvfb_proc.wait(timeout=5)
+        shutil.rmtree(cfgdir, ignore_errors=True)
+
+
+def _run_terminator(cfg: Config, geometry: str, cfgdir: Path) -> None:
+    import signal, subprocess, time
+
+    (cfgdir / "terminator").mkdir()
+    (cfgdir / "terminator" / "config").write_text(terminator_config(cfg.font))
+    script_log = cfgdir / "script.log"
+    env = {k: v for k, v in os.environ.items() if k not in ("TERM", "COLORTERM", "COLUMNS", "LINES")}
+    env.update(DISPLAY=cfg.display, XDG_CONFIG_HOME=str(cfgdir))
+    if not cfg.geometry:
+        geometry = _calibrate_geometry(cfg, geometry, env, cfgdir / "probe.log")
     term = subprocess.Popen(["dbus-run-session", "--", "terminator", "-u", f"--geometry={geometry}+0+0",
-                             "-x", *terminator_inner_command(cfg)],
+                             "-x", *terminator_inner_command(cfg, script_log)],
                             env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+    def snapshot() -> tuple[bytes, ScreenModel]:
+        payload, dims = parse_script_log(script_log.read_bytes() if script_log.exists() else b"")
+        cols, rows = dims or (cfg.cols, cfg.rows)
+        return payload, model_from_bytes(payload, cols, rows)
+
     try:
         deadline = time.monotonic() + cfg.timeout
-        model = ScreenModel(cfg.cols, cfg.rows)
+        payload, model = snapshot()
         matched = False
         while time.monotonic() < deadline:
             time.sleep(0.25)
-            data = cfg.raw_log.read_bytes() if cfg.raw_log.exists() else b""
-            if len(data) != len(model.raw):
-                model = model_from_bytes(data, cfg.cols, cfg.rows)
+            payload, model = snapshot()
             if predicate_met(model, cfg.wait_for):
                 matched = True
                 break
             if term.poll() is not None:
                 break
         if not matched:
+            cfg.raw_log.write_bytes(payload)
             if cfg.text_out:
                 cfg.text_out.write_text(model.text() + "\n", encoding="utf-8")
             raise PredicateTimeout(f"predicate {cfg.wait_for.pattern!r} not observed on {cfg.display} within "
                                    f"{cfg.timeout}s; last screen:\n{model.text()[-800:]}")
         time.sleep(cfg.settle)
         _screenshot(cfg.display, cfg.png, geometry)
-        # the log is script's own file; re-read it so the text dump includes the settle period
-        model = model_from_bytes(cfg.raw_log.read_bytes(), cfg.cols, cfg.rows)
+        payload, model = snapshot()   # include the settle period
+        cfg.raw_log.write_bytes(payload)
+        grid = (model.screen.columns, model.screen.lines)
+        cfg.actual_grid = grid
+        if grid != (cfg.cols, cfg.rows):
+            print(f"capture_tui: WARNING: Terminator gave a {grid[0]}x{grid[1]} grid, asked for "
+                  f"{cfg.cols}x{cfg.rows}; pass --geometry to adjust", file=sys.stderr)
         if cfg.text_out:
             cfg.text_out.write_text(model.text() + "\n", encoding="utf-8")
     finally:
-        import signal
         try:
             os.killpg(term.pid, signal.SIGTERM)
         except OSError:
@@ -461,9 +559,7 @@ def capture_terminator(cfg: Config) -> None:
             term.wait(timeout=3)
         except subprocess.TimeoutExpired:
             os.killpg(term.pid, signal.SIGKILL)
-        if xvfb_proc:
-            xvfb_proc.terminate()
-        shutil.rmtree(cfgdir, ignore_errors=True)
+            term.wait()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -478,7 +574,9 @@ def main(argv: list[str] | None = None) -> int:
     except (ImportError, OSError, RuntimeError) as exc:
         print(f"capture_tui: ERROR: {exc}", file=sys.stderr)
         return EXIT_ERROR
-    print(f"PNG: {cfg.png}\nRAW: {cfg.raw_log}" + (f"\nTEXT: {cfg.text_out}" if cfg.text_out else ""))
+    cols, rows = cfg.actual_grid or (cfg.cols, cfg.rows)
+    print(f"PNG: {cfg.png}\nRAW: {cfg.raw_log}" + (f"\nTEXT: {cfg.text_out}" if cfg.text_out else "")
+          + f"\nGRID: {cols}x{rows}")
     return EXIT_OK
 
 
