@@ -20,7 +20,9 @@ import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 
-import { launchDesktop } from '../../desktop_harness.ts'
+import { _electron } from '@playwright/test'
+
+import { buildEnv, checkoutSha, createSandbox, electronBinary, launchDesktop, resolveCheckout, writeConfig } from '../../desktop_harness.ts'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const { values } = parseArgs({
@@ -29,6 +31,9 @@ const { values } = parseArgs({
     runtime: { type: 'string', default: 'installed' },
     display: { type: 'string', default: process.env.CF_DISPLAY ?? ':93' },
     wait: { type: 'string', default: '45' },
+    // 'dom' = the harness default (--disable-gpu: xterm falls back to its DOM renderer);
+    // 'gpu' = no --disable-gpu, so xterm tries its WebGL addon (SwiftShader on Xvfb).
+    renderer: { type: 'string', default: 'dom' },
   },
 })
 if (!values.out) throw new Error('--out DIR is required')
@@ -42,7 +47,24 @@ fs.copyFileSync(path.join(HERE, 'mantle.mjs'), path.join(tuiHome, 'tui-widgets',
 fs.writeFileSync(path.join(tuiHome, 'config.yaml'),
   'model:\n  default: stub\n  provider: custom\n  base_url: http://127.0.0.1:9/v1\n  api_key: stub\ndisplay:\n  interface: tui\n')
 
-const launched = await launchDesktop({ runtime: values.runtime, display: values.display, width: 1600, height: 1000 })
+async function launchGpu() {
+  const checkout = resolveCheckout(values.runtime)
+  const sandbox = createSandbox('cf-pane-gpu')
+  writeConfig(sandbox, {})
+  // Same window pin as desktop_harness.ts pinWindow (not exported), so both renderers get 1600x1000.
+  fs.writeFileSync(path.join(sandbox.userDataDir, 'window-state.json'), JSON.stringify({ x: 0, y: 0, width: 1600, height: 1000, isMaximized: false }))
+  fs.writeFileSync(path.join(sandbox.userDataDir, 'zoom-state.json'), JSON.stringify({ zoomLevel: 0 }))
+  const desktopDir = path.join(checkout, 'apps', 'desktop')
+  const app = await _electron.launch({
+    executablePath: electronBinary(checkout), args: [desktopDir, '--no-sandbox', '--ignore-gpu-blocklist'],
+    env: buildEnv(sandbox, checkout, values.display!), cwd: desktopDir, timeout: 120_000,
+  })
+  const page = await app.firstWindow({ timeout: 120_000 })
+  return { app, page, sandbox, checkout, sha: checkoutSha(checkout), close: async () => { await app.close().catch(() => undefined) } }
+}
+const launched = values.renderer === 'gpu'
+  ? await launchGpu()
+  : await launchDesktop({ runtime: values.runtime, display: values.display, width: 1600, height: 1000 })
 const page = launched.page
 const shots: string[] = []
 let info: Record<string, unknown> = {}
@@ -56,6 +78,19 @@ try {
     await page.waitForTimeout(2500)
   }
   await xterm.waitFor({ state: 'visible', timeout: 30_000 })
+  // Best effort: the pane opens small (bottom of the right sidebar, ~309x130 px at 1600x1000).
+  // Try the column sash on its left edge like a user would. On f42f579 this drag does NOT grow
+  // the pane (measured: paneBox unchanged), so the TUI runs at the pane's default ~45x10 grid.
+  const sashes = await page.evaluate(() => [...document.querySelectorAll('*')]
+    .filter(e => getComputedStyle(e).cursor === 'col-resize' && e.getAttribute('role'))
+    .map(e => e.getBoundingClientRect().toJSON()))
+  const paneBox0 = await xterm.boundingBox()
+  const sash = paneBox0 && sashes.find(b => Math.abs(b.x + b.width / 2 - paneBox0.x) < 20)
+  if (sash) {
+    const cx = sash.x + sash.width / 2, cy = paneBox0!.y + paneBox0!.height / 2
+    await page.mouse.move(cx, cy); await page.mouse.down(); await page.mouse.move(420, cy, { steps: 20 }); await page.mouse.up()
+  }
+  await page.waitForTimeout(1500)
   await xterm.click()
   await page.waitForTimeout(1500)
   const node = process.execPath
@@ -69,17 +104,21 @@ try {
     const el = document.querySelector('.xterm') as HTMLElement | null
     const cs = el ? getComputedStyle(el.querySelector('.xterm-rows, .xterm-screen') ?? el) : null
     return {
-      renderer: el?.querySelector('canvas') ? 'webgl/canvas' : 'dom',
-      fontFamily: cs?.fontFamily ?? null,
+      renderer: [...(el?.classList ?? [])].find(c => c.includes('renderer')) ?? (el?.querySelector('canvas') ? 'canvas' : 'unknown'),
+      canvases: el ? el.querySelectorAll('canvas').length : 0,
+      fontFamily: (el?.querySelector('.xterm-rows span, .xterm-rows div') ? getComputedStyle(el.querySelector('.xterm-rows span, .xterm-rows div')!).fontFamily : null) ?? cs?.fontFamily ?? null,
+      fontSize: el?.querySelector('.xterm-rows') ? getComputedStyle(el.querySelector('.xterm-rows')!).fontSize : null,
       paneBox: el ? el.getBoundingClientRect().toJSON() : null,
       accessibleText: (document.querySelector('.xterm-accessibility-tree') as HTMLElement | null)?.innerText?.slice(0, 400) ?? null,
     }
   })
-  const win = path.join(out, 'desktop-window.png')
+  const win = path.join(out, `desktop-window.${values.renderer}.png`)
   await page.screenshot({ path: win })
   shots.push(win)
-  const pane = path.join(out, 'desktop-pane.png')
-  await xterm.screenshot({ path: pane })
+  // Clip from the page (not xterm.screenshot): element shots came out offset under the GPU path.
+  const pane = path.join(out, `desktop-pane.${values.renderer}.png`)
+  const pb = await xterm.boundingBox()
+  await page.screenshot({ path: pane, clip: pb! })
   shots.push(pane)
 } finally {
   await launched.close()
