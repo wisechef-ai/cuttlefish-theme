@@ -128,6 +128,10 @@ def check(manifest_path: Path, hosts: set[str], live_pids: bool = False) -> dict
                 continue
             try:
                 px, size = crop_pixels(png, e["crop"])
+                # Grids carry per-tile crops: the static proof compares only what the host PAINTED, never the
+                # host's own chrome inside the bbox (desktop sidebar rows show a wall-clock age, "10m").
+                if e.get("tiles"):
+                    px = b"".join(crop_pixels(png, t["crop"])[0] for t in e["tiles"])
             except OSError as exc:
                 fails["files"].append(f"{e['file']}: {exc}")
                 continue
