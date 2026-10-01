@@ -1,0 +1,1 @@
+- 2026-10-01 cf2909 P1-DB: direction B b-disruptive added (design/directions/b-disruptive, 11 behaviour tests)
