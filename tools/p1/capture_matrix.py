@@ -367,7 +367,7 @@ def run_tui_launch(launch: str, items: list[tuple[str, dict]], args, ctx) -> Non
             pb = palette_bbox(png, pal) if pal else None
             if pb:
                 cal = calibrate(cells, pb)
-        e["_cells"], e["_cal_needed"] = cells, cal is None
+        e["_cells"] = cells
         e["_ack"] = ack
         e["_cmd"], e["_ps"], e["_home"] = command, psf.read_text() if psf.exists() else "", str(home)
     for did, e in items:

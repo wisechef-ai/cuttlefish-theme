@@ -211,6 +211,8 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("manifest", type=Path)
     ap.add_argument("--hosts", default=None, help="tui,pane,desktop (default: the manifest's own `hosts`)")
+    ap.add_argument("--live-pids", action="store_true", help="also require each log's host pid to be alive NOW "
+                                                              "(only meaningful while the capture's hosts still run)")
     ns = ap.parse_args(argv)
     hosts = ns.hosts
     if hosts is None:
@@ -218,7 +220,7 @@ def main(argv=None) -> int:
             hosts = ",".join(json.loads(ns.manifest.read_text()).get("hosts") or ["tui", "pane", "desktop"])
         except (OSError, ValueError):
             hosts = "tui,pane,desktop"
-    rep = check(ns.manifest, {h.strip() for h in hosts.split(",") if h.strip()})
+    rep = check(ns.manifest, {h.strip() for h in hosts.split(",") if h.strip()}, live_pids=ns.live_pids)
     print(json.dumps(rep, indent=1))
     return 0 if rep["ok"] else 1
 
