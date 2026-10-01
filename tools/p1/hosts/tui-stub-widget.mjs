@@ -9,7 +9,7 @@
 //                    A scene may carry `direction` (absolute path) to switch modules without a relaunch.
 //   CF_P1_FIXTURE    tools/p1/stub-sessions.json
 //   CF_P1_SCENE      scene json: { view: mantle|pill|grid16|grid20|degraded, state, session_idx, frame_t,
-//                                  rung: half|bg, depth: truecolor|256, seq? }
+//                                  rung: half|bg, depth: truecolor|256, seq?, direction?, mantle_rows? }
 //                    The file is re-read when it changes, so one TUI process can serve many scenes.
 //   CF_P1_ACK        optional: after a scene is on screen the widget writes `{seq, view, ...}` here, so a
 //                    driver knows the frame it screenshots is the scene it asked for.
@@ -159,6 +159,32 @@ const sessionFor = scene =>
 
 const stateFor = scene => (scene.view === 'degraded' ? 'unknown' : scene.state ?? 'idle')
 
+/** Resolved sRGB of a terminal colour string (ansi256(n) -> the xterm palette entry). */
+export function colorRgb(c) {
+  if (!c) return null
+  const m = /^ansi256\((\d+)\)$/.exec(c)
+  if (m) {
+    const e = XTERM256.find(x => x[0] === Number(m[1]))
+    return e ? rgbHex(e[1], e[2], e[3]) : null
+  }
+  return c
+}
+
+/** Every solid colour the box paints (cell backgrounds + the ▀ foreground, never glyph ink): what a
+ *  capture uses to find the painted box in a screenshot. */
+export function pixelPalette(grid) {
+  const out = new Set()
+  for (const line of grid) {
+    for (const c of line) {
+      const keys = c.ch === '▀' ? [c.fg, c.bg] : [c.bg]
+      for (const k of keys) { const v = colorRgb(k); if (v) out.add(v) }
+    }
+  }
+  return [...out].sort()
+}
+
+let lastPalette = []
+
 function paintCells({ scale, cols, rows, state, session, t, scene }) {
   const pxH = scene.rung === 'half' ? rows * 2 : rows
   const direction = modules.get(scene.direction || DEFAULT_DIRECTION)
@@ -167,7 +193,9 @@ function paintCells({ scale, cols, rows, state, session, t, scene }) {
   if (!out || !(out.pixels instanceof Uint8ClampedArray) || out.pixels.length !== cols * pxH * 4) {
     throw new Error(`direction.paint returned ${out?.pixels?.length} bytes, want ${cols * pxH * 4}`)
   }
-  return toCells(out, cols, rows, scene.rung === 'half' ? 'half' : 'bg', scene.depth ?? 'truecolor')
+  const grid = toCells(out, cols, rows, scene.rung === 'half' ? 'half' : 'bg', scene.depth ?? 'truecolor')
+  for (const c of pixelPalette(grid)) lastPalette.push(c)
+  return grid
 }
 
 export default function register(sdk) {
@@ -187,6 +215,7 @@ export default function register(sdk) {
       fs.writeFileSync(tmp, JSON.stringify({
         seq: scene.seq ?? null, direction: direction?.meta?.id ?? null, view: scene.view, state: stateFor(scene),
         rung: scene.rung, depth: scene.depth, cols, term_rows: termRows, ...info, pid: process.pid,
+        palette: [...new Set(info.palette)].sort(),
       }))
       fs.renameSync(tmp, ACK)
     })
@@ -210,6 +239,7 @@ export default function register(sdk) {
   })
 
   function renderScene({ cols, rows: termRows, state: st }) {
+      lastPalette = []
       const scene = st.scene
       if (scene.error) return h(Text, { color: 'red' }, `cf-p1 scene error: ${scene.error}`)
       const t = LIVE ? st.frame * 0.25 : Number(scene.frame_t ?? 0)
@@ -218,7 +248,9 @@ export default function register(sdk) {
       let info
       if (view === 'mantle' || view === 'degraded') {
         const w = Math.max(1, cols - 2)
-        const rows = mantleRows(termRows)
+        // scene.mantle_rows pins the height (P1 judges the 2-row look even in a short desktop pane);
+        // otherwise the host rule applies (D3: 1 row under 30 terminal rows).
+        const rows = scene.mantle_rows === 1 || scene.mantle_rows === 2 ? scene.mantle_rows : mantleRows(termRows)
         body = h(Block, { grid: paintCells({ scale: 'M', cols: w, rows, state: stateFor(scene), session: sessionFor(scene), t, scene }) })
         info = { t, cells: [w, rows], box_cols: w }
       } else if (view === 'pill') {
@@ -248,6 +280,7 @@ export default function register(sdk) {
       } else {
         return h(Text, { color: 'red' }, `cf-p1 unknown view ${view}`)
       }
+      info.palette = lastPalette
       return h(Box, { flexDirection: 'column', flexShrink: 0 }, body, h(Ack, { scene, info, cols, termRows }))
   }
 

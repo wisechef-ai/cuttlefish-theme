@@ -174,6 +174,7 @@ class Step:
     settle: float | None = None
     timeout: float | None = None
     ps_log: Path | None = None
+    ack_out: Path | None = None
 
 
 def parse_sequence(items: list) -> list[Step]:
@@ -201,6 +202,7 @@ def parse_sequence(items: list) -> list[Step]:
             settle=float(it["settle"]) if it.get("settle") is not None else None,
             timeout=float(it["timeout"]) if it.get("timeout") is not None else None,
             ps_log=Path(it["ps_log"]) if it.get("ps_log") else None,
+            ack_out=Path(it["ack_out"]) if it.get("ack_out") else None,
         ))
     return steps
 
@@ -481,6 +483,9 @@ def run_steps(cfg: Config, pump, current_model, shoot, root_pid: int | None = No
             step.ps_log.parent.mkdir(parents=True, exist_ok=True)
             step.ps_log.write_text(process_tree_text(root_pid), encoding="utf-8")
         shoot(step.png)
+        if step.ack_out and step.ack_path:
+            step.ack_out.parent.mkdir(parents=True, exist_ok=True)
+            step.ack_out.write_bytes(Path(step.ack_path).read_bytes())
         model = current_model()
         if step.raw_log:
             step.raw_log.parent.mkdir(parents=True, exist_ok=True)

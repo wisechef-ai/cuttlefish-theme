@@ -61,6 +61,8 @@ export interface LaunchOptions {
   /** Window size. */
   width?: number
   height?: number
+  /** true: no --disable-gpu (xterm.js loads its WebGL addon; SwiftShader on Xvfb). Default false = DOM renderer. */
+  gpu?: boolean
 }
 
 export interface Launched {
@@ -266,7 +268,7 @@ export async function launchDesktop(opts: LaunchOptions = {}): Promise<Launched>
   const desktopDir = path.join(checkout, 'apps', 'desktop')
   const app = await _electron.launch({
     executablePath: electronBinary(checkout),
-    args: [desktopDir, '--disable-gpu', '--no-sandbox'],
+    args: opts.gpu ? [desktopDir, '--no-sandbox', '--ignore-gpu-blocklist'] : [desktopDir, '--disable-gpu', '--no-sandbox'],
     env: buildEnv(sandbox, checkout, display, opts.env),
     cwd: desktopDir,
     timeout: 120_000,
