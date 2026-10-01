@@ -80,6 +80,28 @@ Browser mockups do not count.
 
 ## 5. Gates (lane G builds them; the lead runs them)
 
-`gates/g2.py <manifest>` and `gates/g5.py <manifest>`. The thresholds are in plan §5 and the P1-LEAD card:
-contrast ≥ 4.5:1 on authored pairs; identity separation on rendered pixels at 16 and 20; colour-blind sims still name
-the state from pattern; G5 median ≥ 7, none < 6, legend naming ≥ 80 %, INPUT↔ERROR confusions = 0, identity 16 → ≥ 14/16.
+`gates/g2.py <manifest>` and `gates/g5.py <manifest>`. Each exits 0 on PASS and 1 on FAIL, and writes `g2.json`/`g5.json` +
+a human `.md` next to the manifest. The thresholds below are **frozen by the P1-LEAD before any direction render exists**. They are not
+tunable by lanes; changing one is a logged deviation.
+
+G2 (deterministic):
+- **Contrast:** every `authoredPairs()` pair ≥ 4.5:1 (WCAG 2.x relative luminance). Also, every alarm/label text cell measured on the
+  *rendered PNG* (glyph fg vs cell bg, sampled from the cell crop) ≥ 4.5:1 on the half-truecolor and 256 rungs.
+- **Identity on rendered pixels:** take the identity colour of each session from the rendered 16- and 20-session grids (median OKLab
+  of the session's tile, excluding text pixels). The nearest-pair **ΔE_OK ≥ 0.020** at both 16 and 20 (the fixture's neighbour step is
+  11.5° hue; at chroma 0.12 that is ≈ 0.024, so this demands real chroma, not greys). Report the full matrix + the worst pair.
+- **No identity in the alarm arc:** the identity colour of every tile has an OKLCh hue in [110°, 340°) or chroma < 0.03 (unknown/degraded).
+- **Static proof (D1):** for every non-working state, the 2 frames are pixel-identical; working frames differ.
+- **CVD:** Machado 2009 deutan/protan/tritan at severity 1.0, applied to every M/S render. Those simulated images feed the G5
+  legend-naming task (below) and must independently reach ≥ 80 % with INPUT↔ERROR = 0 per simulation.
+
+G5 (blind vision, 2 backends, no design context: prompts never contain cuttlefish/Sepia/state names/our vocabulary except
+where the task *is* naming, and then only the neutral legend labels):
+- **Aesthetic score** 0–10 per (sample, backend) on the fixed rubric. Field XL: "does this read as the skin of a living animal?",
+  scored alongside unlabelled real *Sepia officinalis* / *Metasepia* photos as anchors (the photos are scored too, as a sanity floor).
+  Mantle M / swatch S: "does this look living, intentional and patterned?". Pass: **median ≥ 7, none < 6**, per direction.
+- **Legend naming:** the model sees the direction's own labelled legend sheet (the 6 states rendered, labels = idle / working /
+  review / needs input / error / unknown) and then unlabelled samples (shuffled, every scale and rung). Pass: **≥ 80 % correct**
+  and **INPUT↔ERROR confusions = 0**, per backend.
+- **Identity matching:** a labelled 16-session sheet, then 16 unlabelled single-session crops. Pass: **≥ 14/16** per backend.
+- Kill rule (plan §5): 3 consecutive failing G5 rounds → stop and re-grill (lead's call, logged).
