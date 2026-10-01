@@ -266,7 +266,7 @@ def ensure_display(display: str) -> subprocess.Popen | None:
     xvfb = ct._xvfb_binary()
     if not xvfb:
         raise SystemExit("capture_matrix: no Xvfb found")
-    proc = subprocess.Popen([xvfb, display, "-screen", "0", "1920x2400x24", "-nolisten", "tcp"],
+    proc = subprocess.Popen([xvfb, display, "-screen", "0", "2800x2400x24", "-nolisten", "tcp"],
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     for _ in range(50):
         if Path(f"/tmp/.X11-unix/X{display.lstrip(':')}").exists():
@@ -341,8 +341,8 @@ def run_tui_launch(launch: str, items: list[tuple[str, dict]], args, ctx) -> Non
         if not (png.exists() and raw.exists() and ackf.exists()):
             continue
         ack = json.loads(ackf.read_text())
-        if ack.get("seq") != e["_seq"]:
-            continue
+        if ack.get("seq") != e["_seq"] or ack.get("cols") != cols:
+            continue  # not the scene we asked for, or the terminal grid drifted: the entry stays missing
         payload, dims = ct.parse_script_log(raw.read_bytes())
         model = ct.model_from_bytes(payload, *(dims or (cols, 40)))
         cells = tui_box_cells(model, ack["cells"][1])
@@ -374,7 +374,7 @@ def run_desktop_launch(renderer: str, entries: list[tuple[str, dict]], args, ctx
     desk = [(d, e) for d, e in entries if e["host"] == "desktop"]
     pane = [(d, e) for d, e in entries if e["host"].startswith("tui-pane-")]
     job: dict = {"runtime": args.runtime, "display": args.display, "gpu": renderer == "webgl",
-                 "width": 1900, "height": 2380, "plugin_name": "Cuttlefish", "result": str(work / "result.json"),
+                 "width": 2700, "height": 2380, "plugin_name": "Cuttlefish", "result": str(work / "result.json"),
                  "keep": args.keep}
     if desk:
         pkg = build_desktop_package(work / "package", ctx["directions"], ctx["fixture"])
@@ -444,6 +444,8 @@ def run_desktop_launch(renderer: str, entries: list[tuple[str, dict]], args, ctx
                 e["tiles"] = s.get("tiles")
         else:
             ack = s.get("ack") or {}
+            if ack.get("seq") != e["_seq"] or ack.get("cols") != e["cols"]:
+                continue  # wrong scene or wrong grid (e.g. the pane did not reach 120 cols): stays missing
             e["_ack"] = ack
             pal = {hex_rgb(c) for c in ack.get("palette", [])}
             pb = palette_bbox(Path(s["file"]), pal) if pal else None

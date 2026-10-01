@@ -32,7 +32,7 @@ const FIXTURE = { sessions: [], degraded: { name: 'unbound', state: 'unknown', h
 const CHIP_COLS = 22
 const CHIP_CELL_W = 8
 const CHIP_CELL_H = 18
-const SWATCH_COLS = 3
+const SWATCH_COLS = 4
 const SWATCH_CELL_W = 6
 const SWATCH_CELL_H = 16
 

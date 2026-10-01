@@ -80,6 +80,10 @@ export function paint({ scale, w, h, state, session, t, opts }) {
   if (scale === 'XL') {
     text.push({ x: 16, y: 16, str: name, fg: INK, bg: LABEL_BG });
     if (alarmText) text.push({ x: 16, y: 48, str: alarmText, fg: ALARM_FG[state] ?? INK, bg: ALARM_BG[state] ?? LABEL_BG });
+  } else if (w < 10) {
+    // A swatch too narrow for a name (the desktop row swatch): the row beside it carries the name, so only
+    // the literal alarm / `?` is drawn, as a single glyph, and the pattern keeps the rest of the cells.
+    if (alarmText) text.push({ x: w - 1, y: 0, str: state === 'unknown' ? '?' : '!', fg: ALARM_FG[state] ?? INK, bg: ALARM_BG[state] ?? LABEL_BG });
   } else {
     // M / S: cell coordinates. Name at the left, alarm at the right of row 0.
     const label = ` ${name} `.slice(0, Math.max(0, w));

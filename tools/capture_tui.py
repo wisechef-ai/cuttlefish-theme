@@ -291,7 +291,10 @@ def terminator_inner_command(cfg: Config, script_log: Path) -> list[str]:
 
 
 def terminator_config(font: str) -> str:
-    return ("[global_config]\n[keybindings]\n[profiles]\n  [[default]]\n"
+    # inactive_color_offset: Terminator dims the PALETTE (indexed colours, i.e. the whole 256 rung) of an
+    # unfocused terminal by 0.8, while truecolor SGR bypasses the palette. On a WM-less Xvfb the window is
+    # never focused, so without this every 256-colour capture came out at 0.8x (#875faf -> 108,76,140).
+    return ("[global_config]\n  inactive_color_offset = 1.0\n[keybindings]\n[profiles]\n  [[default]]\n"
             f"    use_system_font = False\n    font = {font}\n"
             "    show_titlebar = False\n    scrollbar_position = hidden\n"
             "    scrollback_lines = 0\n    exit_action = hold\n"

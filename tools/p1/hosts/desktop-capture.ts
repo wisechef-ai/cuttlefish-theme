@@ -81,54 +81,7 @@ try {
   result.boot_ms = await waitForShell(page) + 0
   result.boot_total_ms = Date.now() - t0
 
-  if (job.desktop?.length) {
-    result.enabled = await enablePluginViaSettings(page, job.plugin_name ?? 'Cuttlefish')
-    await gotoRoute(page, '/')
-    await page.waitForFunction(() => (window as any).__cfP1?.setScene, null, { timeout: 30_000 })
-    await page.evaluate(() => (window as any).__cfP1.revealField?.())
-    await page.waitForSelector('[data-testid="cf-p1-field-box"]', { timeout: 30_000 })
-    await page.waitForSelector('[data-testid^="cf-p1-swatch-"]', { timeout: 60_000 })
-    await page.waitForTimeout(1500)
-    result.plugin = await page.evaluate(() => ({ directions: (window as any).__cfP1.directions, loads: (window as any).__cfP1.loads, fixture: (window as any).__cfP1.fixtureSessions }))
-    // The sessions column: everything left of the first vertical sash.
-    const sash = await page.evaluate(() => {
-      const s = [...document.querySelectorAll('[role="separator"]')].map(e => e.getBoundingClientRect()).filter(r => r.height > 400).sort((a, b) => a.x - b.x)[0]
-      return s ? Math.round(s.x) : null
-    })
-
-    for (const shot of job.desktop) {
-      const swatches: number[] = await page.evaluate(() =>
-        [...document.querySelectorAll('[data-testid^="cf-p1-swatch-"]')].map(e => Number(e.getAttribute('data-testid')!.split('-').pop())))
-      const seq = await page.evaluate(s => (window as any).__cfP1.setScene(s), { ...shot.scene, expectSwatches: swatches })
-      await waitAck(page, seq)
-      const ps = processTree(result.electron_pid)
-      fs.mkdirSync(path.dirname(shot.file), { recursive: true })
-      await page.screenshot({ path: shot.file })
-      for (const tg of shot.targets) {
-        let crop: number[] | null = null
-        let tiles: unknown = null
-        if (tg.kind === 'field') crop = await box(page, '[data-testid="cf-p1-field"]')
-        else if (tg.kind === 'chip') crop = await box(page, '[data-testid="cf-p1-chip"]')
-        else if (tg.kind === 'swatch') crop = await box(page, `[data-testid="cf-p1-swatch-${tg.idx}"]`)
-        else if (tg.kind === 'sidebar') {
-          const rects = await page.evaluate(() => [...document.querySelectorAll('[data-testid^="cf-p1-swatch-"]')].map(e => e.getBoundingClientRect().toJSON()))
-          if (rects.length) {
-            const y0 = Math.min(...rects.map(r => r.y)) - 8, y1 = Math.max(...rects.map(r => r.y + r.height)) + 8
-            crop = [0, Math.round(y0), sash ?? 260, Math.round(y1 - y0)]
-          }
-          result.sidebar_rows = rects.length
-          tiles = await page.evaluate(() => [...document.querySelectorAll('[data-testid^="cf-p1-swatch-"]')].map(e => {
-            const r = e.getBoundingClientRect()
-            return { session_idx: Number(e.getAttribute('data-testid')!.split('-').pop()), crop: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)] }
-          }).sort((a, b) => a.session_idx - b.session_idx))
-        }
-        result.shots.push({ id: tg.id, file: shot.file, crop, ps, seq, kind: tg.kind, tiles })
-        if (!crop) result.errors.push(`${tg.id}: no crop for ${tg.kind}`)
-      }
-    }
-    result.plugin_errors = await page.evaluate(() => (window as any).__cfP1.errors)
-  }
-
+  // The pane runs FIRST: before the plugin is enabled its field pane cannot take width from the terminal column.
   if (job.pane?.shots?.length) {
     const pn = job.pane
     const xterm = page.locator('.xterm').first()
@@ -190,6 +143,54 @@ try {
       result.shots.push({ id: shot.id, file: shot.file, crop: null, ps, seq: shot.scene.seq, kind: 'pane', ack: a })
     }
   }
+  if (job.desktop?.length) {
+    result.enabled = await enablePluginViaSettings(page, job.plugin_name ?? 'Cuttlefish')
+    await gotoRoute(page, '/')
+    await page.waitForFunction(() => (window as any).__cfP1?.setScene, null, { timeout: 30_000 })
+    await page.evaluate(() => (window as any).__cfP1.revealField?.())
+    await page.waitForSelector('[data-testid="cf-p1-field-box"]', { timeout: 30_000 })
+    await page.waitForSelector('[data-testid^="cf-p1-swatch-"]', { timeout: 60_000 })
+    await page.waitForTimeout(1500)
+    result.plugin = await page.evaluate(() => ({ directions: (window as any).__cfP1.directions, loads: (window as any).__cfP1.loads, fixture: (window as any).__cfP1.fixtureSessions }))
+    // The sessions column: everything left of the first vertical sash.
+    const sash = await page.evaluate(() => {
+      const s = [...document.querySelectorAll('[role="separator"]')].map(e => e.getBoundingClientRect()).filter(r => r.height > 400).sort((a, b) => a.x - b.x)[0]
+      return s ? Math.round(s.x) : null
+    })
+
+    for (const shot of job.desktop) {
+      const swatches: number[] = await page.evaluate(() =>
+        [...document.querySelectorAll('[data-testid^="cf-p1-swatch-"]')].map(e => Number(e.getAttribute('data-testid')!.split('-').pop())))
+      const seq = await page.evaluate(s => (window as any).__cfP1.setScene(s), { ...shot.scene, expectSwatches: swatches })
+      await waitAck(page, seq)
+      const ps = processTree(result.electron_pid)
+      fs.mkdirSync(path.dirname(shot.file), { recursive: true })
+      await page.screenshot({ path: shot.file })
+      for (const tg of shot.targets) {
+        let crop: number[] | null = null
+        let tiles: unknown = null
+        if (tg.kind === 'field') crop = await box(page, '[data-testid="cf-p1-field"]')
+        else if (tg.kind === 'chip') crop = await box(page, '[data-testid="cf-p1-chip"]')
+        else if (tg.kind === 'swatch') crop = await box(page, `[data-testid="cf-p1-swatch-${tg.idx}"]`)
+        else if (tg.kind === 'sidebar') {
+          const rects = await page.evaluate(() => [...document.querySelectorAll('[data-testid^="cf-p1-swatch-"]')].map(e => e.getBoundingClientRect().toJSON()))
+          if (rects.length) {
+            const y0 = Math.min(...rects.map(r => r.y)) - 8, y1 = Math.max(...rects.map(r => r.y + r.height)) + 8
+            crop = [0, Math.round(y0), sash ?? 260, Math.round(y1 - y0)]
+          }
+          result.sidebar_rows = rects.length
+          tiles = await page.evaluate(() => [...document.querySelectorAll('[data-testid^="cf-p1-swatch-"]')].map(e => {
+            const r = e.getBoundingClientRect()
+            return { session_idx: Number(e.getAttribute('data-testid')!.split('-').pop()), crop: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)] }
+          }).sort((a, b) => a.session_idx - b.session_idx))
+        }
+        result.shots.push({ id: tg.id, file: shot.file, crop, ps, seq, kind: tg.kind, tiles })
+        if (!crop) result.errors.push(`${tg.id}: no crop for ${tg.kind}`)
+      }
+    }
+    result.plugin_errors = await page.evaluate(() => (window as any).__cfP1.errors)
+  }
+
 } catch (error) {
   result.errors.push(String((error as Error)?.stack ?? error))
   await page.screenshot({ path: path.join(path.dirname(job.result), `zz-failure-${job.gpu ? 'gpu' : 'dom'}.png`) }).catch(() => undefined)
