@@ -175,6 +175,17 @@ class Step:
     timeout: float | None = None
     ps_log: Path | None = None
     ack_out: Path | None = None
+    stable: re.Pattern | None = None
+
+
+def layout_signature(model: "ScreenModel", pattern: re.Pattern | None) -> tuple:
+    """Rows (index, text) that match `pattern`: equal before and after a screenshot means the screen did not
+    move under the shot. A real terminal repaints asynchronously, so the screen-model snapshot and the pixels
+    can disagree by one frame (measured: a boot status line vanished between them and every crop was off by
+    one row)."""
+    if pattern is None:
+        return ()
+    return tuple((y, line) for y, line in enumerate(model.text().split("\n")) if pattern.search(line))
 
 
 def parse_sequence(items: list) -> list[Step]:
@@ -203,6 +214,7 @@ def parse_sequence(items: list) -> list[Step]:
             timeout=float(it["timeout"]) if it.get("timeout") is not None else None,
             ps_log=Path(it["ps_log"]) if it.get("ps_log") else None,
             ack_out=Path(it["ack_out"]) if it.get("ack_out") else None,
+            stable=re.compile(it["stable"]) if it.get("stable") else None,
         ))
     return steps
 
@@ -482,10 +494,19 @@ def run_steps(cfg: Config, pump, current_model, shoot, root_pid: int | None = No
         while alive and time.monotonic() < settle_end:
             alive = pump(min(0.1, max(0.0, settle_end - time.monotonic())))
         step.png.parent.mkdir(parents=True, exist_ok=True)
-        if step.ps_log and root_pid:
-            step.ps_log.parent.mkdir(parents=True, exist_ok=True)
-            step.ps_log.write_text(process_tree_text(root_pid), encoding="utf-8")
-        shoot(step.png)
+        for attempt in range(6):
+            before = layout_signature(current_model(), step.stable)
+            if step.ps_log and root_pid:
+                step.ps_log.parent.mkdir(parents=True, exist_ok=True)
+                step.ps_log.write_text(process_tree_text(root_pid), encoding="utf-8")
+            shoot(step.png)
+            alive = pump(0.05)
+            if layout_signature(current_model(), step.stable) == before:
+                break
+            print(f"STEP {i}: layout moved during the shot, retaking ({attempt + 1})", file=sys.stderr, flush=True)
+            alive = pump(0.4)
+        else:
+            raise PredicateTimeout(f"sequence step {i} ({step.png.name}): layout never settled for a shot")
         if step.ack_out and step.ack_path:
             step.ack_out.parent.mkdir(parents=True, exist_ok=True)
             step.ack_out.write_bytes(Path(step.ack_path).read_bytes())

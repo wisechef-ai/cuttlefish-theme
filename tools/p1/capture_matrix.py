@@ -197,6 +197,20 @@ def cells_to_px(cal, cell_box) -> list[int]:
     return [round(ox + c * cw), round(oy + r * chh), round(w * cw), round(h * chh)]
 
 
+def palette_fraction(png: Path, crop, palette: set[tuple[int, int, int]]) -> float:
+    """Share of the crop's pixels that are colours the host says it painted (sampled every 2nd px)."""
+    from PIL import Image
+    im = Image.open(png).convert("RGB")
+    x, y, w, h = crop
+    px = im.load()
+    pts = [(xx, yy) for yy in range(y, y + h, 2) for xx in range(x, x + w, 2)
+           if 0 <= xx < im.width and 0 <= yy < im.height]
+    return sum(px[p] in palette for p in pts) / max(1, len(pts))
+
+
+MIN_PALETTE_FRACTION = 0.5   # a crop that is mostly NOT the box's colours is in the wrong place: entry → missing
+
+
 def hex_rgb(h: str) -> tuple[int, int, int]:
     return tuple(int(h[i:i + 2], 16) for i in (1, 3, 5))  # type: ignore[return-value]
 
@@ -311,7 +325,7 @@ def run_tui_launch(launch: str, items: list[tuple[str, dict]], args, ctx) -> Non
         out = ctx["out"][did]
         steps.append({"png": str(out / e["file"]), "raw_log": str(work / f"{did}--{e['id']}.sgr"),
                       "ps_log": str(work / f"{did}--{e['id']}.ps"), "ack_out": str(work / f"{did}--{e['id']}.ack.json"),
-                      "wait_for": "❯", "settle": 0.4,
+                      "wait_for": "❯", "settle": 0.4, "stable": "^\\s*❯",
                       "write": {"path": str(scene_path),
                                 "text": json.dumps(dict(e["scene"], seq=seq, direction=str(ctx["directions"][did])))},
                       "ack": {"path": str(ack_path), "seq": seq}})
@@ -358,7 +372,13 @@ def run_tui_launch(launch: str, items: list[tuple[str, dict]], args, ctx) -> Non
         e["_cmd"], e["_ps"], e["_home"] = command, psf.read_text() if psf.exists() else "", str(home)
     for did, e in items:
         if e.get("_cells") and cal:
-            e["crop"] = cells_to_px(cal, e["_cells"])
+            crop = cells_to_px(cal, e["_cells"])
+            pal = {hex_rgb(c) for c in e["_ack"].get("palette", [])}
+            frac = palette_fraction(ctx["out"][did] / e["file"], crop, pal)
+            if frac < MIN_PALETTE_FRACTION:
+                log(f"{did}/{e['id']}: crop {crop} is only {frac:.0%} box colours; entry left missing")
+                continue
+            e["crop"] = crop
             if e.get("grid"):
                 ox, oy = e["_cells"][0], e["_cells"][1]
                 e["tiles"] = [{"session_idx": t["session_idx"],
