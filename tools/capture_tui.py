@@ -69,6 +69,7 @@ class Config:
     font: str = DEFAULT_FONT
     geometry: str | None = None      # terminator window WxH in pixels; default derived from cols/rows
     actual_grid: tuple[int, int] | None = None   # set by the backend: the grid the terminal really had
+    sequence: list["Step"] | None = None       # --sequence: several shots from ONE terminal session
 
     @property
     def effective_term(self) -> str | None:
@@ -130,6 +131,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--display", default=":92", help="terminator mode: X display (started if not running)")
     p.add_argument("--font", default=DEFAULT_FONT, help=f"terminator mode: font (default {DEFAULT_FONT!r})")
     p.add_argument("--geometry", help="terminator mode: window size WxH in pixels (default from cols/rows)")
+    p.add_argument("--sequence", type=Path, metavar="STEPS.json",
+                   help="after the first --wait-for match, run these steps in the SAME terminal session, one "
+                        "screenshot each (see Step); --png/--raw-log still get the first frame")
     p.add_argument("command", nargs=argparse.REMAINDER, help="command to run (after --)")
     return p
 
@@ -149,7 +153,123 @@ def parse_args(argv: list[str] | None = None) -> Config:
         timeout=ns.timeout, settle=ns.settle, cols=ns.cols, rows=ns.rows, term=ns.term,
         colorterm=None if ns.no_colorterm else ns.colorterm, env=dict(ns.env), text_out=ns.text_out,
         display=ns.display, font=ns.font, geometry=ns.geometry,
+        sequence=load_sequence(ns.sequence, parser) if ns.sequence else None,
     )
+
+
+@dataclass
+class Step:
+    """One shot of a --sequence run. Order: write `write_text` to `write_path` (tmp + rename, so a
+    watcher never reads half a file), then wait until the screen matches `wait_for` (default: the
+    run's --wait-for) AND, when `ack_path` is set, that JSON file has `"seq": ack_seq` (the program
+    under test confirms it drew the frame we asked for), then `settle`, then capture."""
+    png: Path
+    raw_log: Path | None = None
+    text_out: Path | None = None
+    write_path: Path | None = None
+    write_text: str | None = None
+    wait_for: re.Pattern | None = None
+    ack_path: Path | None = None
+    ack_seq: object = None
+    settle: float | None = None
+    timeout: float | None = None
+    ps_log: Path | None = None
+    ack_out: Path | None = None
+    stable: re.Pattern | None = None
+
+
+def layout_signature(model: "ScreenModel", pattern: re.Pattern | None) -> tuple:
+    """Rows (index, text) that match `pattern`: equal before and after a screenshot means the screen did not
+    move under the shot. A real terminal repaints asynchronously, so the screen-model snapshot and the pixels
+    can disagree by one frame (measured: a boot status line vanished between them and every crop was off by
+    one row)."""
+    if pattern is None:
+        return ()
+    return tuple((y, line) for y, line in enumerate(model.text().split("\n")) if pattern.search(line))
+
+
+def parse_sequence(items: list) -> list[Step]:
+    """JSON list -> steps. Raises ValueError naming the bad step."""
+    if not isinstance(items, list) or not items:
+        raise ValueError("sequence must be a non-empty JSON list")
+    steps = []
+    for i, it in enumerate(items):
+        if not isinstance(it, dict) or not it.get("png"):
+            raise ValueError(f"step {i}: needs at least {{\"png\": path}}")
+        write, ack = it.get("write") or {}, it.get("ack") or {}
+        if write and not ("path" in write and "text" in write):
+            raise ValueError(f"step {i}: write needs path + text")
+        if ack and not ("path" in ack and "seq" in ack):
+            raise ValueError(f"step {i}: ack needs path + seq")
+        try:
+            pattern = re.compile(it["wait_for"], re.MULTILINE) if it.get("wait_for") else None
+        except re.error as exc:
+            raise ValueError(f"step {i}: bad wait_for: {exc}") from exc
+        steps.append(Step(
+            png=Path(it["png"]), raw_log=Path(it["raw_log"]) if it.get("raw_log") else None,
+            text_out=Path(it["text_out"]) if it.get("text_out") else None,
+            write_path=Path(write["path"]) if write else None, write_text=write.get("text") if write else None,
+            wait_for=pattern, ack_path=Path(ack["path"]) if ack else None, ack_seq=ack.get("seq") if ack else None,
+            settle=float(it["settle"]) if it.get("settle") is not None else None,
+            timeout=float(it["timeout"]) if it.get("timeout") is not None else None,
+            ps_log=Path(it["ps_log"]) if it.get("ps_log") else None,
+            ack_out=Path(it["ack_out"]) if it.get("ack_out") else None,
+            stable=re.compile(it["stable"]) if it.get("stable") else None,
+        ))
+    return steps
+
+
+def load_sequence(path: Path, parser: argparse.ArgumentParser) -> list[Step]:
+    import json
+    try:
+        return parse_sequence(json.loads(Path(path).read_text(encoding="utf-8")))
+    except (OSError, ValueError) as exc:
+        parser.error(f"--sequence {path}: {exc}")
+        raise  # unreachable; parser.error exits
+
+
+def ack_satisfied(path: Path | None, seq: object) -> bool:
+    """True when there is no ack to wait for, or the ack file is JSON carrying this seq."""
+    if path is None:
+        return True
+    import json
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8")).get("seq") == seq
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def descendants(ps_rows: list[tuple[int, int, str]], root: int) -> list[tuple[int, int, str]]:
+    """(pid, ppid, rest) rows -> root and every descendant, in tree order."""
+    kids: dict[int, list] = {}
+    for row in ps_rows:
+        kids.setdefault(row[1], []).append(row)
+    out = [r for r in ps_rows if r[0] == root]
+    i = 0
+    while i < len(out):
+        out.extend(sorted(kids.get(out[i][0], []), key=lambda r: r[0]))
+        i += 1
+    return out
+
+
+def process_tree_text(root: int) -> str:
+    """`ps` of the launched command and everything under it, at this instant (the capture's proof
+    of which processes were alive when the frame was taken)."""
+    import subprocess
+    # -ww: never truncate args (procps cuts them at $COLUMNS/80 otherwise; CI temp paths are long)
+    r = subprocess.run(["ps", "-ww", "-e", "-o", "pid=,ppid=,etimes=,args="], capture_output=True, text=True)
+    rows = []
+    for line in r.stdout.splitlines():
+        parts = line.split(None, 3)
+        if len(parts) >= 3 and parts[0].isdigit() and parts[1].isdigit():
+            rows.append((int(parts[0]), int(parts[1]), " ".join(parts[2:])))
+    return "PID PPID ELAPSED_S ARGS\n" + "\n".join(f"{p} {pp} {rest}" for p, pp, rest in descendants(rows, root)) + "\n"
+
+
+def write_atomic(path: Path, text: str) -> None:
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
 
 
 def child_env(base: dict[str, str], cfg: Config) -> dict[str, str]:
@@ -184,7 +304,10 @@ def terminator_inner_command(cfg: Config, script_log: Path) -> list[str]:
 
 
 def terminator_config(font: str) -> str:
-    return ("[global_config]\n[keybindings]\n[profiles]\n  [[default]]\n"
+    # inactive_color_offset: Terminator dims the PALETTE (indexed colours, i.e. the whole 256 rung) of an
+    # unfocused terminal by 0.8, while truecolor SGR bypasses the palette. On a WM-less Xvfb the window is
+    # never focused, so without this every 256-colour capture came out at 0.8x (#875faf -> 108,76,140).
+    return ("[global_config]\n  inactive_color_offset = 1.0\n[keybindings]\n[profiles]\n  [[default]]\n"
             f"    use_system_font = False\n    font = {font}\n"
             "    show_titlebar = False\n    scrollbar_position = hidden\n"
             "    scrollback_lines = 0\n    exit_action = hold\n"
@@ -349,6 +472,55 @@ def _write_outputs(cfg: Config, model: ScreenModel, png: bool = True) -> None:
         render_png(model, cfg.png)
 
 
+def run_steps(cfg: Config, pump, current_model, shoot, root_pid: int | None = None) -> None:
+    """Drive cfg.sequence against a live terminal. `pump(wait)` reads output (False once the program
+    is gone), `current_model()` returns the up-to-date ScreenModel, `shoot(png)` writes the screenshot."""
+    import time
+    for i, step in enumerate(cfg.sequence or []):
+        if step.write_path is not None:
+            write_atomic(step.write_path, step.write_text or "")
+        pattern = step.wait_for or cfg.wait_for
+        deadline = time.monotonic() + (step.timeout or cfg.timeout)
+        alive, ok = True, False
+        while alive and time.monotonic() < deadline:
+            alive = pump(min(0.25, max(0.0, deadline - time.monotonic())))
+            if predicate_met(current_model(), pattern) and ack_satisfied(step.ack_path, step.ack_seq):
+                ok = True
+                break
+        if not ok:
+            raise PredicateTimeout(f"sequence step {i} ({step.png.name}): {pattern.pattern!r}"
+                                   f"{' + ack seq ' + repr(step.ack_seq) if step.ack_path else ''} not observed"
+                                   f"{'' if alive else ' (command exited)'}; last screen:\n{current_model().text()[-800:]}")
+        settle_end = time.monotonic() + (cfg.settle if step.settle is None else step.settle)
+        while alive and time.monotonic() < settle_end:
+            alive = pump(min(0.1, max(0.0, settle_end - time.monotonic())))
+        step.png.parent.mkdir(parents=True, exist_ok=True)
+        for attempt in range(6):
+            before = layout_signature(current_model(), step.stable)
+            if step.ps_log and root_pid:
+                step.ps_log.parent.mkdir(parents=True, exist_ok=True)
+                step.ps_log.write_text(process_tree_text(root_pid), encoding="utf-8")
+            shoot(step.png)
+            alive = pump(0.05)
+            if layout_signature(current_model(), step.stable) == before:
+                break
+            print(f"STEP {i}: layout moved during the shot, retaking ({attempt + 1})", file=sys.stderr, flush=True)
+            alive = pump(0.4)
+        else:
+            raise PredicateTimeout(f"sequence step {i} ({step.png.name}): layout never settled for a shot")
+        if step.ack_out and step.ack_path:
+            step.ack_out.parent.mkdir(parents=True, exist_ok=True)
+            step.ack_out.write_bytes(Path(step.ack_path).read_bytes())
+        model = current_model()
+        if step.raw_log:
+            step.raw_log.parent.mkdir(parents=True, exist_ok=True)
+            step.raw_log.write_bytes(bytes(model.raw))
+        if step.text_out:
+            step.text_out.parent.mkdir(parents=True, exist_ok=True)
+            step.text_out.write_text(model.text() + "\n", encoding="utf-8")
+        print(f"STEP {i}: {step.png}", flush=True)
+
+
 def capture_virtual(cfg: Config) -> None:
     import fcntl, pty, select, signal, struct, termios, time
 
@@ -393,6 +565,8 @@ def capture_virtual(cfg: Config) -> None:
         while alive and time.monotonic() < settle_end:
             alive = read_once(min(0.1, max(0.0, settle_end - time.monotonic())))
         _write_outputs(cfg, model)
+        if cfg.sequence:
+            run_steps(cfg, read_once, lambda: model, lambda png: render_png(model, png), root_pid=pid)
     finally:
         # pty.fork() makes the child a session + process-group leader: signal the whole group so
         # grandchildren (the TUI's tui_gateway python, node workers) never outlive the capture.
@@ -550,6 +724,18 @@ def _run_terminator(cfg: Config, geometry: str, cfgdir: Path) -> None:
                   f"{cfg.cols}x{cfg.rows}; pass --geometry to adjust", file=sys.stderr)
         if cfg.text_out:
             cfg.text_out.write_text(model.text() + "\n", encoding="utf-8")
+        if cfg.sequence:
+            latest = {"model": model}
+
+            def pump(wait: float) -> bool:
+                time.sleep(wait)
+                latest["model"] = snapshot()[1]
+                return term.poll() is None
+
+            def current() -> ScreenModel:
+                return latest["model"]
+
+            run_steps(cfg, pump, current, lambda png: _screenshot(cfg.display, png, geometry), root_pid=term.pid)
     finally:
         try:
             os.killpg(term.pid, signal.SIGTERM)
