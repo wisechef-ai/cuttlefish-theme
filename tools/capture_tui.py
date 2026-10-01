@@ -256,7 +256,8 @@ def process_tree_text(root: int) -> str:
     """`ps` of the launched command and everything under it, at this instant (the capture's proof
     of which processes were alive when the frame was taken)."""
     import subprocess
-    r = subprocess.run(["ps", "-e", "-o", "pid=,ppid=,etimes=,args="], capture_output=True, text=True)
+    # -ww: never truncate args (procps cuts them at $COLUMNS/80 otherwise; CI temp paths are long)
+    r = subprocess.run(["ps", "-ww", "-e", "-o", "pid=,ppid=,etimes=,args="], capture_output=True, text=True)
     rows = []
     for line in r.stdout.splitlines():
         parts = line.split(None, 3)

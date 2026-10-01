@@ -36,7 +36,7 @@ const t0 = Date.now()
 
 /** `ps` rows of `root` and all its descendants: pid ppid elapsed_s args. */
 export function processTree(root: number): string {
-  const raw = execFileSync('ps', ['-e', '-o', 'pid=,ppid=,etimes=,args='], { encoding: 'utf8' })
+  const raw = execFileSync('ps', ['-ww', '-e', '-o', 'pid=,ppid=,etimes=,args='], { encoding: 'utf8' })
   const rows = raw.split('\n').map(l => l.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/)).filter(Boolean) as RegExpMatchArray[]
   const kids = new Map<number, RegExpMatchArray[]>()
   for (const r of rows) kids.set(+r[2], [...(kids.get(+r[2]) ?? []), r])
