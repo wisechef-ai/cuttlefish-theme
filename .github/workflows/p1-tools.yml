@@ -1,0 +1,29 @@
+name: p1-tools
+
+# P1 design-sprint shared tooling: fixture freshness + contract, direction modules, gates.
+on:
+  push:
+    branches: [v22, "agent/**"]
+    paths: ["tools/p1/**", "tools/tests/test_p1_*.py", "design/**", "gates/**", ".github/workflows/p1-tools.yml"]
+  pull_request:
+    branches: [v22]
+    paths: ["tools/p1/**", "tools/tests/test_p1_*.py", "design/**", "gates/**", ".github/workflows/p1-tools.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: python -m pip install pytest -r tools/requirements-capture.txt
+      - run: python tools/p1/make_stub_sessions.py --check
+      - run: python -m pytest -v tools/tests/test_p1_*.py

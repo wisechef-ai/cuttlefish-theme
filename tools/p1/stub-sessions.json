@@ -1,0 +1,244 @@
+{
+  "schema": "cf2909.p1.stub-sessions/1",
+  "identity_arc_deg": [
+    110.0,
+    340.0
+  ],
+  "states": [
+    "idle",
+    "working",
+    "review",
+    "needs-you",
+    "fault",
+    "unknown"
+  ],
+  "degraded": {
+    "note": "no-binding mantle: HERMES_TUI_ACTIVE_SESSION_FILE unset/stale. Render as unknown, claim NO identity hue, label 'unbound'. Never the last known state.",
+    "name": "unbound",
+    "state": "unknown",
+    "hue_deg": null,
+    "alarm_text": null
+  },
+  "sessions": [
+    {
+      "idx": 0,
+      "name": "ledger",
+      "lineage_id": "20260930_104729_led",
+      "hue_deg": 115.75,
+      "state": "working",
+      "age_s": 0,
+      "alarm_text": null,
+      "user_colored": false,
+      "focused": true
+    },
+    {
+      "idx": 1,
+      "name": "atlas",
+      "lineage_id": "20260930_112648_atl",
+      "hue_deg": 299.75,
+      "state": "needs-you",
+      "age_s": 240,
+      "alarm_text": "INPUT 4m",
+      "user_colored": false,
+      "focused": false
+    },
+    {
+      "idx": 2,
+      "name": "quill",
+      "lineage_id": "20260930_120567_qui",
+      "hue_deg": 207.75,
+      "state": "idle",
+      "age_s": 0,
+      "alarm_text": null,
+      "user_colored": false,
+      "focused": false
+    },
+    {
+      "idx": 3,
+      "name": "harbor",
+      "lineage_id": "20260930_128486_har",
+      "hue_deg": 161.75,
+      "state": "fault",
+      "age_s": 120,
+      "alarm_text": "ERROR 2m",
+      "user_colored": false,
+      "focused": false
+    },
+    {
+      "idx": 4,
+      "name": "sprout",
+      "lineage_id": "20260930_136405_spr",
+      "hue_deg": 253.75,
+      "state": "working",
+      "age_s": 0,
+      "alarm_text": null,
+      "user_colored": false,
+      "focused": false
+    },
+    {
+      "idx": 5,
+      "name": "vesper",
+      "lineage_id": "20260930_144324_ves",
+      "hue_deg": 138.75,
+      "state": "review",
+      "age_s": 0,
+      "alarm_text": null,
+      "user_colored": false,
+      "focused": false
+    },
+    {
+      "idx": 6,
+      "name": "cobalt",
+      "lineage_id": "20260930_152243_cob",
+      "hue_deg": 322.75,
+      "state": "idle",
+      "age_s": 0,
+      "alarm_text": null,
+      "user_colored": true,
+      "focused": false
+    },
+    {
+      "idx": 7,
+      "name": "tidal",
+      "lineage_id": "20260930_160162_tid",
+      "hue_deg": 230.75,
+      "state": "unknown",
+      "age_s": 0,
+      "alarm_text": null,
+      "user_colored": false,
+      "focused": false
+    },
+    {
+      "idx": 8,
+      "name": "fennel",
+      "lineage_id": "20260930_168081_fen",
+      "hue_deg": 184.75,
+      "state": "working",
+      "age_s": 0,
+      "alarm_text": null,
+      "user_colored": false,
+      "focused": false
+    },
+    {
+      "idx": 9,
+      "name": "orbit",
+      "lineage_id": "20260930_176000_orb",
+      "hue_deg": 276.75,
+      "state": "idle",
+      "age_s": 0,
+      "alarm_text": null,
+      "user_colored": false,
+      "focused": false
+    },
+    {
+      "idx": 10,
+      "name": "juniper",
+      "lineage_id": "20260930_183919_jun",
+      "hue_deg": 127.25,
+      "state": "needs-you",
+      "age_s": 45,
+      "alarm_text": "INPUT 45s",
+      "user_colored": false,
+      "focused": false
+    },
+    {
+      "idx": 11,
+      "name": "basalt",
+      "lineage_id": "20260930_191838_bas",
+      "hue_deg": 311.25,
+      "state": "idle",
+      "age_s": 0,
+      "alarm_text": null,
+      "user_colored": false,
+      "focused": false
+    },
+    {
+      "idx": 12,
+      "name": "wren",
+      "lineage_id": "20260930_199757_wre",
+      "hue_deg": 219.25,
+      "state": "fault",
+      "age_s": 900,
+      "alarm_text": "ERROR 15m",
+      "user_colored": false,
+      "focused": false
+    },
+    {
+      "idx": 13,
+      "name": "lumen",
+      "lineage_id": "20260930_207676_lum",
+      "hue_deg": 173.25,
+      "state": "working",
+      "age_s": 0,
+      "alarm_text": null,
+      "user_colored": false,
+      "focused": false
+    },
+    {
+      "idx": 14,
+      "name": "delta",
+      "lineage_id": "20260930_215595_del",
+      "hue_deg": 265.25,
+      "state": "idle",
+      "age_s": 0,
+      "alarm_text": null,
+      "user_colored": false,
+      "focused": false
+    },
+    {
+      "idx": 15,
+      "name": "moss",
+      "lineage_id": "20260930_223514_mos",
+      "hue_deg": 150.25,
+      "state": "review",
+      "age_s": 0,
+      "alarm_text": null,
+      "user_colored": false,
+      "focused": false
+    },
+    {
+      "idx": 16,
+      "name": "cinder",
+      "lineage_id": "20260930_231433_cin",
+      "hue_deg": 334.25,
+      "state": "idle",
+      "age_s": 0,
+      "alarm_text": null,
+      "user_colored": false,
+      "focused": false
+    },
+    {
+      "idx": 17,
+      "name": "kestrel",
+      "lineage_id": "20260930_239352_kes",
+      "hue_deg": 242.25,
+      "state": "unknown",
+      "age_s": 0,
+      "alarm_text": null,
+      "user_colored": false,
+      "focused": false
+    },
+    {
+      "idx": 18,
+      "name": "marlin",
+      "lineage_id": "20260930_247271_mar",
+      "hue_deg": 196.25,
+      "state": "working",
+      "age_s": 0,
+      "alarm_text": null,
+      "user_colored": false,
+      "focused": false
+    },
+    {
+      "idx": 19,
+      "name": "sable",
+      "lineage_id": "20260930_255190_sab",
+      "hue_deg": 288.25,
+      "state": "idle",
+      "age_s": 0,
+      "alarm_text": null,
+      "user_colored": false,
+      "focused": false
+    }
+  ]
+}
