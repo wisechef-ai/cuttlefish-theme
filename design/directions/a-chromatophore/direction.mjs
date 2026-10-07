@@ -137,7 +137,7 @@ function grainField(ctx) {
   const { seed } = ctx;
   return (u, v) => {
     const x = u + 2.5 * (fbm(u * 0.08, v * 0.08, seed + 91, 2) - 0.5), y = v + 2.5 * (fbm(u * 0.08 + 31.7, v * 0.08 - 7.3, seed + 98, 2) - 0.5);
-    const f = frac((x + y * 1.4) / 3.4);
+    const f = frac((x + y * 1.4) / 2.6);
     return sstep(0.1, 0.22, f) * (1 - sstep(0.48, 0.6, f));
   };
 }
@@ -491,7 +491,7 @@ export function paint({ scale, w, h, state, session, t = 0, opts = {} }) {
   const ss = sc === 'XL' ? 2 : 3;                                // supersampling per axis
   const ox = ((seed >>> 8) & 255) * 1.37, oy = ((seed >>> 16) & 255) * 0.91;
   const ctx = { seed, tq, sc, visA: bw * k, visB: bh * k, aa: Math.max(0.12, k / ss), detail: sc === 'XL' ? 1 : 0.6,
-    relief: sc === 'XL' ? 1 : 0.35, chroma: sc === 'XL' ? 0.32 : 1, grainAmp: sc === 'XL' ? 1 : 0, grid: { bw, bh, k, ss, ox, oy } };
+    relief: sc === 'XL' ? 1 : 0.35, chroma: sc === 'XL' ? 0.32 : 1, grainAmp: sc === 'XL' ? 0.45 : 0, grid: { bw, bh, k, ss, ox, oy } };
   ctx.an = anatomy(ctx);
   ctx.Lbase = groundLightness(H);
   ctx.mirror = sc !== 'XL';                                       // chrome strips: the centre line is the body midline
