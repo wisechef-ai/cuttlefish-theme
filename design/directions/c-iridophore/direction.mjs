@@ -406,131 +406,89 @@ function xlSpots(state, F, w, h, P) {
 // =====================================================================================================
 // Strips (TUI mantle, TUI pill, desktop chip): w cells × h px; pixels are tall (aspect = height/width).
 // =====================================================================================================
-const stripCache = new Map();
-function stripField(w, h, aspect, seed) {
-  const key = `${w}|${h}|${aspect}|${seed}`;
-  const hit = stripCache.get(key);
-  if (hit) return hit;
-  const n = w * h;
-  const F = { tone: new Float32Array(n), hueS: new Float32Array(n), warp: new Float32Array(n), m1: new Float32Array(n),
-    m2: new Float32Array(n), glint: new Float32Array(n), pore: new Float32Array(n), Y: new Float32Array(n) };
-  // glints on a jittered 1-D lattice (organic rhythm, never touching), pores (retracted sacs) between them
-  const gl = new Map(), po = new Map();
-  for (let k = 0; k * 5.5 < w + 6; k++) {
-    const gx = Math.round(k * 5.5 + 3.2 * hash2(k, 1, seed)), gy = Math.floor(hash2(k, 2, seed) * h);
-    gl.set(gy * w + gx, 0.65 + 0.35 * hash2(k, 3, seed));
-    const px = Math.round(k * 5.5 + 2.75 + 2 * (hash2(k, 4, seed) - 0.5)), py = Math.floor(hash2(k, 5, seed) * h);
-    if (px !== gx || py !== gy) po.set(py * w + px, 1);
-  }
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = y * w + x, Y = (y + 0.5) * aspect;
-      F.Y[i] = Y;
-      F.warp[i] = (fbm(x / 9, Y / 9, seed + 11, 2) - 0.5) * 4;
-      F.tone[i] = fbm((x + F.warp[i]) / 16, Y / 10, seed + 41, 2);
-      F.hueS[i] = fbm(x / 26, Y / 26, seed + 71, 2);
-      F.m1[i] = fbm((x + F.warp[i]) / 8, Y / 4.5, seed + 131, 2);
-      F.m2[i] = fbm((x - F.warp[i]) / 3.2, Y / 2.6, seed + 151, 2);
-      F.glint[i] = gl.get(i) || 0;
-      F.pore[i] = po.get(i) || 0;
-    }
-  }
-  return lru(stripCache, key, F, 48);
-}
-
 function stripPainter(state, P, w, h, t, opts, seed) {
-  const aspect = h <= 2 ? 2.2 : 1.1;
-  const F = stripField(w, h, aspect, seed);
+  // The chrome strips are a few pixels tall, so the skin is drawn as its RHYTHM: each state is one crisp,
+  // repeating motif whose phase and spacing breathe along the strip (a slow wobble), over a dermis that
+  // swells and fades (a slow gradient). Rows are addressed in half-rung units yy = 0..3 on every rung.
   const base = P.base, deep = P.deep, leuco = P.leuco;
-  const midY = (h * aspect) / 2;
-  const dermis = (i, k = 0.05) => lift(base, k * (F.tone[i] - 0.5) * 2);
-  // a gentle iridophore ripple: quasi-periodic crests leaning with the tall cells
-  const ripple = i => {
-    const x = i % w;
-    return 0.5 + 0.5 * Math.cos((2 * Math.PI * (x + F.warp[i] * 1.5 + (F.Y[i] - midY) * 0.8)) / 11);
-  };
+  const yy = y => (h >= 4 ? y : h <= 1 ? 1 : Math.round((y * 3) / (h - 1)));
+  const ph = (seed % 97) / 97 * 6.283;
+  const swell = x => 0.5 + 0.5 * Math.sin(x / 17 + ph);                // slow dermis gradient
+  const wob = x => Math.round(1.3 * Math.sin(x / 10 + ph * 1.7));       // the motif's breathing phase
+  const dermis = x => mix(lift(deep, 0.04), base, 0.55 + 0.45 * swell(x));
+  const shine = x => P.sheenAt(swell(x * 0.7 + 9));
   if (state === 'idle') {
-    return i => {
-      let c = mix(dermis(i), P.sheenAt(F.hueS[i]), 0.12 * smoothstep(0.55, 1, ripple(i)));
-      if (F.pore[i]) c = mix(c, deep, 0.6);
-      if (F.glint[i]) c = mix(c, leuco, 0.92 * F.glint[i]);
-      return c;
+    // stipple: leucophore glints on a leaning lattice, a softer sheen cell beside each one
+    return (x, y) => {
+      const k = (((x + 3 * yy(y) + wob(x)) % 7) + 7) % 7;
+      if (k === 0) return leuco;
+      return k === 1 ? mix(dermis(x), shine(x), 0.3) : dermis(x);
     };
   }
   if (state === 'working') {
+    // passing cloud: leaning iridophore striations with a soft dark wave of expanded sacs drifting through
     const tq = opts.reducedMotion ? 0 : Math.floor(t * 4) / 4;
-    const span = Math.max(30, Math.min(64, w * 0.55)), width = Math.max(5, Math.min(12, w * 0.1));
+    const span = Math.max(30, Math.min(64, Math.round(w * 0.55))), width = Math.max(5, Math.min(12, w * 0.1));
     const off = tq * 4; // 4 px/s: one cell per frame
-    return i => {
-      const x = i % w;
-      const u = x + F.warp[i] + (F.Y[i] - midY) * 1.1;
+    return (x, y) => {
+      const u = x - (yy(y) - 1.5) * 1.2;
       const p = ((((u - off) % span) + span) % span) / span - 0.5;
       const z = (p * span) / width;
       const cloud = Math.exp(-z * z * 1.6);
-      let c = mix(dermis(i, 0.04), P.sheenAt(F.hueS[i]), 0.55 * smoothstep(0.3, 1, ripple(i)) + 0.08);
-      c = mix(c, deep, cloud * 0.92);
-      if (F.glint[i] && cloud < 0.4) c = mix(c, leuco, 0.7);
-      return c;
+      const stri = (((x + yy(y) + wob(x)) % 4) + 4) % 4 === 0;
+      const c = stri ? mix(shine(x), leuco, 0.35) : dermis(x);
+      return mix(c, deep, cloud * 0.9);
     };
   }
   if (state === 'review') {
-    // dark patches on a jittered lattice (~13 cells) with ragged edges, small pale patches between them
-    const blobs = [];
-    for (let k = -1; k * 13 < w + 13; k++) {
-      blobs.push({ x: k * 13 + 6 + 5 * (hash2(k, 9, seed) - 0.5), r: 3 + 3.2 * hash2(k, 10, seed), y: midY + (hash2(k, 11, seed) - 0.5) * aspect,
-        lx: k * 13 + 12.5 + 2 * (hash2(k, 12, seed) - 0.5), lr: 1.2 + 1.3 * hash2(k, 13, seed) });
+    // mottle: large dark patches with rounded corners and small pale flecks between them, two scales
+    const cells = [];
+    for (let k = 0, x = -4; x < w + 16; k++) {
+      const big = 5 + Math.round(2 * hash2(k, 10, seed)), gap = 7 + Math.round(3 * hash2(k, 9, seed));
+      cells.push({ a: x, b: x + big, fleck: x + big + Math.round(gap / 2) - 1 });
+      x += big + gap;
     }
-    return i => {
-      const x = i % w, Y = F.Y[i];
-      let dk = 0, lt = 0;
-      for (const b of blobs) {
-        if (Math.abs(x - b.x) < b.r + 3) {
-          const d = Math.hypot(x - b.x, (Y - b.y) * 0.8) / b.r + (F.m2[i] - 0.5) * 0.9;
-          dk = Math.max(dk, 1 - smoothstep(0.75, 1.0, d));
+    return (x, y) => {
+      const Y = yy(y);
+      for (const c of cells) {
+        if (x >= c.a && x < c.b) {
+          const corner = (x === c.a || x === c.b - 1) && (Y === 0 || Y === 3);
+          return corner ? dermis(x) : deep;
         }
-        if (Math.abs(x - b.lx) < b.lr + 2) {
-          const d = Math.hypot(x - b.lx, (Y - midY) * 0.9) / b.lr + (F.m1[i] - 0.5) * 0.8;
-          lt = Math.max(lt, 1 - smoothstep(0.7, 1.0, d));
-        }
+        if ((x === c.fleck || x === c.fleck + 1) && (Y === 1 || Y === 2)) return mix(leuco, shine(x), 0.4);
       }
-      let c = dermis(i);
-      c = mix(c, deep, dk * 0.88);
-      return mix(c, P.sheenAt(F.hueS[i]), lt * 0.75);
+      return dermis(x);
     };
   }
   if (state === 'needs-you') {
+    // zebra: dark bands whose lean flips every band (wavy, tapering bands) + soft-ringed amber ocelli
     const nEyes = Math.max(1, Math.round(w / 30));
     const eyes = [];
-    for (let k = 0; k < nEyes; k++) eyes.push(((k + 0.62) / nEyes) * (w - 1));
-    const R = 2.5;
-    return i => {
-      const x = i % w;
+    for (let k = 0; k < nEyes; k++) eyes.push(Math.round(((k + 0.62) / nEyes) * (w - 1)));
+    const light = x => mix(leuco, shine(x), 0.35 * swell(x));
+    return (x, y) => {
+      const Y = yy(y);
       for (const ex of eyes) {
-        const r = Math.hypot(x - ex, (F.Y[i] - midY) * 0.9) / R;
-        if (r < 0.2) return PUPIL;
-        if (r < 0.6) return AMBER;
-        if (r < 0.85) return AMBER_RIM;
-        if (r < 1.3) return PUPIL;
+        const dx = Math.abs(x - ex);
+        if (dx === 0) return Y === 1 || Y === 2 ? PUPIL : AMBER_RIM;
+        if (dx === 1) return AMBER;
+        if (dx === 2) return AMBER_RIM;
+        if (dx === 3) return PUPIL;
       }
-      // bands: a steady rhythm whose phase and width drift slowly along the strip (wavy, tapering)
-      const ph = x + 2.2 * Math.sin(x / 13 + seed) + (F.Y[i] - midY) * 0.45;
-      const v = Math.cos((2 * Math.PI * ph) / 6.5);
-      const thr = 0.25 * Math.sin(x / 21 + seed * 0.7);
-      const dark = smoothstep(thr - 0.08, thr + 0.08, v);
-      return mix(mix(leuco, P.sheenAt(F.hueS[i]), 0.3), deep, dark);
+      const band = Math.floor(x / 6);
+      const k = (((x + (band % 2 ? Y : 3 - Y)) % 6) + 6) % 6;
+      return k < 2 + (band % 3 === 0 ? 1 : 0) ? deep : light(x);
     };
   }
   if (state === 'fault') {
-    const pale = lchClip(0.91, 0.028, P.h);
-    return i => {
-      const x = i % w, y = (i - x) / w;
+    // deimatic blanch: pigment withdrawn, a pale ghost of the lattice, the margin flushed red
+    const pale = lchClip(0.92, 0.028, P.h), ghost = lchClip(0.8, 0.03, P.h);
+    return (x, y) => {
       const d = Math.min(x, w - 1 - x);
       if (d < 2) return RED;
       if (d < 3) return RED_SOFT;
       if (h >= 3 && y === h - 1) return RED;
-      let c = lift(pale, 0.02 * (F.tone[i] - 0.5) * 2 - 0.07 * smoothstep(0.6, 1, ripple(i)));
-      if (F.pore[i]) c = lift(c, -0.06);
-      return c;
+      return (((x + 3 * yy(y) + wob(x)) % 7) + 7) % 7 === 0 ? ghost : lift(pale, 0.02 * (swell(x) - 0.5));
     };
   }
   return () => base;
@@ -571,7 +529,7 @@ function hatchPainter(scale, w, h, hue, seed) {
   return i => {
     const x = i % w, y = (i - x) / w;
     const wob = xl ? 1.6 * Math.sin(y / 9 + vnoise(x / 13, y / 13, seed) * 3) : 0;
-    const d = (((x + y * aspect + wob) % period) + period) % period;
+    const d = (((x - y * aspect + wob) % period) + period) % period;
     if (d < 1) return GREY.line;
     if (xl && d < 2) return mix(GREY.line, ground, d - 1);
     return ground;
@@ -660,7 +618,8 @@ export function paint({ scale, w, h, state, session, t = 0, opts = {} }) {
         return lit(c, F, i, lk);
       };
     } else {
-      skin = stripPainter(state, P, w, h, t, opts, seed);
+      const sp = stripPainter(state, P, w, h, t, opts, seed);
+      skin = i => sp(i % w, Math.floor(i / w));
     }
     const q = state === 'working' ? quantiser(P) : null;
     fn = q ? i => q(skin(i)) : skin;
