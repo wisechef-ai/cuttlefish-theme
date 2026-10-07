@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """G5: blind vision gate (tools/p1/CONTRACT.md section 5). Two independent vision backends, fixed prompts, no design context.
 
-    gates/.venv/bin/python gates/g5.py <manifest.json> [--backends gemini,codex] [--seed 2909] [--workers 4]
+    gates/.venv/bin/python gates/g5.py <manifest.json> [--backends a,b] [--seed 2909] [--workers 4]
 
 Exit 0 = PASS (every backend passes every task), 1 = FAIL, 2 = instrument error. Writes g5.json + g5.md next to the manifest, every
 raw model response under g5_raw/<backend>/, and appends the run to gates/g5_rounds.json (the kill-rule counter).
@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import statistics
 import sys
 import time
@@ -28,7 +29,7 @@ ROUNDS_FILE = Path(__file__).resolve().parent / "g5_rounds.json"
 ANCHOR_MEDIAN_MIN = g5lib.AESTHETIC_MEDIAN_MIN
 
 
-def ask(backend_fn, item: g5items.Item, png: Path, attempts: int = 3) -> dict:
+def ask(backend_fn, item: g5items.Item, png: Path, attempts: int = 5) -> dict:
     """One blind call. Transport errors are retried; an unparseable answer is NOT retried (it is a FAIL for the item)."""
     err, raw = "", ""
     for k in range(attempts):
@@ -38,14 +39,14 @@ def ask(backend_fn, item: g5items.Item, png: Path, attempts: int = 3) -> dict:
             break
         except Exception as e:  # noqa: BLE001: any transport failure is recorded, then retried
             err = f"{type(e).__name__}: {e}"[:400]
-            time.sleep(2 * (k + 1))
+            time.sleep((20 if "429" in err else 2) * (k + 1))
     ans = g5lib.parse_answer(raw, item.task) if not err else g5lib.Answer(False, None, err)
     return {"id": item.id, "kind": item.kind, "family": item.family, "variant": item.variant, "truth": item.truth, "source": item.source,
             "raw": raw, "transport_error": err, "valid": ans.valid, "value": ans.value, "parse_error": ans.error}
 
 
 def run_backend(name: str, fn, items: list[g5items.Item], pngs: dict, raw_dir: Path, workers: int) -> list[dict]:
-    out_dir = raw_dir / name
+    out_dir = raw_dir / re.sub(r"[^A-Za-z0-9._-]+", "_", name)
     out_dir.mkdir(parents=True, exist_ok=True)
 
     def one(item):
@@ -126,7 +127,7 @@ def run(manifest_path, backends: dict, seed: int = 2909, workers: int = 4, direc
         it.image.save(pngs[it.id])
     per = {name: score_backend(run_backend(name, fn, items, pngs, raw_dir, workers)) for name, fn in backends.items()}
     rep = {"schema": "cf2909.p1.g5/1", "direction": man.direction, "manifest": str(man.path), "seed": seed, "items": len(items),
-           "backends": list(backends), "models": {b: g5backends.MODEL_LABELS.get(b, b) for b in backends}, "per_backend": per,
+           "backends": list(backends), "models": {b: g5backends.label(b) for b in backends}, "per_backend": per,
            "pass": all(s["pass"] for s in per.values()), "synthetic": bool(man.raw.get("synthetic"))}
     if rounds_file is not None:
         rep["round"] = g5lib.record_round(rounds_file, man.direction, rep["pass"], backends=list(backends), seed=seed,
@@ -137,7 +138,7 @@ def run(manifest_path, backends: dict, seed: int = 2909, workers: int = 4, direc
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     ap.add_argument("manifest")
-    ap.add_argument("--backends", default="gemini,codex")
+    ap.add_argument("--backends", default="openrouter:anthropic/claude-sonnet-4.5,openrouter:google/gemini-2.5-flash")
     ap.add_argument("--seed", type=int, default=2909)
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--direction-dir")
@@ -146,11 +147,11 @@ def main(argv=None) -> int:
     ap.add_argument("--limit", type=int, help="debug: only the first N shuffled items (never a gate result)")
     a = ap.parse_args(argv)
     names = [n.strip() for n in a.backends.split(",") if n.strip()]
-    if len(set(names)) < 2 or any(n not in g5backends.BACKENDS for n in names):
-        print(f"G5 needs two distinct backends from {sorted(g5backends.BACKENDS)}; got {names}", file=sys.stderr)
+    if len(set(names)) < 2 or any(g5backends.resolve(n) is None for n in names):
+        print(f"G5 needs two distinct backends: codex, openrouter, openrouter:<vendor/model>; got {names}", file=sys.stderr)
         return 2
     try:
-        rep = run(a.manifest, {n: g5backends.BACKENDS[n] for n in names}, a.seed, a.workers, a.direction_dir,
+        rep = run(a.manifest, {n: g5backends.resolve(n) for n in names}, a.seed, a.workers, a.direction_dir,
                   None if a.no_round else Path(a.rounds_file), a.limit)
     except (gl.ManifestError, dt.DirectionError, RuntimeError, FileNotFoundError) as e:
         print(f"G5 instrument error: {e}", file=sys.stderr)

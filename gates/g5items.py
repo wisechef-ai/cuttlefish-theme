@@ -5,6 +5,7 @@ kinds: aesthetic (one image), legend (legend sheet over one unlabelled sample, o
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -72,8 +73,27 @@ def legend_sheet(rows: list[tuple[str, Image.Image]]) -> Image.Image:
     return sheet
 
 
-def _crop_img(man: gl.Manifest, e: gl.Entry, cvd: str | None) -> Image.Image:
+_FIXTURE = json.loads(dt.FIXTURE.read_text())
+_NAMES = {s["name"] for s in _FIXTURE["sessions"]} | {_FIXTURE["degraded"]["name"]}
+
+
+def _blank_names(man: gl.Manifest, direction_dir: Path, e: gl.Entry, arr: np.ndarray) -> np.ndarray:
+    """Paint over the arbitrary session-name text of a TUI render (the same name appears in the legend row and in the sample,
+    so a model could match them as strings). Alarm words (INPUT 4m / ERROR 2m) and '?' stay: they are part of the design."""
+    if e.host != "tui-terminator" or e.rung != "half" or e.tiles:
+        return arr
+    arr = arr.copy()
+    fill = _mode_colour(arr)
+    for bx, by, bw, bh, s in dt.text_cell_boxes(dt.run_node(direction_dir, [dt.text_requests(e)])["results"][0]["text"]):
+        if s.strip() in _NAMES:
+            arr[by:by + bh, bx:bx + bw] = fill
+    return arr
+
+
+def _crop_img(man: gl.Manifest, e: gl.Entry, cvd: str | None, direction_dir: Path | None = None) -> Image.Image:
     arr = dt.load_entry_crop(man, e)
+    if direction_dir is not None:
+        arr = _blank_names(man, direction_dir, e, arr)
     return Image.fromarray(gl.simulate_cvd(arr, cvd) if cvd else arr)
 
 
@@ -99,11 +119,11 @@ def legend_source(man: gl.Manifest, family: str) -> dict[str, gl.Entry]:
     return {e.look: e for e in _first_per_group(pool) if e.look in LEGEND_ORDER}
 
 
-def legend_items(man: gl.Manifest, family: str, cvd: str | None) -> list[Item]:
+def legend_items(man: gl.Manifest, direction_dir: Path, family: str, cvd: str | None) -> list[Item]:
     src = legend_source(man, family)
     if set(src) != set(LEGEND_ORDER):
         return []
-    sheet = legend_sheet([(g5lib.STATE_TO_LABEL[s], _crop_img(man, src[s], cvd)) for s in LEGEND_ORDER])
+    sheet = legend_sheet([(g5lib.STATE_TO_LABEL[s], _crop_img(man, src[s], cvd, direction_dir)) for s in LEGEND_ORDER])
     legend_files = {e.file for e in src.values()}
     pool = [e for e in _singles(man, family) if e.file not in legend_files]
     firsts = {e.file for e in _first_per_group(pool)}
@@ -111,7 +131,7 @@ def legend_items(man: gl.Manifest, family: str, cvd: str | None) -> list[Item]:
     out = []
     for e in pool:
         out.append(Item(id=f"legend-{family}-{cvd or 'plain'}-{Path(e.file).stem}", kind="legend", family=family, variant=cvd or "plain",
-                        truth=g5lib.STATE_TO_LABEL[e.look], image=stack(sheet, prep(_crop_img(man, e, cvd))),
+                        truth=g5lib.STATE_TO_LABEL[e.look], image=stack(sheet, prep(_crop_img(man, e, cvd, direction_dir))),
                         prompt_file="legend.txt", task="label", source=e.file))
     return out
 
@@ -182,9 +202,9 @@ def identity_items(man: gl.Manifest, direction_dir: Path, seed: int) -> list[Ite
 def build_items(man: gl.Manifest, direction_dir: Path, seed: int) -> list[Item]:
     items = aesthetic_items(man)
     for fam in ("XL", "M", "S"):
-        items += legend_items(man, fam, None)
+        items += legend_items(man, direction_dir, fam, None)
     for kind in gl.CVD_KINDS:
         for fam in ("M", "S"):
-            items += legend_items(man, fam, kind)
+            items += legend_items(man, direction_dir, fam, kind)
     items += identity_items(man, direction_dir, seed)
     return items
