@@ -226,7 +226,10 @@ def test_skin_file_carries_input_rule_art_and_older_cores_ignore_it(tmp_path, mo
     from rich.console import Console
     assert all(txt.get_style_at_offset(Console(), i).color for i in range(200))
     assert len(set(_HEX.findall(art))) >= 8         # rows of chromatophores, not a line
-    assert data["banner_hero"] and data["banner_logo"]  # the two precedents still present
+    # HOTFIX-TUI: the TUI parser (U5 pending) prints `[#fg on #bg]` literally, so the
+    # skin must NOT carry the two precedents until U5 re-enables them. Re-pointed
+    # from "present" to "absent"; see test_hotfix_tui_no_raw_markup.py.
+    assert "banner_hero" not in data and "banner_logo" not in data
     # the installed core (any version) loads the file without choking on the key
     # Real engine, read-only. Absent only when this interpreter has no Hermes
     # on its path — `make test` picks one that does; see `make python`.
@@ -236,7 +239,7 @@ def test_skin_file_carries_input_rule_art_and_older_cores_ignore_it(tmp_path, mo
     ).load_skin
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
     skin = load_skin("cuttlefish")
-    assert skin.banner_hero
+    assert not skin.banner_hero  # HOTFIX-TUI: hero withheld until core U5
     assert getattr(skin, "input_rule_art", "") in ("", art)
 
 

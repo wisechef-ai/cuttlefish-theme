@@ -135,6 +135,13 @@ def _yaml_block(key: str, text: str) -> str:
     return f"{key}: |\n{body}"
 
 
+# HOTFIX-TUI (cf2909, PLAN-v22 s13.1): core TUI `ui-tui/src/banner.ts::parseRichMarkup`
+# only understands `[#fg]..[/]`, so our per-cell `[#fg on #bg]` hero/logo print as
+# literal tags under `hermes --tui`. Keep False until core fix U5 (P6) teaches the
+# TUI parser `on #bg`; then flip to True. Generators below are kept, not deleted.
+EMIT_BANNER_ART = False
+
+
 def _render_yaml(name: str, colors: Mapping[str, str], description: str,
                  *, banner_logo: str = "", banner_hero: str = "", input_rule_art: str = "") -> str:
     lines = [
@@ -202,6 +209,9 @@ def write_skin(
                                acute_hex=palette.acute_hex)
         except Exception:  # pragma: no cover - art is cosmetic, never fatal
             logo = hero = ""
+
+    if not EMIT_BANNER_ART:  # see EMIT_BANNER_ART: re-enable once U5 lands
+        logo = hero = ""
 
     return write_colors(
         palette.session_id,

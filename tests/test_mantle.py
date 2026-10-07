@@ -231,7 +231,13 @@ def test_the_field_renders_within_the_startup_budget():
 
 def test_mantle_is_written_into_the_skin_as_banner_hero(tmp_path, monkeypatch):
     """End-to-end: the mantle must reach the skin file, or none of the above
-    matters."""
+    matters.
+
+    HOTFIX-TUI: the TUI parser (core U5 pending) cannot read `[#fg on #bg]`, so
+    the writer withholds banner_hero by default (skinio.EMIT_BANNER_ART=False).
+    This test flips the flag on to keep the hero path covered, so re-enabling
+    after U5 stays safe.
+    """
     import yaml
 
     monkeypatch.setenv("HERMES_HOME", str(tmp_path))
@@ -239,6 +245,8 @@ def test_mantle_is_written_into_the_skin_as_banner_hero(tmp_path, monkeypatch):
     from cuttlefish_theme.pattern import render
     from cuttlefish_theme.skinio import write_skin
 
+    import cuttlefish_theme.skinio as skinio
+    monkeypatch.setattr(skinio, "EMIT_BANNER_ART", True)
     path = write_skin(render(allocate("s1")), name="cuttlefish")
     data = yaml.safe_load(path.read_text())
     hero = data["banner_hero"].rstrip("\n").split("\n")
