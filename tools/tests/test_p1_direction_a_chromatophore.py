@@ -17,7 +17,7 @@ DIR = ROOT / "design" / "directions" / "a-chromatophore" / "direction.mjs"
 FX = json.loads((ROOT / "tools" / "p1" / "stub-sessions.json").read_text())
 STATES = FX["states"]
 # XL: the real desktop pane paint (tall, D-R2-3) and a wide one; M: TUI mantle half rung; S: TUI pill
-SIZES = {"XL": (133, 431), "M": (118, 4), "S": (14, 2)}
+SIZES = {"XL": (180, 287), "M": (118, 4), "S": (14, 2)}
 XL_WIDE = (320, 180)
 M_BG = (118, 2)
 M_80 = (78, 4)

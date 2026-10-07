@@ -71,6 +71,20 @@ function labRgb(L, a, b) {
 const mixInto = (o, t, k) => { o[0] += (t[0] - o[0]) * k; o[1] += (t[1] - o[1]) * k; o[2] += (t[2] - o[2]) * k; };
 const polarLab = (L, C, hDeg) => { const h = (hDeg * Math.PI) / 180; return [L, C * Math.cos(h), C * Math.sin(h)]; };
 
+// The leucophore ground sits where this hue has the most chroma to give (L in [0.72, 0.80]): identity is read
+// from the tile's median colour (G2), so the tint must be as strong as the gamut allows for every hue.
+function groundLightness(H) {
+  if (H == null) return 0.745;
+  const ca = Math.cos((H * Math.PI) / 180), sa = Math.sin((H * Math.PI) / 180);
+  let best = 0.745, bestC = -1;
+  for (let L = 0.72; L <= 0.8001; L += 0.02) {
+    let lo = 0, hi = 0.4;
+    for (let i = 0; i < 16; i++) { const m = (lo + hi) / 2; if (inGamut(toLin(L, m * ca, m * sa))) lo = m; else hi = m; }
+    if (lo > bestC + 1e-3) { bestC = lo; best = L; }
+  }
+  return best;
+}
+
 // ---- deterministic noise (seeded from session.lineage_id; never Math.random) ----------------------------
 function hash(x, y, s) {
   let n = Math.imul(x | 0, 374761393) ^ Math.imul(y | 0, 668265263) ^ Math.imul(s | 0, 1442695041);
@@ -139,28 +153,39 @@ function model(state, ctx) {
     return {
       E: (u, v) => {
         const T = tonus(u, v), R = rows(u, v);
-        const pm = 0.06 + 0.6 * sstep(0.6, 0.95, R), ps = 0.12 + 0.6 * sstep(0.5, 0.95, R);
+        const pm = 0.04 + 0.7 * sstep(0.62, 0.95, R), ps = 0.08 + 0.5 * sstep(0.5, 0.95, R);
         const em = hash(Math.floor(u * 7.1), Math.floor(v * 7.1), seed + 98) < pm ? 0.7 + 0.3 * T : 0.05 + 0.2 * T;
         const es = hash(Math.floor(u * 7.1), Math.floor(v * 7.1), seed + 99) < ps ? 0.85 : 0.18 + 0.3 * T;
         return [0.03 + 0.14 * T, em, es];
       },
-      ground: (u, v) => [0.73 + 0.08 * (tonus(u, v) - 0.5) + 0.14 * (rows(u, v) - 0.5) + 0.04 * (fbm(u * 0.4, v * 0.4, seed + 9, 2) - 0.5), 0.13, 1],
+      ground: (u, v) => [ctx.Lbase - 0.015 + 0.08 * (tonus(u, v) - 0.5) + (sc === 'XL' ? 0.14 * (rows(u, v) - 0.5) + 0.04 * (fbm(u * 0.4, v * 0.4, seed + 9, 2) - 0.5) : 0), 0.15, 1],
     };
   }
   if (state === 'review') {
-    // mottle: irregular light/dark patches at two scales (large blotches + small dapples)
-    const big = (u, v) => { const [x, y] = warp(u, v, 0.07, 12, 51); return fbm(x / 9, y / 9, seed + 53); };
-    const small = (u, v) => { const [x, y] = warp(u, v, 0.2, 3, 61); return fbm(x / 2.6, y / 2.6, seed + 63, 2); };
+    // mottle: dark blotches repeated across the mantle on a loose lattice (warped, irregular outlines), with small
+    // pale dapples between them: two scales, evenly spread, never the same twice (Sepia "mottle" body pattern)
+    const q = sc === 'XL' ? 1.6 : 1;
+    const blot = (u, v, sp, s0) => {
+      const [x, y] = warp(u, v, 0.25 / q, 1.6 * q, s0);
+      const i0 = Math.floor(x / sp), j0 = Math.floor(y / sp);
+      let best = 0;
+      for (let j = j0 - 1; j <= j0 + 1; j++) for (let i = i0 - 1; i <= i0 + 1; i++) {
+        const cx = (i + 0.2 + 0.6 * hash(i, j, s0 + 1)) * sp, cy = (j + 0.2 + 0.6 * hash(i, j, s0 + 2)) * sp;
+        const r = sp * (0.2 + 0.16 * hash(i, j, s0 + 3)), dx = (x - cx) / 1.2, dy = y - cy;
+        best = Math.max(best, sstep(r, r * 0.7, Math.sqrt(dx * dx + dy * dy)));
+      }
+      return best;
+    };
+    const big = (u, v) => blot(u, v, 6.5 * q, seed + 51);
+    const dapple = (u, v) => blot(u + 1.7, v + 0.9, 2.6 * q, seed + 61);
     return {
       E: (u, v) => {
-        const B = big(u, v), s2 = small(u, v);
-        const dark = sstep(0.50, 0.60, B), light = sstep(0.42, 0.34, B);
-        const dap = sstep(0.56, 0.66, s2) * (1 - dark);
-        return [Math.max(dark, 0.7 * dap) * (1 - light), Math.max(dark, dap) * (1 - light), 0.25 + 0.6 * dark * (1 - light)];
+        const B = big(u, v), d = dapple(u, v) * (1 - B);
+        return [B, Math.max(B, 0.2), 0.25 + 0.65 * B - 0.25 * d];
       },
       ground: (u, v) => {
-        const B = big(u, v), light = sstep(0.42, 0.34, B), dark = sstep(0.5, 0.6, B);
-        return [0.73 + 0.15 * light - 0.10 * dark, 0.13 - 0.06 * light, 1 + 0.6 * light];
+        const B = big(u, v), d = dapple(u, v) * (1 - B);
+        return [0.76 - 0.14 * B + 0.12 * d, 0.13 - 0.05 * d, 1 + 0.5 * d];
       },
     };
   }
@@ -168,8 +193,10 @@ function model(state, ctx) {
     // zebra: wavy, tapering transverse bands (dark expanded sacs) on a white leucophore ground
     const P = 6.4;
     const band = (u, v) => {
-      const [x, y] = warp(u, v, 0.05, 10, 71);
-      const f = frac((x + 2.2 * Math.sin(y * 0.16 + (seed & 7))) / P);
+      const [x, y] = warp(u, v, 0.05, sc === 'XL' ? 10 : 6, 71);
+      // bands meet the dorsal midline as shallow chevrons, as Sepia zebra bands do
+      const chev = (sc === 'XL' ? 0.55 : 1.4) * Math.abs(v - ctx.grid.oy - ctx.midB);
+      const f = frac((x + chev + (sc === 'XL' ? 2.2 : 1.2) * Math.sin(y * 0.16 + (seed & 7))) / P);
       const duty = 0.28 + 0.26 * fbm(x * 0.05, y * 0.05, seed + 73);   // taper: the band thins along its length
       const e = 0.09;
       return Math.min(1, sstep(-e, e, f) * (1 - sstep(duty - e, duty + e, f)) + sstep(1 - e, 1 + e, f));
@@ -188,8 +215,8 @@ function model(state, ctx) {
   }
   // unknown / degraded: neutral, a warped diagonal hatch, no identity hue at all
   const hatch = (u, v) => {
-    const [x, y] = warp(u, v, 0.08, 2.5, 91);
-    const f = frac((x + y * 1.4) / (sc === 'XL' ? 3.4 : 5.0));
+    const [x, y] = warp(u, v, 0.06, 1.4, 91);
+    const f = frac((x + y * 1.4) / (sc === 'XL' ? 3.4 : 6.0));
     return sstep(0.1, 0.22, f) * (1 - sstep(0.48, 0.6, f));
   };
   return {
@@ -233,7 +260,7 @@ function eyeList(state, ctx, freeA) {
   const ry = visB <= 2 ? 1.25 : visB * 0.5, rx = visB <= 2 ? 2.4 : ry * 1.35;
   const room = visA - freeA - (state === 'fault' ? 3 : 0);
   if (state === 'fault' && room >= 18) {   // deimatic: a loose row of dark-ringed spots of varied size
-    const out = [], n = Math.max(2, Math.min(5, Math.floor(room / 16)));
+    const out = [], n = Math.max(2, Math.min(3, Math.floor(room / 22)));
     for (let i = 0; i < n; i++) {
       const s = 0.75 + 0.35 * hash(i, 3, seed + 601);
       out.push({ a: freeA + room * (i + 0.5 + 0.25 * (hash(i, 4, seed + 602) - 0.5)) / n, b: visB / 2, rx: rx * s, ry: ry * Math.min(1, s) });
@@ -314,20 +341,23 @@ function buildLayers(state, H, ctx) {
     for (let J = j0; J <= j1; J++) for (let I = i0; I <= i1; I++) {
       const su = (I + 0.1 + 0.8 * hash(I, J, seed + K.s)) * K.sp, sv = (J + 0.1 + 0.8 * hash(I, J, seed + K.s + 1)) * K.sp;
       const pa = su - ox, pb = sv - oy;
+      if (ctx.mirror && pb > ctx.midB + K.sp) continue;               // bilateral: one half is grown, the other mirrors it
       let fade = 1;
       if (an) { const ed = an.edge(pa); if (pb > ed + 0.3) continue; fade = sstep(ed + 0.3, ed - 1.2, pb); }   // no sacs on the fin
       const e = Math.min(1, Math.max(0, mdl.E(su, sv)[ci] + (ci > 0 && ctx.grainAmp ? ctx.grainAmp * 0.55 * grainSac(su, sv) : 0)));
       const mat = (0.7 + 0.45 * hash(I, J, seed + K.s + 2)) * fade;      // organ-to-organ size variation
       const radius = (x) => (K.r0 + (K.r1 - K.r0) * x ** 1.25) * mat;
-      disc(cov[ci], pa, pb, radius(e));
-      if (withFull) disc(covFull[ci], pa, pb, radius(Math.min(1, e + CLOUD_GAIN[ci])));
+      for (const b of ctx.mirror ? [pb, 2 * ctx.midB - pb] : [pb]) {
+        disc(cov[ci], pa, b, radius(e));
+        if (withFull) disc(covFull[ci], pa, b, radius(Math.min(1, e + CLOUD_GAIN[ci])));
+      }
     }
   });
   // ground per pixel (+ the XL anatomy)
   const grain = grainField(ctx);
   const ground = new Float32Array(bw * bh * 3);
   for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) {
-    const pa = (x + 0.5) * k, pb = (y + 0.5) * k, u = pa + ox, v = pb + oy;
+    const pa = (x + 0.5) * k, pb = (y + 0.5) * k, u = pa + ox, v = (ctx.mirror ? Math.min(pb, 2 * ctx.midB - pb) : pb) + oy;
     const [gL0, gC, sheenGain] = mdl.ground(u, v);
     const gq = ctx.grainAmp ? grain(u, v) : 0, gL = gL0 - ctx.grainAmp * 0.2 * gq;
     // XL: slow hue drift (+-10 deg), clamped inside the identity arc so it never strays toward amber/red
@@ -379,7 +409,7 @@ function buildLayers(state, H, ctx) {
       return best;
     };
     for (let y = -1; y <= bh; y++) for (let x = -1; x <= bw; x++) {
-      const pa = (x + 0.5) * k, pb = (y + 0.5) * k, u = pa + ox, v = pb + oy;
+      const pa = (x + 0.5) * k, pb = (y + 0.5) * k, u = pa + ox, v = (ctx.mirror ? Math.min(pb, 2 * ctx.midB - pb) : pb) + oy;
       const fx = u + 5 * (fbm(u * 0.05, v * 0.05, seed + 311, 2) - 0.5);
       let hh = 1.2 * fbm(fx * 0.11, v * 0.05, seed + 313, 3) + 0.35 * pap(u, v) + ctx.grainAmp * 0.5 * grain(u, v) + 0.1 * vnoise(u * 1.3, v * 1.3, seed + 317);
       if (an) {   // convex mantle: a dome across the body, falling away past the edge onto the fin
@@ -463,6 +493,9 @@ export function paint({ scale, w, h, state, session, t = 0, opts = {} }) {
   const ctx = { seed, tq, sc, visA: bw * k, visB: bh * k, aa: Math.max(0.12, k / ss), detail: sc === 'XL' ? 1 : 0.6,
     relief: sc === 'XL' ? 1 : 0.35, chroma: sc === 'XL' ? 0.32 : 1, grainAmp: sc === 'XL' ? 1 : 0, grid: { bw, bh, k, ss, ox, oy } };
   ctx.an = anatomy(ctx);
+  ctx.Lbase = groundLightness(H);
+  ctx.mirror = sc !== 'XL';                                       // chrome strips: the centre line is the body midline
+  ctx.midB = ctx.an ? ctx.an.mid : ctx.visB / 2;
   const lay = layout(scale, w, h, state, session, degraded, opts);
   ctx.eyes = eyeList(state, ctx, tr ? 0 : lay.free * k);
   const key = `${sc}|${w}|${h}|${state}|${seed}|${H}`;
@@ -481,11 +514,11 @@ export function paint({ scale, w, h, state, session, t = 0, opts = {} }) {
   const SW = bw * ss, lab = [0, 0, 0], inv = 1 / (ss * ss);
   for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) {
     const p = y * bw + x, g = p * 3;
-    const c = cloud ? cloud((x + 0.5) * k, (y + 0.5) * k) : 0;
+    const c = cloud ? cloud((x + 0.5) * k, ctx.mirror ? Math.min((y + 0.5) * k, 2 * ctx.midB - (y + 0.5) * k) : (y + 0.5) * k) : 0;
     let aL = 0, aA = 0, aB = 0;
     for (let sy = 0; sy < ss; sy++) for (let sx = 0; sx < ss; sx++) {
       const n = (y * ss + sy) * SW + x * ss + sx;
-      lab[0] = ground[g] - 0.13 * c; lab[1] = ground[g + 1]; lab[2] = ground[g + 2];
+      lab[0] = ground[g] - 0.22 * c; lab[1] = ground[g + 1]; lab[2] = ground[g + 2];
       for (let ci = 2; ci >= 0; ci--) {
         let cv = cov[ci][n];
         if (c > 0) cv += (covFull[ci][n] - cv) * c;
