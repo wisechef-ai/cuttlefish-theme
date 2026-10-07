@@ -264,7 +264,7 @@ function xlField(w, h, seed) {
   return lru(xlCache, key, F, 12);
 }
 
-function xlPainter(state, P, F, w, h, t, opts) {
+function xlPainter(state, P, F, w, h, t, opts, covOverride = null) {
   const f = F.f, tall = F.tall;
   const base = P.xlBase;
   let deep = lchClip(Math.max(0.12, base[0] * 0.42), P.C * 0.5, P.h);
@@ -317,7 +317,7 @@ function xlPainter(state, P, F, w, h, t, opts) {
     sheenK = 0.12; glintK = 0; toneK = 0.04; granK = 0.35; leuK = 0;
     grain = lchClip(0.66, 0.035, P.h);
   }
-  const sacs = i => {
+  const sacs = covOverride !== null ? () => covOverride : i => {
     const e = clamp01(expand(i) + 0.18 * (F.big[i] - 0.5));
     return Math.max(
       sacCover(F.d0[i], F.r0[i], e, 4.6 * f),
@@ -358,6 +358,48 @@ function lit(c, F, i, k) {
   const s = F.spec[i] * 0.04 * k;
   return [Math.min(0.99, c[0] * d + s), c[1] * Math.min(1.1, d), c[2] * Math.min(1.1, d)];
 }
+// Working at XL animates at 4 fps, so its frame must be cheap. Every step after the sac coverage is linear in
+// the colour and the working palette is indexed by lightness alone, so per pixel we cache: L with no sac open,
+// L with every sac open, the wave coordinate u, and the coverage at 9 expansion levels. A frame is then one
+// Gaussian, one table lerp and one palette lookup per pixel (pixel-identical in structure to the slow path).
+const xlWorkCache = new Map();
+const COV_STEPS = 8;
+function xlWorkingTables(P, F, w, h, seed) {
+  const key = `${w}|${h}|${seed}|${P.h}`;
+  const hit = xlWorkCache.get(key);
+  if (hit) return hit;
+  const n = w * h, f = F.f, along = F.tall ? h : w;
+  const p0 = xlPainter('working', P, F, w, h, 0, {}, 0), p1 = xlPainter('working', P, F, w, h, 0, {}, 1);
+  const L0 = new Float32Array(n), L1 = new Float32Array(n), u = new Float32Array(n);
+  const cov = new Uint8Array(n * (COV_STEPS + 1));
+  for (let i = 0; i < n; i++) {
+    const solid = F.region[i] !== 0;
+    L0[i] = solid ? lit(p0(i), F, i, 1)[0] : WATER[0];
+    L1[i] = solid ? lit(p1(i), F, i, 1)[0] : WATER[0];
+    u[i] = F.b[i] + 0.45 * F.a[i] + (F.tone[i] - 0.5) * along * 0.12;
+    for (let k = 0; k <= COV_STEPS; k++) {
+      const e = clamp01(0.1 + (0.9 * k) / COV_STEPS + 0.18 * (F.big[i] - 0.5));
+      const c = Math.max(sacCover(F.d0[i], F.r0[i], e, 4.6 * f), 0.9 * sacCover(F.d1[i], F.r1[i], e, 2.4 * f),
+        (0.35 + 0.5 * F.r2[i]) * sacCover(F.d2[i], F.r2[i], Math.min(1, e + 0.22), 1.05 * f));
+      cov[i * (COV_STEPS + 1) + k] = Math.round(c * 255);
+    }
+  }
+  return lru(xlWorkCache, key, { L0, L1, u, cov, along }, 6);
+}
+function xlWorkingFrame(P, F, w, h, t, opts, seed, pixels) {
+  const T = xlWorkingTables(P, F, w, h, seed), q = quantiser(P);
+  const tq = opts.reducedMotion ? 0 : Math.floor(t * 4) / 4;
+  const span = T.along * 0.6, width = T.along * 0.13, off = tq * (T.along / 22);
+  for (let i = 0, n = w * h; i < n; i++) {
+    const pp = ((((T.u[i] - off) % span) + span) % span) / span - 0.5, z = (pp * span) / width;
+    const ex = Math.exp(-z * z * 1.8) * COV_STEPS, k = Math.min(COV_STEPS - 1, Math.floor(ex)), fr = ex - k;
+    const base = i * (COV_STEPS + 1);
+    const c = (T.cov[base + k] * (1 - fr) + T.cov[base + k + 1] * fr) / 255;
+    const rgb = q.rgb(T.L0[i] + (T.L1[i] - T.L0[i]) * c);
+    pixels[i * 4] = rgb[0]; pixels[i * 4 + 1] = rgb[1]; pixels[i * 4 + 2] = rgb[2]; pixels[i * 4 + 3] = 255;
+  }
+}
+
 // needs-you ocelli (soft-ringed amber eyespots) and fault deimatic rings, on the mantle only
 function xlSpots(state, F, w, h, P) {
   const deep = P ? lchClip(0.3, 0.03, P.h) : PUPIL;
@@ -455,7 +497,8 @@ function stripPainter(state, P, w, h, t, opts, seed) {
           const corner = (x === c.a || x === c.b - 1) && (Y === 0 || Y === 3);
           return corner ? dermis(x) : deep;
         }
-        if ((x === c.fleck || x === c.fleck + 1) && (Y === 1 || Y === 2)) return mix(leuco, shine(x), 0.4);
+        // flecks sit on the middle rows; on a 2-px rung (rows 0 and 3) they fill the column so they still show
+        if ((x === c.fleck || x === c.fleck + 1) && (h <= 2 || Y === 1 || Y === 2)) return mix(leuco, shine(x), 0.4);
       }
       return dermis(x);
     };
@@ -537,7 +580,13 @@ function hatchPainter(scale, w, h, hue, seed) {
 }
 
 // ---------- working palette: quantise to <= 48 colours (16 lightness × 3 hue steps) ----------
+const quantCache = new Map();
 function quantiser(P) {
+  const hit = quantCache.get(P.h);
+  if (hit) return hit;
+  return lru(quantCache, P.h, buildQuantiser(P), 32);
+}
+function buildQuantiser(P) {
   // 48 lightness steps along one skin curve at the identity hue: chroma peaks at the dermis lightness and
   // falls toward the dark sacs and the pale leucophores. One curve = no salt-and-pepper between tiers.
   const LV = 48, lo = 0.07, hi = 0.97;
@@ -547,10 +596,11 @@ function quantiser(P) {
     const C = P.C * 0.8 * Math.max(0.15, 1 - Math.abs(L - P.L) / 0.5) * (L > 0.86 ? 0.4 : 1);
     pal.push(lchClip(L, C, P.h));
   }
-  return c => {
-    const k = Math.round(((c[0] - lo) / (hi - lo)) * (LV - 1));
-    return pal[k < 0 ? 0 : k > LV - 1 ? LV - 1 : k];
-  };
+  const idx = L => { const k = Math.round(((L - lo) / (hi - lo)) * (LV - 1)); return k < 0 ? 0 : k > LV - 1 ? LV - 1 : k; };
+  const rgb = pal.map(c => { const v = oklabToLinear(c[0], c[1], c[2]); return v.map(x => Math.round(255 * lin2srgb(Math.min(1, Math.max(0, x))))); });
+  const q = c => pal[idx(c[0])];
+  q.rgb = L => rgb[idx(L)];
+  return q;
 }
 
 // ---------- labels ----------
@@ -591,6 +641,11 @@ export function paint({ scale, w, h, state, session, t = 0, opts = {} }) {
   const seed = strSeed(String((session && (session.lineage_id || session.name)) || 'unbound'));
   const n = w * h;
   let fn;
+  if (scale === 'XL' && state === 'working' && hue !== null) {
+    const pixels = new Uint8ClampedArray(n * 4);
+    xlWorkingFrame(identityPalette(hue), xlField(w, h, seed), w, h, t, opts, seed, pixels);
+    return { pixels, text: labels(scale, w, h, state, session) };
+  }
   if ((state === 'unknown' || hue === null) && scale === 'XL') {
     // the same body, drained of colour (no identity claimed; a stale-but-known session keeps a faint
     // tint so "who" stays findable), with the neutral hatch engraved over it
