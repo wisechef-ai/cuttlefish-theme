@@ -26,7 +26,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - run: python -m pip install pytest -r tools/requirements-capture.txt
+      - run: python -m pip install pytest -r tools/requirements-capture.txt -r gates/requirements.txt
       - run: python tools/p1/make_stub_sessions.py --check
       # The harness end-to-end test drives the REAL `hermes --tui` (virtual pty backend). Build upstream's TUI
       # bundle in a throwaway clone; nothing of hermes-agent is vendored here.
@@ -42,3 +42,4 @@ jobs:
         env:
           CF_HERMES_SRC: ${{ runner.temp }}/hermes-agent
       - run: node --test tools/tests/p1_tui_adapter.test.mjs
+      - run: python -m pytest -v gates/tests   # gate instruments: pure maths + fixture renders; model calls are local evidence only

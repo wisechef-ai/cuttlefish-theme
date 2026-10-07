@@ -55,11 +55,6 @@ def load_entry_crop(man: gl.Manifest, e: gl.Entry) -> np.ndarray:
     return img[y:y + h, x:x + w]
 
 
-def tui_cell_size(e: gl.Entry) -> tuple[int, int, int, int]:
-    """(w_px, h_px, cols, rows) of a terminator half-rung entry's crop in cells."""
-    cols = max(1, round(e.crop[2] / gl.CELL_W)); rows = max(1, round(e.crop[3] / gl.CELL_H))
-    return cols, rows * 2, cols, rows
-
 
 def text_requests(e: gl.Entry, crop: list | None = None) -> dict:
     """The paint() request that reproduces what the TUI host drew for this entry (text overlay positions)."""
