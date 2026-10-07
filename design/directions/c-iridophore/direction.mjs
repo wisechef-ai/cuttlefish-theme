@@ -1,24 +1,31 @@
 // Direction C: "iridophore night". Pure ESM with no imports, timers or I/O (tools/p1/CONTRACT.md §2).
 //
-// The look is layered. A deep mantle base carries the session's identity hue (OKLCh). Over it sits
-// a sheen layer of bright, low-chroma highlights (iridophores/leucophores), and a pale fin-edge line
-// runs along the bottom (the cuttlefish fin's margin). State is told by the STRUCTURE of the sheen
-// layer, never by shading alone, so it survives the bg rung (1×2 px/cell), 256 colours and CVD:
-//   idle      stipple: sparse isolated sparkles             (static)
-//   working   passing cloud: one wide luminous band drifting (the only animated state; ≤4 fps)
-//   review    mottle: cloudy light/dark patches              (static)
-//   needs-you zebra: regular sheen/dark vertical bars + amber eyespots + literal alarm text
-//   fault     deimatic: whole field blanched bright + red edge glow + literal alarm text
-//   unknown   neutral grey diagonal hatch + "?" (no sheen, no identity hue)
+// A dark-mode skin, built in the animal's own layers:
+//   dermis      deep identity hue (OKLCh) with slow, domain-warped tonal variation and relief lighting
+//   sheen       iridophore filaments whose hue drifts within ±25° of the identity hue (clamped inside the
+//               identity arc [110°, 340°)) and that lift the dermis where they run
+//   sacs        chromatophores in three size classes on jittered lattices; each sac opens at its own
+//               threshold, so every state's pattern EMERGES from an expansion field (no rectangles)
+//   leucophores bright points clustered by a low-frequency density field, and the white fin line
+// At XL the pane is a stretch of mantle seen from above: fins along both long sides with the pale
+// marginal line, and dark night water beyond the ruffled fin edge.
+// State = how the sacs and sheen organise:
+//   idle      stipple: sacs retracted to points, scattered leucophore glints            (static)
+//   working   passing cloud: a soft dark wave of expanded sacs drifting through bright sheen
+//             (the ONLY animated state; quantised to 4 fps and <= 48 colours per frame)
+//   review    mottle: irregular dark (expanded) and light (sheen) patches at two scales  (static)
+//   needs-you zebra: wavy, tapering dark bands over leucophore white + soft-ringed amber eyespots
+//   fault     deimatic: the skin blanches pale, sacs vanish, the margin flushes red
+//   unknown   neutral grey hatch + "?" (no sheen, no sacs: no pattern claimed)
 
 export const meta = {
   id: 'c-iridophore',
   name: 'Iridophore night',
   biology:
-    'Sepia officinalis/Metasepia: idle = leucophore stipple on dark mantle; working = passing cloud ' +
-    '(chromatophore wave read as a sheen band); review = mottle; needs-you = zebra bars + eyespots ' +
-    '(Sepia zebra display + Metasepia ocelli); fault = deimatic blanch with flashing margin; ' +
-    'unknown = no pattern claimed (neutral hatch). Fin-edge line = the pale fin margin.',
+    'Sepia officinalis / Metasepia, dark-field: layered dermis (leucophore points, iridophore sheen, ' +
+    'chromatophore sacs in 3 size classes, white fin line). idle = retracted-sac stipple; working = ' +
+    'passing cloud (dark wave of expanded sacs); review = two-scale mottle; needs-you = wavy tapering ' +
+    'zebra bands + soft-ringed ocelli; fault = deimatic blanch with flushed margin; unknown = no pattern.',
   maxColorsWorking: 48,
   fps: 4,
 };
@@ -36,274 +43,648 @@ function oklabToLinear(L, a, b) {
   ];
 }
 const inGamut = rgb => rgb.every(v => v >= -1e-4 && v <= 1 + 1e-4);
-function lch(L, C, h) {
-  const r = (h * Math.PI) / 180;
-  return [L, C * Math.cos(r), C * Math.sin(r)];
-}
+const lch = (L, C, h) => [L, C * Math.cos((h * Math.PI) / 180), C * Math.sin((h * Math.PI) / 180)];
+const chromaCache = new Map();
 function maxChroma(L, h) {
+  const key = Math.round(L * 400) * 4000 + Math.round(h * 4);
+  const hit = chromaCache.get(key);
+  if (hit !== undefined) return hit;
   let lo = 0, hi = 0.4;
-  for (let i = 0; i < 24; i++) {
+  for (let i = 0; i < 20; i++) {
     const c = (lo + hi) / 2;
     if (inGamut(oklabToLinear(...lch(L, c, h)))) lo = c; else hi = c;
   }
+  chromaCache.set(key, lo);
   return lo;
 }
-function labToRgb8([L, a, b]) {
-  return oklabToLinear(L, a, b).map(v => Math.round(255 * lin2srgb(Math.min(1, Math.max(0, v)))));
-}
-// A colour in this direction is an OKLab triple; mixing happens in OKLab (same hue in → same hue out).
-function lchClip(L, C, h) {
-  return lch(L, Math.min(C, maxChroma(L, h) * 0.98), h);
-}
+const lchClip = (L, C, h) => lch(L, Math.min(C, maxChroma(L, h) * 0.97), h);
 const mix = (p, q, k) => [p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k, p[2] + (q[2] - p[2]) * k];
+const lift = (c, dL) => [c[0] + dL, c[1], c[2]];
+const clamp01 = v => (v < 0 ? 0 : v > 1 ? 1 : v);
+const smoothstep = (a, b, v) => { const k = clamp01((v - a) / (b - a)); return k * k * (3 - 2 * k); };
 
 // ---------- fixed (non-identity) colours ----------
-const NEUTRAL = {
-  hatchGround: [0.27, 0, 0],
-  hatchLine: [0.47, 0, 0],
-  hatchDeep: [0.20, 0, 0],
-};
-const AMBER = lch(0.80, 0.16, 70);      // eyespot iris (alarm only)
-const AMBER_DEEP = lch(0.58, 0.13, 60);  // eyespot rim (alarm only)
-const PUPIL = [0.12, 0, 0];
-const RED = lch(0.55, 0.20, 27);         // fault edge glow (alarm only)
-const RED_SOFT = lch(0.70, 0.13, 22);
+const GREY = { ground: [0.25, 0, 0], line: [0.47, 0, 0] };
+const WATER = [0.085, 0, 0];               // night water beyond the fin (XL only)
+const AMBER = lch(0.81, 0.155, 74);        // eyespot iris (alarm only)
+const AMBER_RIM = lch(0.62, 0.135, 58);    // eyespot outer iris (alarm only)
+const PUPIL = [0.13, 0, 0];
+const RED = lch(0.56, 0.19, 27);           // fault margin (alarm only)
+const RED_SOFT = lch(0.70, 0.12, 24);
 
 // Text plates. Fixed colours so authoredPairs() is the complete set (G2 contrast table).
 const TEXT = {
-  name: { fg: '#eef1f5', bg: '#0b0e13' },
+  name: { fg: '#e8ecf1', bg: '#0c0f14' },
   input: { fg: '#1a1000', bg: '#f2a516' },
   error: { fg: '#ffffff', bg: '#b3121e' },
-  unknown: { fg: '#0b0e13', bg: '#c9ccd1' },
+  unknown: { fg: '#0c0f14', bg: '#c9ccd1' },
 };
 
-// ---------- identity palette (memoised per hue: pure, no I/O) ----------
+// ---------- identity palette (memoised per hue) ----------
+const ARC_LO = 110.5, ARC_HI = 339.5;
+const sheenHue = (h, s) => Math.min(ARC_HI, Math.max(ARC_LO, h + 25 * (2 * s - 1)));
 const palCache = new Map();
 function identityPalette(h) {
-  if (palCache.has(h)) return palCache.get(h);
-  // Deep base: as dark as the hue allows while still carrying ≥ 0.112 chroma. Blues/violets sit at
-  // L .40, the narrow-gamut teals rise to ~.6. That keeps 20 sessions 11.5° apart ≥ ΔE_OK .02 (G2).
+  const hit = palCache.get(h);
+  if (hit) return hit;
+  // Dermis on the chrome scales: as dark as the hue allows while still carrying >= 0.118 chroma (blues and
+  // violets L .40, the narrow-gamut teals rise to ~.6), so 20 hues 11.5° apart stay >= dE_OK .02 (G2).
   let L = 0.40;
   while (L < 0.64 && maxChroma(L, h) < 0.118) L += 0.01;
   const C = Math.min(0.15, maxChroma(L, h) * 0.97);
+  const sheen = [], leuco = lchClip(0.95, 0.028, h);
+  for (let k = 0; k <= 16; k++) sheen.push(lchClip(0.80, 0.09, sheenHue(h, k / 16)));
   const p = {
-    base: lch(L, C, h),
-    deep: lchClip(Math.max(0.16, L - 0.2), 0.06, h),
-    sheen: lchClip(0.93, 0.045, h),
-    light: lchClip(Math.min(0.86, L + 0.3), 0.09, h),
-    fin: lchClip(0.86, 0.07, h),
-    blanch: lchClip(0.94, 0.02, h),
+    h, L, C, base: lch(L, C, h), leuco,
+    deep: lchClip(Math.max(0.15, L * 0.42), C * 0.55, h),
+    sheenAt: s => sheen[Math.max(0, Math.min(16, Math.round(s * 16)))],
+    // XL: the deep night dermis (identity is gated on the chrome scales, so XL may sit darker)
+    xlBase: lchClip(Math.min(L, 0.47) - 0.05, C, h),
   };
   palCache.set(h, p);
   return p;
 }
 
-// ---------- deterministic hash / value noise ----------
+function neutralPalette(hue) {
+  const h = hue === null ? 250 : hue, C = hue === null ? 0 : 0.04;
+  const grey = lch(0.58, C * 0.5, h);
+  return { h, L: 0.3, C, base: lch(0.3, C, h), xlBase: lch(0.3, C, h), leuco: lch(0.82, 0, h), deep: lch(0.16, C * 0.5, h),
+    sheenAt: () => grey };
+}
+
+// ---------- deterministic hash / noise ----------
 function hash2(x, y, seed) {
-  let n = (x * 374761393 + y * 668265263 + seed * 2147483647) | 0;
+  let n = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263) + Math.imul(seed | 0, 1442695041)) | 0;
   n = Math.imul(n ^ (n >>> 13), 1274126177);
   n ^= n >>> 16;
-  return (n >>> 0) / 4294967295;
+  return (n >>> 0) / 4294967296;
 }
 function strSeed(s) {
   let n = 2166136261;
   for (let i = 0; i < s.length; i++) n = Math.imul(n ^ s.charCodeAt(i), 16777619);
-  return n >>> 0;
+  return (n >>> 0) % 1000003;
 }
-const smooth = k => k * k * (3 - 2 * k);
 function vnoise(x, y, seed) {
-  const xi = Math.floor(x), yi = Math.floor(y), fx = smooth(x - xi), fy = smooth(y - yi);
+  const xi = Math.floor(x), yi = Math.floor(y);
+  let fx = x - xi, fy = y - yi;
+  fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
   const a = hash2(xi, yi, seed), b = hash2(xi + 1, yi, seed);
   const c = hash2(xi, yi + 1, seed), d = hash2(xi + 1, yi + 1, seed);
   return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
 }
-
-// ---------- geometry per scale ----------
-// The pattern is drawn on a grid of "pattern pixels". For M/S, one grid pixel is one logical pixel
-// (tall: 10×11 screen px on the half rung, 10×22 on the bg rung). XL is drawn on a 4-px grid.
-function geometry(scale, w, h) {
-  if (scale === 'XL') {
-    const u = Math.max(2, Math.round(Math.min(w, h) / 90));
-    return { u, gw: Math.ceil(w / u), gh: Math.ceil(h / u), aspect: 1, xl: true };
+function fbm(x, y, seed, oct) {
+  let s = 0, amp = 0.5, norm = 0;
+  for (let i = 0; i < oct; i++) {
+    s += amp * vnoise(x, y, seed + i * 131);
+    norm += amp; amp *= 0.5; x = x * 2.03 + 17.1; y = y * 2.03 - 9.7;
   }
-  // h ≤ 2 is the bg rung (or a 1-row half mantle): each pixel is about twice as tall as wide.
-  return { u: 1, gw: w, gh: h, aspect: h <= 2 ? 2.2 : 1.1, xl: false };
+  return s / norm;
+}
+// Nearest jittered-lattice point: [distance, the point's own random value].
+function nearest(x, y, cell, seed) {
+  const gx = Math.floor(x / cell), gy = Math.floor(y / cell);
+  let best = 1e9, rv = 0;
+  for (let j = -1; j <= 1; j++) {
+    for (let i = -1; i <= 1; i++) {
+      const cx = gx + i, cy = gy + j;
+      const px = (cx + 0.12 + 0.76 * hash2(cx, cy, seed)) * cell;
+      const py = (cy + 0.12 + 0.76 * hash2(cx, cy, seed + 1)) * cell;
+      const d = (x - px) * (x - px) + (y - py) * (y - py);
+      if (d < best) { best = d; rv = hash2(cx, cy, seed + 2); }
+    }
+  }
+  return [Math.sqrt(best), rv];
+}
+// A sac opens once the expansion e passes its own threshold rv; soft edge 0.5 px.
+function sacCover(d, rv, e, rmax) {
+  const open = clamp01((e - rv * 0.6) / 0.4);
+  if (open <= 0) return 0;
+  const r = rmax * (0.3 + 0.7 * open);
+  return 1 - smoothstep(r - 0.5, r + 0.5, d);
 }
 
-// ---------- per-state painters: return an OKLab triple for grid pixel (x, y) ----------
-function painterFor(state, session, g, t, opts) {
-  const { gw, gh, aspect, xl } = g;
-  const hue = session && typeof session.hue_deg === 'number' ? session.hue_deg : null;
-  const seed = strSeed(String((session && (session.lineage_id || session.name)) || 'unbound'));
-  const finRows = xl ? Math.max(2, Math.round(gh * 0.035)) : gh >= 3 ? 1 : 0;
-  const isFin = y => y >= gh - finRows;
+function lru(map, key, value, cap) {
+  if (map.size >= cap) map.delete(map.keys().next().value);
+  map.set(key, value);
+  return value;
+}
 
-  if (state === 'unknown' || hue === null) {
-    // Neutral hatch: thin grey diagonal lines on a dim ground, a darker band at the bottom instead of
-    // the fin line (no sheen layer at all = "no pattern claimed"). A session whose identity is still
-    // known (stale binding) keeps a dim identity ground so "who" stays findable (plan §1.2); the
-    // degraded/no-binding mantle (hue_deg null) is pure grey and claims nothing.
-    const period = xl ? 9 : 5;
-    const ground = hue === null ? NEUTRAL.hatchGround : lchClip(0.30, 0.05, hue);
-    return (x, y) => {
-      if (finRows && isFin(y)) return NEUTRAL.hatchDeep;
-      const d = Math.round(x + y * (xl ? 1 : aspect)) % period;
-      return d === 0 ? NEUTRAL.hatchLine : ground;
-    };
+// =====================================================================================================
+// XL field: a stretch of mantle seen from above (fins along the long sides, night water beyond).
+// =====================================================================================================
+const xlCache = new Map();
+function xlField(w, h, seed) {
+  const key = `${w}|${h}|${seed}`;
+  const hit = xlCache.get(key);
+  if (hit) return hit;
+  const n = w * h, tall = h >= w, S = Math.min(w, h);
+  const f = S / 133; // feature scale: tuned on the 133-px-wide pane the desktop host paints
+  const sc = 24 * f;
+  const F = {
+    f, S, tall, seed,
+    region: new Uint8Array(n), finT: new Float32Array(n), dome: new Float32Array(n),
+    a: new Float32Array(n), b: new Float32Array(n), tone: new Float32Array(n), sheen: new Float32Array(n),
+    hueS: new Float32Array(n), d0: new Float32Array(n), d1: new Float32Array(n), d2: new Float32Array(n),
+    r0: new Float32Array(n), r1: new Float32Array(n), r2: new Float32Array(n), glint: new Float32Array(n),
+    m1: new Float32Array(n), m2: new Float32Array(n), relief: new Float32Array(n), finLine: new Float32Array(n),
+    big: new Float32Array(n), spec: new Float32Array(n), hueD: new Float32Array(n), chr: new Float32Array(n),
+    gran: new Float32Array(n), leu: new Float32Array(n), finMix: new Float32Array(n),
+  };
+  const height = new Float32Array(n);
+  const finW = S * 0.13;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      const A = (tall ? x : y) + 0.5, B = (tall ? y : x) + 0.5; // across / along the body
+      const side = A < S / 2 ? 0 : 1, de = Math.min(A, S - A);
+      // ruffled fin edge, then the fin, the pale marginal line, and the mantle
+      const ruffle = S * 0.022 * (1.3 + Math.sin(B / (S * 0.05) + 6 * vnoise(B / (S * 0.3), side * 7, seed + 3)));
+      const finEdge = finW + S * 0.045 * (fbm(B / (S * 0.16), side * 5 + 2, seed + 5, 2) - 0.5) * 2;
+      F.region[i] = de < ruffle ? 0 : de < finEdge ? 1 : 2;
+      F.finT[i] = clamp01((de - ruffle) / Math.max(1, finEdge - ruffle));
+      F.finMix[i] = 1 - smoothstep(finEdge - 3 * f, finEdge + 1.5 * f, de); // soft fin root, no seam
+      // the pale fin line is a row of leucophore beads, not a ruled line
+      const bead = smoothstep(0.1, 0.8, Math.cos(B / (1.3 * f) + 4 * vnoise(B / (S * 0.08), side, seed + 6)));
+      F.finLine[i] = Math.max(0, 1 - Math.abs(de - finEdge) / (0.85 * Math.max(0.8, f))) * (0.35 + 0.65 * bead);
+      F.dome[i] = clamp01((de - finEdge) / (S / 2 - finEdge));
+      // domain warp
+      const qx = fbm(A / sc, B / sc, seed + 11, 2), qy = fbm(A / sc + 5.2, B / sc + 1.3, seed + 23, 2);
+      const WA = A + (qx - 0.5) * sc * 0.7, WB = B + (qy - 0.5) * sc * 0.7;
+      F.a[i] = WA; F.b[i] = WB;
+      F.tone[i] = fbm(WA / (sc * 1.5), WB / (sc * 1.5), seed + 41, 3);
+      F.big[i] = fbm(A / (S * 0.5), B / (S * 0.5), seed + 43, 2);
+      // iridophore filaments: ridged noise stretched across the body, their direction turning slowly
+      const th = (fbm(A / (S * 0.8), B / (S * 0.8), seed + 51, 2) - 0.5) * 2.2;
+      const ca = Math.cos(th), sa = Math.sin(th), RA = WA * ca - WB * sa, RB = WA * sa + WB * ca;
+      const r = 1 - Math.abs(2 * fbm(RA / (sc * 1.4), RB / (sc * 0.3), seed + 57, 3) - 1);
+      F.hueD[i] = fbm(WA / (sc * 1.8), WB / (sc * 1.8), seed + 61, 2);
+      F.chr[i] = fbm(WA / (sc * 0.9), WB / (sc * 0.9), seed + 63, 2);
+      F.sheen[i] = r * r * r;
+      F.hueS[i] = fbm(WA / (sc * 2.4), WB / (sc * 2.4), seed + 71, 2);
+      const s0 = nearest(WA, WB, 10 * f, seed + 101), s1 = nearest(WA, WB, 5.2 * f, seed + 211);
+      const s2 = nearest(A, B, 2.9 * f, seed + 307);
+      F.d0[i] = s0[0]; F.r0[i] = s0[1]; F.d1[i] = s1[0]; F.r1[i] = s1[1]; F.d2[i] = s2[0]; F.r2[i] = s2[1];
+      const dens = smoothstep(0.35, 0.72, fbm(WA / (sc * 1.0), WB / (sc * 1.0), seed + 89, 2));
+      const gp = F.region[i] === 1 ? 0.045 : 0.003 + 0.022 * dens;
+      F.glint[i] = hash2(x, y, seed + 97) < gp ? 0.6 + 0.4 * hash2(x, y, seed + 98) : 0;
+      // granular chromatophore bed: dense small soft dots of varying darkness (the skin's "grain")
+      const gr = nearest(WA, WB, 2.7 * f, seed + 333);
+      F.gran[i] = (1 - smoothstep(0.4 * f, 1.3 * f, gr[0])) * (0.2 + 0.8 * gr[1] * gr[1]);
+      // leucophore white spots: small irregular blobs, sparse
+      F.leu[i] = smoothstep(0.7, 0.8, fbm(WA / (sc * 0.16), WB / (sc * 0.16), seed + 341, 2)) *
+        smoothstep(0.45, 0.65, fbm(WA / (sc * 0.9), WB / (sc * 0.9), seed + 343, 2));
+      F.m1[i] = fbm(WA / (sc * 0.7), WB / (sc * 0.7), seed + 131, 3);
+      F.m2[i] = fbm(WA / (sc * 0.26), WB / (sc * 0.26), seed + 151, 2);
+      // skin height (in px): body dome + swells + raised iridophore ridges + papillae + the fin-root rim
+      const pap = nearest(WA, WB, 7 * f, seed + 401);
+      const pr = pap[0] / (1.8 * f);
+      const ridge = smoothstep(0.25, 0.85, F.sheen[i]);
+      const u = (A - S / 2) / (S / 2 - finW * 0.6); // -1..1 across the mantle: a smooth dome, no crease
+      const domeH = F.region[i] === 2 ? Math.sqrt(Math.max(0, 1 - u * u)) * S * 0.16 : F.finT[i] * S * 0.02;
+      height[i] = domeH + f * (3 * F.big[i] + 1.5 * F.tone[i] + 0.35 * ridge + 0.9 * Math.exp(-pr * pr) * (0.4 + pap[1]) +
+        0.6 * F.gran[i] + 1.2 * F.finLine[i]);
+    }
   }
+  // lighting: normals from the height field, light from the upper left, a soft specular for the wet sheen
+  const lx = -0.45, ly = -0.55, lz = 0.7, ln = Math.hypot(lx, ly, lz);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      const x0 = Math.max(0, x - 1), y0 = Math.max(0, y - 1), x1 = Math.min(w - 1, x + 1), y1 = Math.min(h - 1, y + 1);
+      const gx = (height[y * w + x1] - height[y * w + x0]) / (x1 - x0), gy = (height[y1 * w + x] - height[y0 * w + x]) / (y1 - y0);
+      const nn = Math.hypot(gx, gy, 1);
+      const nx = -gx / nn, ny = -gy / nn, nz = 1 / nn;
+      F.relief[i] = (nx * lx + ny * ly + nz * lz) / ln; // 1 = facing the light
+      // Blinn half-vector with the viewer straight above
+      const hx = lx / ln, hy = ly / ln, hz = lz / ln + 1, hn = Math.hypot(hx, hy, hz);
+      const nh = Math.max(0, (nx * hx + ny * hy + nz * hz) / hn);
+      F.spec[i] = nh ** 24;
+    }
+  }
+  return lru(xlCache, key, F, 12);
+}
 
-  const P = identityPalette(hue);
-
+function xlPainter(state, P, F, w, h, t, opts, covOverride = null) {
+  const f = F.f, tall = F.tall;
+  const base = P.xlBase;
+  let deep = lchClip(Math.max(0.12, base[0] * 0.42), P.C * 0.5, P.h);
+  const leuco = P.leuco;
+  const dermA = lchClip(base[0] - 0.03, P.C, sheenHue(P.h, 0.05)), dermB = lchClip(base[0] + 0.03, P.C, sheenHue(P.h, 0.95));
+  let expand, sheenK = 0.5, glintK = 1, mantleExtra = null, toneK = 0.07, skin = base, granK = 0.4, leuK = 0.75;
+  let grain = lchClip(Math.max(0.12, base[0] * 0.5), 0.035, P.h);
   if (state === 'idle') {
-    // Stipple: sparse isolated sparkles. A sparkle never touches another (checked left/up), so the
-    // structure stays "dots", never "patches", even when 256-colour banding merges tones.
-    const density = xl ? 0.035 : gw <= 16 ? 0.3 : 0.16;
-    const spark = (x, y) => hash2(x, y, seed) < density;
-    return (x, y) => {
-      if (finRows && isFin(y)) return P.fin;
-      if (spark(x, y) && !spark(x - 1, y) && !spark(x, y - 1) && !spark(x - 1, y - 1) && !spark(x + 1, y - 1)) return P.sheen;
-      return P.base;
-    };
-  }
-
-  if (state === 'working') {
-    // Passing cloud: one wide luminous band drifting left→right, quantised to 4 fps and 8 levels.
+    expand = () => 0.1;
+    sheenK = 0.55;
+  } else if (state === 'working') {
     const tq = opts.reducedMotion ? 0 : Math.floor(t * 4) / 4;
-    const bw = xl ? gw * 0.28 : Math.max(8, Math.min(24, gw * 0.2));
-    const speed = xl ? gw / 24 : 6; // grid px per second: a few cells/s on the mantle
-    const span = gw + 2 * bw;
-    const cx = ((tq * speed + gw * 0.3 + bw) % span) - bw;
-    const levels = [];
-    for (let i = 0; i <= 8; i++) levels.push(mix(P.base, P.light, i / 8));
-    return (x, y) => {
-      if (finRows && isFin(y)) return P.fin;
-      const slant = (gh - 1 - y) * (xl ? 0.35 : 0.6 * aspect);
-      const d = Math.abs(x - slant - cx) / (bw / 2);
-      if (d >= 1) return P.base;
-      const k = Math.cos((d * Math.PI) / 2) ** 2;
-      return levels[Math.round(k * 8)];
+    const along = tall ? h : w;
+    const span = along * 0.6, width = along * 0.13, off = tq * (along / 22);
+    expand = i => {
+      const u = F.b[i] + 0.45 * F.a[i] + (F.tone[i] - 0.5) * along * 0.12;
+      const p = ((((u - off) % span) + span) % span) / span - 0.5;
+      const z = (p * span) / width;
+      return 0.1 + 0.9 * Math.exp(-z * z * 1.8);
     };
-  }
-
-  if (state === 'review') {
-    // Mottle: cloudy patches, three tones (deep / base / light), blobs several cells wide.
-    const sx = xl ? 14 : 7, sy = xl ? 14 : 3.2 / aspect;
-    return (x, y) => {
-      if (finRows && isFin(y)) return P.fin;
-      const n = 0.65 * vnoise(x / sx, y / sy, seed) + 0.35 * vnoise(x / (sx * 0.45), y / (sy * 0.45), seed + 7);
-      if (n < 0.4) return P.deep;
-      if (n > 0.6) return P.light;
-      return P.base;
+    sheenK = 0.9; glintK = 0.4; granK = 0.25;
+  } else if (state === 'review') {
+    const m = i => 0.62 * F.m1[i] + 0.38 * F.m2[i];
+    expand = i => 0.06 + 0.94 * smoothstep(0.5, 0.38, m(i));
+    sheenK = 0.25; granK = 0.3; glintK = 0.4;
+    mantleExtra = (i, c) => {
+      const v = m(i);
+      c = mix(c, deep, smoothstep(0.48, 0.38, v) * 0.55);
+      return mix(c, P.sheenAt(F.hueS[i]), smoothstep(0.55, 0.66, v) * 0.6);
     };
+  } else if (state === 'needs-you') {
+    const period = 15 * f;
+    const band = i => {
+      const v = Math.cos((2 * Math.PI * (F.b[i] + 0.3 * F.a[i])) / period);
+      const taper = 0.5 * (F.tone[i] - 0.5) + 0.35 * (F.dome[i] - 0.5); // bands thin toward the fins
+      return smoothstep(0.0 + taper, 0.42 + taper, v);
+    };
+    expand = i => 0.05 + 0.95 * band(i);
+    sheenK = 0.15; glintK = 0.3; leuK = 0;
+    mantleExtra = (i, c) => mix(c, leuco, (1 - band(i)) * 0.72);
+  } else if (state === 'unknown') {
+    expand = () => 0.12;
+    sheenK = 0.25; glintK = 0; leuK = 0.15; granK = 0.3;
+  } else if (state === 'fault') {
+    // deimatic blanch: the pigment withdraws; a pale ghost of the mottle and the grain remain
+    skin = lchClip(0.88, 0.03, P.h);
+    deep = lchClip(0.7, 0.035, P.h);
+    expand = () => 0.02;
+    mantleExtra = (i, c) => lift(c, -0.07 * smoothstep(0.55, 0.35, 0.62 * F.m1[i] + 0.38 * F.m2[i]));
+    sheenK = 0.12; glintK = 0; toneK = 0.04; granK = 0.35; leuK = 0;
+    grain = lchClip(0.66, 0.035, P.h);
   }
+  const sacs = covOverride !== null ? () => covOverride : i => {
+    const e = clamp01(expand(i) + 0.18 * (F.big[i] - 0.5));
+    return Math.max(
+      sacCover(F.d0[i], F.r0[i], e, 4.6 * f),
+      0.9 * sacCover(F.d1[i], F.r1[i], e, 2.4 * f),
+      (0.35 + 0.5 * F.r2[i]) * sacCover(F.d2[i], F.r2[i], Math.min(1, e + 0.22), 1.05 * f),
+    );
+  };
+  return i => {
+    const reg = F.region[i];
+    if (reg === 0) return state === 'fault' ? mix(WATER, RED, 0.12) : WATER;
+    const hd = F.hueD[i];
+    const derm = state === 'fault' ? lift(skin, 0.03 * (hd - 0.5)) : hd < 0.5 ? mix(dermA, skin, hd * 2) : mix(skin, dermB, hd * 2 - 1);
+    const ck = state === 'fault' ? 1 : 0.45 + 0.6 * F.chr[i];
+    let c = lift([derm[0], derm[1] * ck, derm[2] * ck], toneK * (F.tone[i] - 0.5) * 2 + 0.05 * (F.big[i] - 0.5) * 2);
+    const sh = smoothstep(0.35, 0.9, F.sheen[i]) * sheenK;
+    if (sh > 0) c = mix(c, P.sheenAt(F.hueS[i]), sh);
+    if (mantleExtra && reg === 2) c = mantleExtra(i, c);
+    if (F.gran[i] > 0) c = mix(c, grain, F.gran[i] * granK);
+    if (F.leu[i] > 0 && reg === 2) c = mix(c, leuco, F.leu[i] * leuK);
+    const cov = sacs(i);
+    if (cov > 0) c = mix(c, deep, cov * 0.8);
+    const fm = F.finMix[i];
+    if (fm > 0) {
+      // fin: thinner, translucent toward the ruffled edge, fine leucophore speckle; blends into the mantle
+      const fin = mix(WATER, lift(c, -0.04), 0.35 + 0.55 * smoothstep(0, 0.6, F.finT[i]));
+      c = mix(c, state === 'fault' ? mix(fin, RED, 0.55 + 0.3 * (1 - F.finT[i])) : fin, fm);
+      if (reg === 1 && F.glint[i] && state !== 'fault') c = mix(c, leuco, 0.4 * F.glint[i]);
+    } else if (glintK && F.glint[i]) {
+      c = mix(c, leuco, (state === 'working' ? 0.55 : 0.7) * glintK * F.glint[i]);
+    }
+    if (F.finLine[i] > 0) c = mix(c, state === 'fault' ? RED : leuco, F.finLine[i] * 0.18);
+    return c;
+  };
+}
+// Light the albedo: diffuse scales lightness (and chroma with it), the specular adds a wet sheen.
+function lit(c, F, i, k) {
+  const d = 1 + 0.45 * (F.relief[i] - 0.78) * k;
+  const s = F.spec[i] * 0.04 * k;
+  return [Math.min(0.99, c[0] * d + s), c[1] * Math.min(1.1, d), c[2] * Math.min(1.1, d)];
+}
+// Working at XL animates at 4 fps, so its frame must be cheap. Every step after the sac coverage is linear in
+// the colour and the working palette is indexed by lightness alone, so per pixel we cache: L with no sac open,
+// L with every sac open, the wave coordinate u, and the coverage at 9 expansion levels. A frame is then one
+// Gaussian, one table lerp and one palette lookup per pixel (pixel-identical in structure to the slow path).
+const xlWorkCache = new Map();
+const COV_STEPS = 8;
+function xlWorkingTables(P, F, w, h, seed) {
+  const key = `${w}|${h}|${seed}|${P.h}`;
+  const hit = xlWorkCache.get(key);
+  if (hit) return hit;
+  const n = w * h, f = F.f, along = F.tall ? h : w;
+  const p0 = xlPainter('working', P, F, w, h, 0, {}, 0), p1 = xlPainter('working', P, F, w, h, 0, {}, 1);
+  const L0 = new Float32Array(n), L1 = new Float32Array(n), u = new Float32Array(n);
+  const cov = new Uint8Array(n * (COV_STEPS + 1));
+  for (let i = 0; i < n; i++) {
+    const solid = F.region[i] !== 0;
+    L0[i] = solid ? lit(p0(i), F, i, 1)[0] : WATER[0];
+    L1[i] = solid ? lit(p1(i), F, i, 1)[0] : WATER[0];
+    u[i] = F.b[i] + 0.45 * F.a[i] + (F.tone[i] - 0.5) * along * 0.12;
+    for (let k = 0; k <= COV_STEPS; k++) {
+      const e = clamp01(0.1 + (0.9 * k) / COV_STEPS + 0.18 * (F.big[i] - 0.5));
+      const c = Math.max(sacCover(F.d0[i], F.r0[i], e, 4.6 * f), 0.9 * sacCover(F.d1[i], F.r1[i], e, 2.4 * f),
+        (0.35 + 0.5 * F.r2[i]) * sacCover(F.d2[i], F.r2[i], Math.min(1, e + 0.22), 1.05 * f));
+      cov[i * (COV_STEPS + 1) + k] = Math.round(c * 255);
+    }
+  }
+  return lru(xlWorkCache, key, { L0, L1, u, cov, along }, 6);
+}
+function xlWorkingFrame(P, F, w, h, t, opts, seed, pixels) {
+  const T = xlWorkingTables(P, F, w, h, seed), q = quantiser(P);
+  const tq = opts.reducedMotion ? 0 : Math.floor(t * 4) / 4;
+  const span = T.along * 0.6, width = T.along * 0.13, off = tq * (T.along / 22);
+  for (let i = 0, n = w * h; i < n; i++) {
+    const pp = ((((T.u[i] - off) % span) + span) % span) / span - 0.5, z = (pp * span) / width;
+    const ex = Math.exp(-z * z * 1.8) * COV_STEPS, k = Math.min(COV_STEPS - 1, Math.floor(ex)), fr = ex - k;
+    const base = i * (COV_STEPS + 1);
+    const c = (T.cov[base + k] * (1 - fr) + T.cov[base + k + 1] * fr) / 255;
+    const rgb = q.rgb(T.L0[i] + (T.L1[i] - T.L0[i]) * c);
+    pixels[i * 4] = rgb[0]; pixels[i * 4 + 1] = rgb[1]; pixels[i * 4 + 2] = rgb[2]; pixels[i * 4 + 3] = 255;
+  }
+}
 
+// needs-you ocelli (soft-ringed amber eyespots) and fault deimatic rings, on the mantle only
+function xlSpots(state, F, w, h, P) {
+  const deep = P ? lchClip(0.3, 0.03, P.h) : PUPIL;
+  if (state !== 'needs-you' && state !== 'fault') return null;
+  const S = F.S, L = Math.max(w, h), tall = F.tall;
+  const spots = [];
   if (state === 'needs-you') {
-    // Zebra: regular vertical bars, sheen vs deep, with amber eyespots (ocelli) every ~30 cells.
-    const bar = xl ? 8 : 2;
-    const eyeR = xl ? Math.max(5, gh * 0.11) : 1.5;
-    const nEyes = xl ? 3 : Math.max(1, Math.round(gw / 30));
-    const eyes = [];
-    for (let i = 0; i < nEyes; i++) {
-      const fx = (i + 0.62) / nEyes;
-      eyes.push({ x: Math.round(fx * (gw - 1)), y: xl ? gh * (i % 2 ? 0.62 : 0.38) : (gh - 1) / 2 });
+    for (let k = 0; k < 2; k++) {
+      const across = S * (k % 2 ? 0.64 : 0.36), along = L * (k ? 0.68 : 0.3);
+      spots.push(tall ? { x: across, y: along, R: S * 0.09 } : { x: along, y: across, R: S * 0.09 });
     }
-    return (x, y) => {
-      for (const e of eyes) {
-        const dx = x - e.x, dy = xl ? y - e.y : (y - e.y) * aspect * 0.5;
-        const r = Math.hypot(dx, dy);
-        if (xl) {
-          if (r < eyeR * 0.42) return PUPIL;
-          if (r < eyeR * 0.82) return AMBER;
-          if (r < eyeR) return AMBER_DEEP;
-          if (r < eyeR + 3) return P.deep;
-        } else {
-          if (Math.abs(dx) <= 0.5 && (gh <= 2 || Math.abs(y - e.y) < 1)) return PUPIL;
-          if (Math.abs(dx) <= 1.5) return AMBER;
-          if (Math.abs(dx) <= 2.5) return P.deep; // dark moat so the eye never fuses with a bar
-        }
+  } else {
+    // deimatic: a scatter of small dark-ringed spots of uneven size (never a symmetric pair: that reads as a face)
+    const n = 3 + Math.floor(hash2(1, 30, F.seed) * 4);
+    for (let k = 0; k < n; k++) {
+      const across = S * (0.28 + 0.44 * hash2(k, 31, F.seed)), along = L * (0.08 + 0.84 * hash2(k, 32, F.seed));
+      const R = S * (0.025 + 0.06 * hash2(k, 33, F.seed) ** 2);
+      spots.push(tall ? { x: across, y: along, R } : { x: along, y: across, R });
+    }
+  }
+  return (i, c) => {
+    const x = (i % w) + 0.5, y = Math.floor(i / w) + 0.5;
+    for (const s of spots) {
+      const R = s.R, dx = x - s.x, dy = y - s.y, r0 = Math.hypot(dx, dy) / R;
+      if (r0 > 1.6) continue;
+      const wob = vnoise(dx / (R * 0.35) + s.x, dy / (R * 0.35) + s.y, 977) - 0.5;
+      const r = r0 * (1 + (state === 'fault' ? 0.5 : 0.22) * wob);
+      if (r > 1.25) continue;
+      if (state === 'fault') {
+        // deimatic eyespot: dark ring, pale centre, feathered
+        if (r < 0.45) return c;
+        if (r < 0.62) return mix(c, deep, smoothstep(0.45, 0.62, r));
+        const broken = 0.55 + 0.45 * vnoise(Math.atan2(dy, dx) * 1.6 + s.x, s.y, 991); // the ring is uneven
+        if (r < 0.9) return mix(c, deep, broken);
+        return mix(mix(c, deep, broken), c, smoothstep(0.9, 1.25, r));
       }
-      return Math.floor(x / bar) % 2 === 0 ? P.sheen : P.deep;
+      if (r < 0.24) return mix(PUPIL, AMBER, smoothstep(0.18, 0.24, r));
+      if (r < 0.62) return mix(AMBER, AMBER_RIM, smoothstep(0.4, 0.62, r));
+      if (r < 0.92) return mix(AMBER_RIM, PUPIL, smoothstep(0.62, 0.78, r));
+      return mix(PUPIL, c, smoothstep(0.92, 1.2, r));
+    }
+    return c;
+  };
+}
+
+// =====================================================================================================
+// Strips (TUI mantle, TUI pill, desktop chip): w cells × h px; pixels are tall (aspect = height/width).
+// =====================================================================================================
+function stripPainter(state, P, w, h, t, opts, seed) {
+  // The chrome strips are a few pixels tall, so the skin is drawn as its RHYTHM: each state is one crisp,
+  // repeating motif whose phase and spacing breathe along the strip (a slow wobble), over a dermis that
+  // swells and fades (a slow gradient). Rows are addressed in half-rung units yy = 0..3 on every rung.
+  const base = P.base, deep = P.deep, leuco = P.leuco;
+  const yy = y => (h >= 4 ? y : h <= 1 ? 1 : Math.round((y * 3) / (h - 1)));
+  const ph = (seed % 97) / 97 * 6.283;
+  const swell = x => 0.5 + 0.5 * Math.sin(x / 17 + ph);                // slow dermis gradient
+  const wob = x => Math.round(1.3 * Math.sin(x / 10 + ph * 1.7));       // the motif's breathing phase
+  const dermis = x => mix(lift(deep, 0.04), base, 0.55 + 0.45 * swell(x));
+  const shine = x => P.sheenAt(swell(x * 0.7 + 9));
+  if (state === 'idle') {
+    // stipple: leucophore glints on a leaning lattice, a softer sheen cell beside each one
+    return (x, y) => {
+      const k = (((x + 3 * yy(y) + wob(x)) % 7) + 7) % 7;
+      if (k === 0) return leuco;
+      return k === 1 ? mix(dermis(x), shine(x), 0.3) : dermis(x);
     };
   }
-
-  if (state === 'fault') {
-    // Deimatic: the whole mantle blanches bright; a red glow runs round the margin.
-    // On the mantle the glow is the two ends (2 + 1 cells) plus the fin line turning red; the blanched
-    // field stays dominant, so "brightest strip" is the cue even with red removed (CVD / 256).
-    if (xl) {
-      const e = Math.max(6, Math.round(gh * 0.08));
-      return (x, y) => {
-        const d = Math.min(x, gw - 1 - x, y, gh - 1 - y);
-        if (d < e * 0.5) return RED;
-        if (d < e) return RED_SOFT;
-        return P.blanch;
-      };
+  if (state === 'working') {
+    // passing cloud: leaning iridophore striations with a soft dark wave of expanded sacs drifting through
+    const tq = opts.reducedMotion ? 0 : Math.floor(t * 4) / 4;
+    const span = Math.max(30, Math.min(64, Math.round(w * 0.55))), width = Math.max(5, Math.min(12, w * 0.1));
+    const off = tq * 4; // 4 px/s: one cell per frame
+    return (x, y) => {
+      const u = x - (yy(y) - 1.5) * 1.2;
+      const p = ((((u - off) % span) + span) % span) / span - 0.5;
+      const z = (p * span) / width;
+      const cloud = Math.exp(-z * z * 1.6);
+      const stri = (((x + yy(y) + wob(x)) % 4) + 4) % 4 === 0;
+      const c = stri ? mix(shine(x), leuco, 0.35) : dermis(x);
+      return mix(c, deep, cloud * 0.9);
+    };
+  }
+  if (state === 'review') {
+    // mottle: large dark patches with rounded corners and small pale flecks between them, two scales
+    const cells = [];
+    for (let k = 0, x = -4; x < w + 16; k++) {
+      const big = 5 + Math.round(2 * hash2(k, 10, seed)), gap = 7 + Math.round(3 * hash2(k, 9, seed));
+      cells.push({ a: x, b: x + big, fleck: x + big + Math.round(gap / 2) - 1 });
+      x += big + gap;
     }
     return (x, y) => {
-      const d = Math.min(x, gw - 1 - x);
+      const Y = yy(y);
+      for (const c of cells) {
+        if (x >= c.a && x < c.b) {
+          const corner = (x === c.a || x === c.b - 1) && (Y === 0 || Y === 3);
+          return corner ? dermis(x) : deep;
+        }
+        // flecks sit on the middle rows; on a 2-px rung (rows 0 and 3) they fill the column so they still show
+        if ((x === c.fleck || x === c.fleck + 1) && (h <= 2 || Y === 1 || Y === 2)) return mix(leuco, shine(x), 0.4);
+      }
+      return dermis(x);
+    };
+  }
+  if (state === 'needs-you') {
+    // zebra: dark bands whose lean flips every band (wavy, tapering bands) + soft-ringed amber ocelli
+    const nEyes = Math.max(1, Math.round(w / 30));
+    const eyes = [];
+    for (let k = 0; k < nEyes; k++) eyes.push(Math.round(((k + 0.62) / nEyes) * (w - 1)));
+    const light = x => mix(leuco, shine(x), 0.35 * swell(x));
+    return (x, y) => {
+      const Y = yy(y);
+      for (const ex of eyes) {
+        const dx = Math.abs(x - ex);
+        if (dx === 0) return Y === 1 || Y === 2 ? PUPIL : AMBER_RIM;
+        if (dx === 1) return AMBER;
+        if (dx === 2) return AMBER_RIM;
+        if (dx === 3) return PUPIL;
+      }
+      const band = Math.floor(x / 6);
+      const k = (((x + (band % 2 ? Y : 3 - Y)) % 6) + 6) % 6;
+      return k < 2 + (band % 3 === 0 ? 1 : 0) ? deep : light(x);
+    };
+  }
+  if (state === 'fault') {
+    // deimatic blanch: pigment withdrawn, a pale ghost of the lattice, the margin flushed red
+    const pale = lchClip(0.92, 0.028, P.h), ghost = lchClip(0.8, 0.03, P.h);
+    return (x, y) => {
+      const d = Math.min(x, w - 1 - x);
       if (d < 2) return RED;
       if (d < 3) return RED_SOFT;
-      if (finRows && isFin(y)) return RED;
-      return P.blanch;
+      if (h >= 3 && y === h - 1) return RED;
+      return (((x + 3 * yy(y) + wob(x)) % 7) + 7) % 7 === 0 ? ghost : lift(pale, 0.02 * (swell(x) - 0.5));
     };
   }
+  return () => base;
+}
 
-  return () => NEUTRAL.hatchGround;
+// =====================================================================================================
+// Desktop swatch (4×2): a jewel of the same skin; working must move at 4×2.
+// =====================================================================================================
+function swatchPainter(state, P, w, h, t, opts, seed) {
+  const H = P.h, base = P.base;
+  const lo = lift(base, -0.035), hi = lift(base, 0.035);
+  const grad = (x, y) => mix(hi, lo, (x + y * 1.5) / (w + 1.5));
+  const glintX = Math.floor(hash2(1, 1, seed) * w), glintY = hash2(2, 2, seed) < 0.5 ? 0 : h - 1;
+  if (state === 'idle') return (x, y) => (x === glintX && y === glintY ? P.leuco : grad(x, y));
+  if (state === 'working') {
+    const tq = opts.reducedMotion ? 0 : Math.floor(t * 4) / 4;
+    const pos = ((tq * 4) % (w + 2)) - 1; // the dark wave steps one pixel per frame and wraps
+    const sheen = P.sheenAt(0.8);
+    return (x, y) => {
+      const d = Math.abs(x + (y ? 0.5 : 0) - pos);
+      if (d < 0.75) return P.deep;
+      if (d < 1.6) return mix(P.deep, base, 0.55);
+      return mix(grad(x, y), sheen, 0.3);
+    };
+  }
+  if (state === 'review') return (x, y) => ((x + y) % 3 === 0 ? P.deep : x === 2 && y === 1 ? P.sheenAt(0.6) : grad(x, y));
+  if (state === 'needs-you') return x => (x === 1 ? AMBER : x === 0 ? PUPIL : x === 3 ? P.deep : P.leuco);
+  if (state === 'fault') return x => (x === 0 || x === w - 1 ? RED : lchClip(0.9, 0.03, H));
+  return () => base;
+}
+
+// ---------- neutral hatch (unknown / degraded) ----------
+function hatchPainter(scale, w, h, hue, seed) {
+  const xl = scale === 'XL';
+  const aspect = xl ? 1 : h <= 2 ? 2.2 : 1.1;
+  const ground = hue === null ? GREY.ground : lchClip(0.28, 0.045, hue);
+  const period = xl ? 7 : 5;
+  return i => {
+    const x = i % w, y = (i - x) / w;
+    const wob = xl ? 1.6 * Math.sin(y / 9 + vnoise(x / 13, y / 13, seed) * 3) : 0;
+    const d = (((x - y * aspect + wob) % period) + period) % period;
+    if (d < 1) return GREY.line;
+    if (xl && d < 2) return mix(GREY.line, ground, d - 1);
+    return ground;
+  };
+}
+
+// ---------- working palette: quantise to <= 48 colours (16 lightness × 3 hue steps) ----------
+const quantCache = new Map();
+function quantiser(P) {
+  const hit = quantCache.get(P.h);
+  if (hit) return hit;
+  return lru(quantCache, P.h, buildQuantiser(P), 32);
+}
+function buildQuantiser(P) {
+  // 48 lightness steps along one skin curve at the identity hue: chroma peaks at the dermis lightness and
+  // falls toward the dark sacs and the pale leucophores. One curve = no salt-and-pepper between tiers.
+  const LV = 48, lo = 0.07, hi = 0.97;
+  const pal = [];
+  for (let k = 0; k < LV; k++) {
+    const L = lo + ((hi - lo) * k) / (LV - 1);
+    const C = P.C * 0.8 * Math.max(0.15, 1 - Math.abs(L - P.L) / 0.5) * (L > 0.86 ? 0.4 : 1);
+    pal.push(lchClip(L, C, P.h));
+  }
+  const idx = L => { const k = Math.round(((L - lo) / (hi - lo)) * (LV - 1)); return k < 0 ? 0 : k > LV - 1 ? LV - 1 : k; };
+  const rgb = pal.map(c => { const v = oklabToLinear(c[0], c[1], c[2]); return v.map(x => Math.round(255 * lin2srgb(Math.min(1, Math.max(0, x))))); });
+  const q = c => pal[idx(c[0])];
+  q.rgb = L => rgb[idx(L)];
+  return q;
 }
 
 // ---------- labels ----------
 function labels(scale, w, h, state, session) {
+  if (scale === 'S' && w <= 8) return []; // D-R2-2: the desktop swatch carries no text
   const name = (session && session.name) || 'unbound';
   const alarm = session && session.alarm_text;
   const plates = [];
-  if (state === 'needs-you' && alarm) plates.push({ str: ` ${alarm} `, ...TEXT.input });
-  else if (state === 'fault' && alarm) plates.push({ str: ` ${alarm} `, ...TEXT.error });
-  else if (state === 'unknown' || !session || session.hue_deg === null) plates.push({ str: ' ? ', ...TEXT.unknown });
-  plates.push({ str: ` ${name} `, ...TEXT.name });
+  if (state === 'needs-you' && alarm) plates.push({ str: alarm, ...TEXT.input, must: true });
+  else if (state === 'fault' && alarm) plates.push({ str: alarm, ...TEXT.error, must: true });
+  else if (state === 'unknown' || !session || session.hue_deg === null) plates.push({ str: '?', ...TEXT.unknown, must: true });
+  plates.push({ str: name, ...TEXT.name });
 
-  const out = [];
   if (scale === 'XL') {
-    // CSS px: a stacked caption block, top-left.
-    let y = 24;
-    for (const p of plates) { out.push({ x: 24, y, str: p.str, fg: p.fg, bg: p.bg }); y += 28; }
+    let y = 18;
+    const out = [];
+    for (const p of plates) { out.push({ x: 30, y, str: ` ${p.str} `, fg: p.fg, bg: p.bg }); y += 26; }
     return out;
   }
-  // Cell coordinates, row 0 (valid on every rung and the 1-row mantle). Pattern stays visible on the
-  // remaining columns and, on 2-row mantles, the whole second row. S pills can't fit the full text,
-  // so they keep the alarm/marker plate verbatim and then the name (the host clips the pill).
+  // Cell coordinates, row 0. Plates are padded by one space when room allows; the skin stays visible on
+  // the rest of the row and (2-row mantles) the whole second row. The alarm/marker plate is always kept.
+  const out = [];
+  const gap = scale === 'S' ? 0 : 1;
   let x = scale === 'M' ? 1 : 0;
   for (const p of plates) {
-    let str = p.str;
-    if (scale === 'M' && x + str.length > w) str = str.trim();
-    if (scale === 'M' && x + str.length > w) break;
+    const padded = ` ${p.str} `;
+    let str = x + padded.length <= w - gap ? padded : p.str;
+    if (x + str.length > w) { if (!p.must) break; str = str.slice(0, Math.max(0, w - x)); }
     out.push({ x, y: 0, str, fg: p.fg, bg: p.bg });
-    x += str.length;
+    x += str.length + gap;
   }
   return out;
 }
 
 export function paint({ scale, w, h, state, session, t = 0, opts = {} }) {
-  const g = geometry(scale, w, h);
-  const fn = painterFor(state, session, g, t, opts || {});
-  const pixels = new Uint8ClampedArray(w * h * 4);
-  // Resolve each distinct OKLab triple once (also keeps the working palette exact).
-  const rgbCache = new Map();
-  const row = new Array(g.gw);
-  for (let gy = 0; gy < g.gh; gy++) {
-    for (let gx = 0; gx < g.gw; gx++) {
-      const lab = fn(gx, gy);
-      let rgb = rgbCache.get(lab);
-      if (!rgb) { rgb = labToRgb8(lab); rgbCache.set(lab, rgb); }
-      row[gx] = rgb;
+  opts = opts || {};
+  const hue = session && typeof session.hue_deg === 'number' ? session.hue_deg : null;
+  const seed = strSeed(String((session && (session.lineage_id || session.name)) || 'unbound'));
+  const n = w * h;
+  let fn;
+  if (scale === 'XL' && state === 'working' && hue !== null) {
+    const pixels = new Uint8ClampedArray(n * 4);
+    xlWorkingFrame(identityPalette(hue), xlField(w, h, seed), w, h, t, opts, seed, pixels);
+    return { pixels, text: labels(scale, w, h, state, session) };
+  }
+  if ((state === 'unknown' || hue === null) && scale === 'XL') {
+    // the same body, drained of colour (no identity claimed; a stale-but-known session keeps a faint
+    // tint so "who" stays findable), with the neutral hatch engraved over it
+    const P = neutralPalette(state === 'unknown' ? hue : null);
+    const F = xlField(w, h, seed);
+    const body = xlPainter('unknown', P, F, w, h, t, opts);
+    const hatch = hatchPainter(scale, w, h, null, seed);
+    fn = i => (F.region[i] === 0 ? body(i) : mix(lit(body(i), F, i, 1), hatch(i), hatch(i) === GREY.line ? 0.5 : 0));
+  } else if (state === 'unknown' || hue === null) {
+    fn = hatchPainter(scale, w, h, hue, seed);
+  } else {
+    const P = identityPalette(hue);
+    let skin;
+    if (scale === 'S' && w <= 8) {
+      const sp = swatchPainter(state, P, w, h, t, opts, seed);
+      skin = i => sp(i % w, Math.floor(i / w));
+    } else if (scale === 'XL') {
+      const F = xlField(w, h, seed);
+      const body = xlPainter(state, P, F, w, h, t, opts);
+      const spots = xlSpots(state, F, w, h, P);
+      const lk = 1;
+      skin = i => {
+        if (F.region[i] === 0) return body(i);
+        const c = spots && F.region[i] === 2 ? spots(i, body(i)) : body(i);
+        return lit(c, F, i, lk);
+      };
+    } else {
+      const sp = stripPainter(state, P, w, h, t, opts, seed);
+      skin = i => sp(i % w, Math.floor(i / w));
     }
-    const y0 = gy * g.u, y1 = Math.min(h, y0 + g.u);
-    for (let y = y0; y < y1; y++) {
-      for (let x = 0; x < w; x++) {
-        const rgb = row[Math.min(g.gw - 1, Math.floor(x / g.u))];
-        const i = (y * w + x) * 4;
-        pixels[i] = rgb[0]; pixels[i + 1] = rgb[1]; pixels[i + 2] = rgb[2]; pixels[i + 3] = 255;
-      }
-    }
+    const q = state === 'working' ? quantiser(P) : null;
+    fn = q ? i => q(skin(i)) : skin;
+  }
+  const pixels = new Uint8ClampedArray(n * 4);
+  for (let i = 0; i < n; i++) {
+    const c = fn(i);
+    const v = oklabToLinear(c[0], c[1], c[2]);
+    for (let k = 0; k < 3; k++) pixels[i * 4 + k] = Math.round(255 * lin2srgb(Math.min(1, Math.max(0, v[k]))));
+    pixels[i * 4 + 3] = 255;
   }
   return { pixels, text: labels(scale, w, h, state, session) };
 }
