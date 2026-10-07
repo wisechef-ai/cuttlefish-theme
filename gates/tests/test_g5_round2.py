@@ -130,6 +130,31 @@ def test_model_ids_are_configurable_through_env(monkeypatch):
     assert g5backends.model_id("glm") == "glm-4.6v-flash"
 
 
+def test_concurrency_gate_caps_in_flight_requests(png):
+    import threading
+    import time
+    live, peak, lock = [0], [0], threading.Lock()
+
+    def post(url, headers, body):
+        with lock:
+            live[0] += 1
+            peak[0] = max(peak[0], live[0])
+        time.sleep(0.02)
+        with lock:
+            live[0] -= 1
+        return _ok("x")
+
+    cfg = g5backends.OpenAICompat(url="u", key_name="K", model="m", gate=threading.Semaphore(1))
+    ts = [threading.Thread(target=g5backends.openai_compat_call, args=(cfg, png, "p"), kwargs={"post": post, "key": "k"}) for _ in range(6)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert peak[0] == 1
+
+
+def test_glm_backend_is_serialised_by_default():
+    assert g5backends._GLM_GATE._value == 1
+
+
 # ---- cache ---------------------------------------------------------------------------------
 def test_cache_key_depends_on_backend_model_image_and_prompt(png, tmp_path):
     base = g5cache.key("qwen", "m1", png, "prompt")

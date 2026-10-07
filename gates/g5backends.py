@@ -2,7 +2,7 @@
 
 qwen   : qwen3.8-27b on hercules (OpenAI-compatible, local, private-safe; HERCULES_API_KEY; model via G5_QWEN_MODEL; thinking off).
 glm    : zai glm-4.6v-flash (OpenAI-compatible, free tier; GLM_API_KEY; model via G5_GLM_MODEL). Paced (G5_GLM_MIN_INTERVAL, default 3 s)
-         because 3 concurrent workers draw 429s; 429/5xx are retried with exponential backoff + jitter, bounded, then a TransportError.
+         and held to one in-flight request (G5_GLM_CONCURRENCY) because 3 concurrent workers draw 429s; 429/5xx are retried with exponential backoff + jitter, bounded, then a TransportError.
 codex  : OpenAI via ``codex exec -i`` run in an empty temp dir with user config and rules ignored, so no repo or design context loads (optional).
 gemini:<model> : Google generativelanguage REST (GEMINI_API_KEY; free tier is 20 requests/day per model: smoke only).
 openrouter : OpenRouter chat completions with an image part (optional; default anthropic/claude-sonnet-4.5).
@@ -21,6 +21,7 @@ Only public renders, synthetic fixtures and openly licensed photos are ever sent
 from __future__ import annotations
 
 import base64
+import contextlib
 import dataclasses
 import json
 import os
@@ -111,6 +112,7 @@ class OpenAICompat:
     max_retries: int = 5
     extra_body: dict = dataclasses.field(default_factory=dict)
     pacer: Pacer = dataclasses.field(default_factory=Pacer, compare=False)
+    gate: threading.Semaphore | None = dataclasses.field(default=None, compare=False)   # caps in-flight requests (free tiers 429 on concurrency)
 
 
 def _status(e: Exception):
@@ -126,10 +128,11 @@ def openai_compat_call(cfg: OpenAICompat, png: Path, prompt: str, post=None, sle
         {"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}}]}]}
     last = ""
     for attempt in range(cfg.max_retries + 1):
-        if cfg.min_interval:
-            cfg.pacer.wait(cfg.min_interval)
         try:
-            d = post(cfg.url, {"Authorization": f"Bearer {key}"}, body)
+            with cfg.gate or contextlib.nullcontext():
+                if cfg.min_interval:
+                    cfg.pacer.wait(cfg.min_interval)
+                d = post(cfg.url, {"Authorization": f"Bearer {key}"}, body)
             return (d["choices"][0]["message"].get("content") or "") if d.get("choices") else ""   # empty/blocked reply is scored as invalid
         except Exception as e:  # noqa: BLE001
             st = _status(e)
@@ -154,6 +157,7 @@ def model_id(name: str) -> str:
 
 
 _GLM_PACER, _QWEN_PACER = Pacer(), Pacer()
+_GLM_GATE = threading.Semaphore(int(os.environ.get("G5_GLM_CONCURRENCY", "1")))   # 3 concurrent workers drew 429s (probe 2026-10-07)
 
 
 def qwen_backend(png: Path, prompt: str) -> str:
@@ -164,7 +168,7 @@ def qwen_backend(png: Path, prompt: str) -> str:
 
 def glm_backend(png: Path, prompt: str) -> str:
     cfg = OpenAICompat(url="https://api.z.ai/api/paas/v4/chat/completions", key_name="GLM_API_KEY", model=model_id("glm"),
-                       min_interval=float(os.environ.get("G5_GLM_MIN_INTERVAL", "3.0")), pacer=_GLM_PACER)
+                       min_interval=float(os.environ.get("G5_GLM_MIN_INTERVAL", "3.0")), pacer=_GLM_PACER, gate=_GLM_GATE)
     return openai_compat_call(cfg, png, prompt)
 
 
