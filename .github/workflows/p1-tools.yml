@@ -41,5 +41,5 @@ jobs:
       - run: python -m pytest -v tools/tests/test_p1_*.py tests/test_capture_tui_sequence.py
         env:
           CF_HERMES_SRC: ${{ runner.temp }}/hermes-agent
-      - run: node --test tools/tests/p1_tui_adapter.test.mjs
+      - run: node --test tools/tests/p1_tui_adapter.test.mjs tools/tests/p1_desktop_stub.test.mjs
       - run: python -m pytest -v gates/tests   # gate instruments: pure maths + fixture renders; model calls are local evidence only

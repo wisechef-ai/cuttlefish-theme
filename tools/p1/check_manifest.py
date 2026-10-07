@@ -8,7 +8,9 @@ Checks (each a named failure, exit 1 on any):
   matrix        every required (host, scale, state/look, rung, depth, cols, frame_t) entry is present
   files         every PNG exists; every crop lies inside its PNG
   static        each non-working look has its frames byte-identical in pixels inside the crop (D1)
-  working       working frames are NOT all identical (the motion is real)
+  working       working frames are NOT all identical (the motion is real); the desktop S swatch (4x2 px) must show
+                >= 3 distinct frames among t=0/.25/.5/.75 on the host-composited crop (D-R2-2)
+  xl_paint      every desktop XL entry records its internal paint size [w, h] with w*h <= 57600 (D-R2-3)
   capture_log   every entry has a log naming both SHAs, a throwaway HERMES_HOME and a host process
                 (node …/ui-tui/dist/entry.js for TUI, electron for desktop) whose PID matches the host's ack
 Prints one JSON report on stdout.
@@ -26,6 +28,8 @@ SCHEMA = "cf2909.p1.manifest/1"
 STATES = ("idle", "working", "review", "needs-you", "fault", "unknown")
 HOSTS = ("tui-terminator", "tui-pane-webgl", "tui-pane-dom", "desktop")
 WORKING_T = (0.0, 0.25, 0.5, 0.75)
+SWATCH_MIN_DISTINCT = 3   # D-R2-2: desktop S working must visibly move at 4x2
+XL_MAX_PIXELS = 57600     # D-R2-3
 LOOKS = STATES + ("degraded",)
 ENTRY_TYPES = {"file": str, "host": str, "scale": str, "state": str, "rung": str, "depth": str, "frame_t": (int, float),
                "sessions": list, "crop": list, "capture_log": str}
@@ -143,12 +147,23 @@ def check(manifest_path: Path, hosts: set[str], live_pids: bool = False) -> dict
             continue
         distinct = {px for _, px, _ in shots}
         if k[2] == "working":
+            need = SWATCH_MIN_DISTINCT if (k[0], k[1], k[6]) == ("desktop", "S", "surface") else 2
             if len(distinct) < 2:
                 fails["working"].append(f"{k}: all {len(shots)} working frames identical (no motion)")
+            elif len(distinct) < need:
+                fails["working"].append(f"{k}: {len(distinct)} distinct frames of {len(shots)}, need >= {need} "
+                                        "(the 4x2 swatch must visibly move)")
         elif len(distinct) != 1:
             fails["static"].append(f"{k}: {len(distinct)} distinct frames for a static look "
                                    f"({', '.join(f for _, _, f in shots)})")
 
+    for e in entries:
+        if e["host"] == "desktop" and e["scale"] == "XL":
+            xp = e.get("xl_paint")
+            if not (isinstance(xp, list) and len(xp) == 2 and all(isinstance(v, int) and v > 0 for v in xp)):
+                fails["xl_paint"].append(f"{e['file']}: xl_paint {xp!r} is not [w, h] positive ints")
+            elif xp[0] * xp[1] > XL_MAX_PIXELS:
+                fails["xl_paint"].append(f"{e['file']}: XL painted {xp[0]}x{xp[1]} = {xp[0] * xp[1]} px > {XL_MAX_PIXELS}")
     for e in entries:
         lp = root / e["capture_log"]
         if not lp.exists():
