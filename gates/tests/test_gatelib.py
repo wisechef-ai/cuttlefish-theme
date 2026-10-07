@@ -257,3 +257,12 @@ def test_prompts_contain_no_design_vocabulary_outside_legend_labels():
         if f.name != "legend.txt":
             for w in ("idle", "working", "review", "error", "needs input"):
                 assert w not in txt, f"{f.name} contains {w}"
+
+
+def test_sample_per_cell_caps_each_cell_and_keeps_every_label():
+    items = [("c1", lab, n) for n, lab in enumerate(["a", "a", "a", "b", "b", "c"] * 3)] + [("c2", "a", 99)]
+    got = g5lib.sample_per_cell(items, 3, lambda i: i[0], lambda i: i[1])
+    c1 = [i for i in got if i[0] == "c1"]
+    assert len(c1) == 3 and {i[1] for i in c1} == {"a", "b", "c"}
+    assert [i for i in got if i[0] == "c2"] == [("c2", "a", 99)]
+    assert got == [i for i in items if i in got]            # order preserved

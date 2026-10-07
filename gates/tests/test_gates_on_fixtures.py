@@ -82,3 +82,18 @@ def test_g5_prompts_sent_to_models_carry_no_design_vocabulary(renders):
     assert sent
     for word in ("cuttlefish", "sepia", "chromatophore", "mantle", "needs-you", "fault", "iridophore"):
         assert word not in sent
+
+
+def test_legend_task_masks_text_by_default_and_keeps_alarm_words_on_request(renders):
+    import numpy as np
+    import dirtools
+    import g5items
+    import gatelib
+    man, ddir = gatelib.load_manifest(renders["bad"]), dirtools.resolve_direction_dir("bad")
+
+    def sample(keep):
+        items = {i.id: i for i in g5items.legend_items(man, ddir, "M", None, keep)}
+        return np.asarray(items["legend-M-plain-M-half-256-120-needs-you-t000"].image)
+
+    masked, kept = sample(False), sample(True)
+    assert masked.shape == kept.shape and not np.array_equal(masked, kept)   # the INPUT/ERROR words are the only difference

@@ -71,6 +71,22 @@ def seeded_shuffle(items, seed: int) -> list:
     return out
 
 
+def sample_per_cell(items, cap: int, cell_of, label_of) -> list:
+    """Keep at most ``cap`` items per cell, taking labels round-robin so every label stays represented. Order is preserved."""
+    cells: dict = {}
+    for n, it in enumerate(items):
+        cells.setdefault(cell_of(it), {}).setdefault(label_of(it), []).append(n)
+    picked = set()
+    for by_label in cells.values():
+        queues, taken = [list(v) for v in by_label.values()], 0
+        while taken < cap and any(queues):
+            for q in queues:
+                if q and taken < cap:
+                    picked.add(q.pop(0))
+                    taken += 1
+    return [it for n, it in enumerate(items) if n in picked]
+
+
 # ---- verdicts -------------------------------------------------------------------------------
 def aesthetic_verdict(scores: list) -> dict:
     """Pass: median >= 7 and no item < 6. A None (invalid answer) fails the direction."""

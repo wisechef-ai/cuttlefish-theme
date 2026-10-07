@@ -1,4 +1,4 @@
 The top panel is a LEGEND: six small samples, each with a text label (idle, working, review, needs input, error, unknown) printed to its left.
 The bottom panel is one UNLABELLED SAMPLE rendered by the same system.
-Decide which legend label the sample shows. Compare pattern and structure first; colour second. Words such as INPUT or ERROR printed in a sample are part of it; blank patches are where an arbitrary name was removed, so ignore them.
+Decide which legend label the sample shows. Judge by pattern, structure and colour. Blank patches are where text was removed; do not guess from them.
 Answer with strict JSON only, no other text: {"label": "<one of: idle, working, review, needs input, error, unknown>"}

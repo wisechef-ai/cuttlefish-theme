@@ -1,5 +1,6 @@
 """Vision backends for G5. Each is ``fn(png_path, prompt) -> raw answer text``; exceptions mean a transport failure.
 
+gemini:<model> : Google generativelanguage REST (GEMINI_API_KEY; free tier is a per-model daily quota, calls are paced).
 openrouter : OpenRouter chat completions with an image part; default anthropic/claude-sonnet-4.5, the model family Hermes' own
                auxiliary vision config names (key from env or ~/.hermes/.env).
 codex  : OpenAI via ``codex exec -i`` run in an empty temp dir with user config and rules ignored, so no repo or design context loads.
@@ -19,6 +20,8 @@ import json
 import os
 import subprocess
 import tempfile
+import threading
+import time
 import urllib.request
 from pathlib import Path
 
@@ -53,6 +56,23 @@ def openrouter_backend(png: Path, prompt: str, model: str = "") -> str:
     return d["choices"][0]["message"].get("content") or ""   # an empty/blocked reply is scored as invalid
 
 
+_pace_lock, _pace_last = threading.Lock(), [0.0]
+GEMINI_MIN_INTERVAL = float(os.environ.get("G5_GEMINI_MIN_INTERVAL", "4.0"))   # free tier: pace calls instead of hammering
+
+
+def gemini_backend(png: Path, prompt: str, model: str = "gemini-3-flash-preview") -> str:
+    with _pace_lock:
+        time.sleep(max(0.0, _pace_last[0] + GEMINI_MIN_INTERVAL - time.monotonic()))
+        _pace_last[0] = time.monotonic()
+    b64 = base64.b64encode(Path(png).read_bytes()).decode()
+    body = {"contents": [{"parts": [{"text": prompt}, {"inline_data": {"mime_type": "image/png", "data": b64}}]}],
+            "generationConfig": {"temperature": 0, "maxOutputTokens": 2048, "responseMimeType": "application/json"}}
+    d = _post(f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent", {"x-goog-api-key": _env_key("GEMINI_API_KEY")}, body)
+    cands = d.get("candidates") or []
+    parts = (cands[0].get("content", {}).get("parts") if cands else None) or []
+    return "".join(p.get("text", "") for p in parts)   # a blocked/empty reply is scored as invalid
+
+
 def codex_backend(png: Path, prompt: str) -> str:
     with tempfile.TemporaryDirectory() as work:
         out = Path(work) / "answer.txt"
@@ -68,15 +88,17 @@ BACKENDS = {"openrouter": openrouter_backend, "codex": codex_backend}
 
 
 def resolve(name: str):
-    """'codex', 'openrouter' (default model) or 'openrouter:<vendor/model>' -> callable; None if unknown."""
+    """'codex', 'gemini:<model>', 'openrouter' (default model) or 'openrouter:<vendor/model>' -> callable; None if unknown."""
     if name in BACKENDS:
         return BACKENDS[name]
     if name.startswith("openrouter:") and len(name) > len("openrouter:"):
         return lambda png, prompt: openrouter_backend(png, prompt, name.split(":", 1)[1])
+    if name.startswith("gemini:") and len(name) > len("gemini:"):
+        return lambda png, prompt: gemini_backend(png, prompt, name.split(":", 1)[1])
     return None
 
 
 def label(name: str) -> str:
-    if name.startswith("openrouter:"):
-        return f"openrouter {name.split(':', 1)[1]}"
+    if name.startswith(("openrouter:", "gemini:")):
+        return name.replace(":", " ", 1)
     return {"openrouter": f"openrouter {OPENROUTER_MODEL}", "codex": f"openai via codex exec ({CODEX_MODEL or 'codex default model'})"}.get(name, name)
