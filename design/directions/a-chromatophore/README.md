@@ -1,25 +1,61 @@
-# Direction A: chromatophore field
+# Direction A, round 2: "Sepia dermis"
 
-Idea: the skin is a field of pigment sacs over a pale leucophore ground. Each logical pixel (XL: each disc) is one
-sac that is either contracted (ground) or expanded in one of three tones of the session's identity hue.
-Hue = who (OKLCh `hue_deg`, always inside [110, 340)); pattern = what. Amber and red appear only on needs-you and fault.
-All colours are discrete flats (no gradients), so the look survives the 256 rung. Only `working` moves.
+Idea in five lines:
+1. One pure skin function, sampled at every scale, in body space (a = along the long side, b = across it).
+2. Layered like real *Sepia* dermis: a leucophore ground tinted in the identity hue, iridophore sheen streaks and white flecks, and three size classes of chromatophore sacs that expand as whole organs.
+3. Each state is an expansion field over those sacs (multi-scale, domain-warped), so patterns emerge from sac expansion, not from drawn shapes.
+4. XL is a macro of the dorsal mantle: organised dermal grain, folds and papillae under a lit relief with a wet highlight, a convex body, the pale mantle-edge line and a rippled fin. It is painted small and upscaled smoothly (D-R2-3), with muted natural chroma.
+5. The M/S strips treat their centre line as the body midline. Every layer is bilaterally mirrored, and the zebra bands chevron at the midline. Hue is identity (OKLCh `hue_deg`), and amber and red appear only on alarms.
+
+## States
 
 | state | pattern | biology source | bg rung (1x2 px/cell) | 256 colours | deutan / protan / tritan |
 |---|---|---|---|---|---|
-| idle | sparse isolated expanded sacs (stipple), static | Sepia close-up resting skin | scattered single cells on pale ground | tones stay distinct flats | density, not hue, carries it |
-| working | one dense dark band drifting right, soft sparse edge; <=4 fps, <=48 colours, static under reducedMotion | Sepia passing-cloud display | 3-12 cell wide dark block, travelling | 3 tones + ground only | a moving dark block on pale: luminance only |
-| review | irregular contiguous light/dark patches (value noise, 3 tones) | Sepia mottle | blobs 4-16 cells wide, 2 rows deep | tones are 3 fixed steps | patch shape, not colour |
-| needs-you | vertical dark/pale bars (tall cells) with two dark-ringed amber eyespots, dark plate with amber `INPUT 4m` | Sepia/Metasepia zebra + eyespots | bars 1-2 cells wide, eyes = dark/amber/dark | amber and dark are far apart in the cube | bars + eyes are luminance-structure; text is literal |
-| fault | blanched near-white field, dark-edged pale eye spots, red edge, red plate with white `ERROR 2m` | deimatic display | blank pale vs every other state, red edge column | red is a pure cube corner | blank vs barred is the INPUT/ERROR separator |
-| unknown | neutral grey diagonal hatch, `?`; session.hue_deg null (degraded) claims no hue; labelled `unbound` | desaturated skin | checkerboard 1x2 | greys only | identical in all sims |
+| idle | sparse fine sacs gathered in loose wavy rows on a tinted ground; static | resting *Sepia* stipple: fine spots along growth lines | single dark cells in loose rows | the ground and the dots are far apart in L | dots on a calm ground: luminance only |
+| working | idle, plus a soft dark wave of fully expanded sacs drifting along the body. Two waves, half a span apart. Steps at 4 fps, <= 42 colours, static under reducedMotion | passing cloud | a 10-16 cell dark band that moves | the band is 3-5 L steps darker | moving dark band: luminance only |
+| review | dark blotches repeated on a loose warped lattice, with small pale dapples between them (two scales) | *Sepia* mottle | blotches 3-6 cells wide | blotch vs dapple is about 0.25 L apart | patch shape, not colour |
+| needs-you | wavy, tapering transverse bands that chevron at the midline, on a white leucophore ground; soft-ringed amber eyespots (pale halo, dark ring, amber iris); dark plate with amber `INPUT 4m` | zebra + eyespots (*Sepia* / *Metasepia*) | bars 2-4 cells wide, eyes dark/amber/dark | amber and dark sit far apart in the cube | barred dark field: structure, not hue |
+| fault | sudden blanch (every sac a pinpoint), soft dark rings around blanched centres, red flush at the margin; red plate with white `ERROR 2m` | deimatic display | almost all pale, a few ring spots, red end column | pale field + red corner of the cube | blanched pale field vs barred dark field is the INPUT/ERROR separator (unit test: needs-you dark fraction > 2x fault + 0.1) |
+| unknown | neutral grey warped diagonal hatch, `?`; degraded (no binding) claims no hue and is labelled `unbound` | desaturated skin | diagonal steps | greys only | identical in every sim |
 
-INPUT vs ERROR is separated by structure (barred dark vs blanched pale) before colour is considered.
+The desktop swatch (4x2) carries no text (D-R2-2). There, working is a cloud crossing the swatch, a step per quarter second.
+The XL pane carries only the alarm text or `?` in CSS px. It shows the focused session, whose name is already on screen,
+and the exploratory probe was reading the name label as content ("quill" became "a feather quill").
 
-80-col needs-you: M is 78 cells. The `INPUT 4m` plate (10 cells) takes the top-left, the name sits under it, and the bars plus
-the amber eyes fill the remaining ~66 cells, so the pattern stays visible. Fault is the same. Eyes are dropped only if the free
-width is under ~6 cells. On S (14 px pill) the alarm replaces the name: it is the durable signal, and the name is
-elsewhere on the row. Name label is present on every M/S non-alarm state.
+Identity (D-R2-1): the idle ground sits at the lightness in [0.72, 0.80] where the hue has the most chroma available, and asks for C 0.15 (clipped to gamut per pixel).
+The hue owns more than 50 % of every idle tile (unit test). On the real host, the G2 nearest pair is about 0.024 at 16 and 20, against a threshold of 0.020.
+XL hue drift never moves past the session hue toward the arc ends, and deep shadow desaturates, so no XL pixel leaves [110, 340).
 
-DEV previews (`tools/p1/preview.mjs`) are not evidence. No real-host render: `tools/p1/capture_matrix.py` is not on v22 yet;
-P1-R renders this directory through the real hosts.
+Cost: static frames and layers are memoised per (scale, size, state, session). A working frame only evaluates the cloud
+and blends two precomputed coverage layers: about 4-5 ms at M (118x4) and about 150 ms at XL (180x287) on this host. XL working is the
+remaining hot spot, and the P4 shader takes it over.
+
+## Iteration log (DEV evidence; the lead's gate runs on P1-R2's batched render)
+
+Probe = `p1/explore-r1/run_g5x.py`, qwen only, `--tasks aesthetic` (NON-gate, D-R2-6). The six anchor photos score 9 on every run.
+
+| round | module | real-host capture | G2 | probe median (min) XL / M / S |
+|---|---|---|---|---|
+| r1 (round 1, for reference) | v22 @4cb09e6 | p1/renders | FAIL (identity 0.000) | 0 / 2 / 2 |
+| iter1 | 7c1222f + live edits during the run (mixed) | 148 entries, check_manifest 0 | PASS, identity 0.0242 @16 | 4 (2) / 2 (2) / 2 (1) |
+| iter2 | 5d4a138 | ITER2_CAPTURE | ITER2_G2 | ITER2_PROBE |
+
+After iter2, the merged module adds two pixel-level fixes that were not re-captured: the arc-safe hue drift and the shadow desaturation (see the unit tests).
+
+Calibration runs (dev, same prompts and backend, repeated 3-5x):
+- Real *Sepia* skin crops scored about 1-2 when downsampled to the M/S geometry (118x4 / 14x2) and 4-6 when downsampled to XL size.
+- A crisp chevron strip scored 8 at M; smooth sine bands scored 6; a smooth gradient scored 2.
+- The same lattice texture scored 8 tinted muted and 3 tinted saturated cyan.
+- On identical images the probe was bimodal under load (8 / 3 / 2).
+
+Where this falls short, and why: the probe target (median >= 7, none < 6 at each scale) is **not met**.
+- XL: the best dev states reach 6-8 (working, review, needs-you), but idle and fault stay at 2-4. Idle reads as "regular, ribbed, metallic" and fault as "artificial rings".
+- M/S: these are block strips with text plates, and the probe scores them about 2-4 whatever the pattern. Its ceiling for any naturalistic block strip, measured on real skin, is about 2, and only crisp geometric rhythm (chevrons) scores higher.
+- The 4x2 desktop swatch is 8 flat blocks and cannot score as "richly patterned".
+
+Next lever, measured but not yet captured on the real host: a finer, weaker dermal grain (amplitude 0.45, period 2.6) moved the XL dev median from 3 to 4.
+
+## Files
+
+- `direction.mjs`: the module (CONTRACT §2). It is pure, with no imports, no `Math.random` and no `Date.now`. The clock is `t` and the seed is `session.lineage_id`.
+- `tools/tests/test_p1_direction_a_chromatophore.py`: behaviour tests through `node -e`. They never read source text.

@@ -361,7 +361,7 @@ function buildLayers(state, H, ctx) {
     const [gL0, gC, sheenGain] = mdl.ground(u, v);
     const gq = ctx.grainAmp ? grain(u, v) : 0, gL = gL0 - ctx.grainAmp * 0.2 * gq;
     // XL: slow hue drift (+-10 deg), clamped inside the identity arc so it never strays toward amber/red
-    const hj = an && !neutral ? (Math.min(338, Math.max(112, H + (fbm(u * 0.03, v * 0.03, seed + 401, 2) - 0.5) * 20)) - H) * Math.PI / 180 : 0;
+    const hj = an && !neutral ? (Math.min(Math.max(H, 328), Math.max(Math.min(H, 122), H + (fbm(u * 0.03, v * 0.03, seed + 401, 2) - 0.5) * 20)) - H) * Math.PI / 180 : 0;
     const C0 = neutral ? 0 : gC * ctx.chroma, cj = Math.cos(hr + hj), sj = Math.sin(hr + hj);
     const lab = [gL, C0 * cj, C0 * sj];
     if (sheenGain > 0) {   // iridophore sheen: thin warped streaks + leucophore flecks (pale, low chroma, same hue)
@@ -529,7 +529,8 @@ export function paint({ scale, w, h, state, session, t = 0, opts = {} }) {
     }
     const L = aL * inv * shade[p] + spec[p];
     const dc = 1 - 1.5 * spec[p];
-    const a = aA * inv * dc, b = aB * inv * dc;
+    const dk = L < 0.32 ? Math.max(0, L / 0.32) : 1;             // deep shadow desaturates (and stays off the arc ends)
+    const a = aA * inv * dc * dk, b = aB * inv * dc * dk;
     let rgb;
     if (working && H != null) {                                  // quantise onto the fixed identity palette
       const C = Math.sqrt(a * a + b * b);
