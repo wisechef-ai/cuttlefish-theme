@@ -39,8 +39,9 @@ Probe = `p1/explore-r1/run_g5x.py`, qwen only, `--tasks aesthetic` (NON-gate, D-
 | r1 (round 1, for reference) | v22 @4cb09e6 | p1/renders | FAIL (identity 0.000) | 0 / 2 / 2 |
 | iter1 | 7c1222f + live edits during the run (mixed) | 148 entries, check_manifest 0 | PASS, identity 0.0242 @16 | 4 (2) / 2 (2) / 2 (1) |
 | iter2 | 5d4a138 | 148 entries, check_manifest exit=0 | PASS, identity 0.0254 @16 | 4.0 (2) / 2.0 (1) / 2.0 (1) |
+| iter3 | f8f112b (merged v22 @4f64dec incl. arc-safe drift + shadow desaturation, plus finer/weaker XL grain amp 0.45 period 2.6) | 148 entries, check_manifest exit=0 | PASS, identity 0.0254 @16 | 7.0 (2) / 2 (1) / 2.0 (1) |
 
-After iter2, the merged module adds two pixel-level fixes that were not re-captured: the arc-safe hue drift and the shadow desaturation (see the unit tests).
+iter3 re-captures the two pixel fixes added after iter2 (the arc-safe hue drift and the shadow desaturation) on the real host, together with the finer grain. The XL scores per backend were qwen 6 and qwenb 8. Per state, on both backends: working, review and unknown scored 8, degraded 6/8, needs-you 3, idle 2 ("regular diagonal ribbed") and fault 2 ("mechanical diagonal lines").
 
 Calibration runs (dev, same prompts and backend, repeated 3-5x):
 - Real *Sepia* skin crops scored about 1-2 when downsampled to the M/S geometry (118x4 / 14x2) and 4-6 when downsampled to XL size.
@@ -49,11 +50,11 @@ Calibration runs (dev, same prompts and backend, repeated 3-5x):
 - On identical images the probe was bimodal under load (8 / 3 / 2).
 
 Where this falls short, and why: the probe target (median >= 7, none < 6 at each scale) is **not met**.
-- XL: the best dev states reach 6-8 (working, review, needs-you), but idle and fault stay at 2-4. Idle reads as "regular, ribbed, metallic" and fault as "artificial rings".
+- XL (iter3): the median reaches 7, but the minimum is 2. Idle and fault score 2 and needs-you 3; the probe reads them as regular, mechanical diagonals.
 - M/S: these are block strips with text plates, and the probe scores them about 2-4 whatever the pattern. Its ceiling for any naturalistic block strip, measured on real skin, is about 2, and only crisp geometric rhythm (chevrons) scores higher.
 - The 4x2 desktop swatch is 8 flat blocks and cannot score as "richly patterned".
 
-Next lever, measured but not yet captured on the real host: a finer, weaker dermal grain (amplitude 0.45, period 2.6) moved the XL dev median from 3 to 4.
+The finer, weaker dermal grain (amplitude 0.45, period 2.6) was captured in iter3 and moved the real-host XL median from 4 to 7. XL still misses the bar on the minimum: idle, fault and needs-you score 2-3 because the probe reads the diagonal growth-line rhythm as mechanical. The next lever is to break that diagonal regularity in those three states. M and S stay at 2, the probe's measured ceiling for naturalistic block strips.
 
 ## Files
 
