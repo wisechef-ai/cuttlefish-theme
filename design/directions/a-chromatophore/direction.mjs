@@ -119,6 +119,14 @@ function anatomy(ctx) {
 
 // ---- per-state skin model (body space) ----------------------------------------------------------------------
 // E(u, v) -> [El, Em, Es] expansion at a sac centre; ground(u, v) -> [L, C, sheenGain]
+function grainField(ctx) {
+  const { seed } = ctx;
+  return (u, v) => {
+    const x = u + 2.5 * (fbm(u * 0.08, v * 0.08, seed + 91, 2) - 0.5), y = v + 2.5 * (fbm(u * 0.08 + 31.7, v * 0.08 - 7.3, seed + 98, 2) - 0.5);
+    const f = frac((x + y * 1.4) / 3.4);
+    return sstep(0.1, 0.22, f) * (1 - sstep(0.48, 0.6, f));
+  };
+}
 function model(state, ctx) {
   const { seed, sc } = ctx;
   const warp = (u, v, f, A, s) => [u + A * (fbm(u * f, v * f, seed + s, 2) - 0.5), v + A * (fbm(u * f + 31.7, v * f - 7.3, seed + s + 7, 2) - 0.5)];
@@ -127,16 +135,16 @@ function model(state, ctx) {
   if (state === 'idle' || state === 'working') {
     // stipple: most sacs retracted; the expanded few gather in loose, wavy transverse rows (the way a resting
     // Sepia's fine spots follow the skin's growth lines), so the stipple has rhythm instead of noise
-    const rows = (u, v) => { const [x, y] = warp(u, v, 0.09, 5, 13); return 0.5 + 0.5 * Math.sin((x + 1.6 * Math.sin(y * 0.33)) * 1.15); };
+    const rows = (u, v) => { const [x, y] = warp(u, v, 0.09, 4, 13); return 0.5 + 0.5 * Math.sin((x * 0.8 + y * 0.6 + 1.6 * Math.sin(y * 0.33)) * 1.3); };
     return {
       E: (u, v) => {
         const T = tonus(u, v), R = rows(u, v);
-        const pm = 0.03 + 0.30 * sstep(0.55, 0.95, R), ps = 0.10 + 0.35 * sstep(0.45, 0.95, R);
+        const pm = 0.06 + 0.6 * sstep(0.6, 0.95, R), ps = 0.12 + 0.6 * sstep(0.5, 0.95, R);
         const em = hash(Math.floor(u * 7.1), Math.floor(v * 7.1), seed + 98) < pm ? 0.7 + 0.3 * T : 0.05 + 0.2 * T;
         const es = hash(Math.floor(u * 7.1), Math.floor(v * 7.1), seed + 99) < ps ? 0.85 : 0.18 + 0.3 * T;
         return [0.03 + 0.14 * T, em, es];
       },
-      ground: (u, v) => [0.745 + 0.10 * (tonus(u, v) - 0.5) + 0.05 * (fbm(u * 0.4, v * 0.4, seed + 9, 2) - 0.5), 0.13, 1],
+      ground: (u, v) => [0.73 + 0.08 * (tonus(u, v) - 0.5) + 0.14 * (rows(u, v) - 0.5) + 0.04 * (fbm(u * 0.4, v * 0.4, seed + 9, 2) - 0.5), 0.13, 1],
     };
   }
   if (state === 'review') {
@@ -299,6 +307,7 @@ function buildLayers(state, H, ctx) {
       }
     }
   };
+  const grainSac = grainField(ctx);
   const u1 = ox + bw * k, v1 = oy + bh * k;
   CLASSES.forEach((K, ci) => {
     const i0 = Math.floor(ox / K.sp) - 1, j0 = Math.floor(oy / K.sp) - 1, i1 = Math.floor(u1 / K.sp) + 1, j1 = Math.floor(v1 / K.sp) + 1;
@@ -307,7 +316,7 @@ function buildLayers(state, H, ctx) {
       const pa = su - ox, pb = sv - oy;
       let fade = 1;
       if (an) { const ed = an.edge(pa); if (pb > ed + 0.3) continue; fade = sstep(ed + 0.3, ed - 1.2, pb); }   // no sacs on the fin
-      const e = Math.min(1, Math.max(0, mdl.E(su, sv)[ci]));
+      const e = Math.min(1, Math.max(0, mdl.E(su, sv)[ci] + (ci > 0 && ctx.grainAmp ? ctx.grainAmp * 0.55 * grainSac(su, sv) : 0)));
       const mat = (0.7 + 0.45 * hash(I, J, seed + K.s + 2)) * fade;      // organ-to-organ size variation
       const radius = (x) => (K.r0 + (K.r1 - K.r0) * x ** 1.25) * mat;
       disc(cov[ci], pa, pb, radius(e));
@@ -315,11 +324,14 @@ function buildLayers(state, H, ctx) {
     }
   });
   // ground per pixel (+ the XL anatomy)
+  const grain = grainField(ctx);
   const ground = new Float32Array(bw * bh * 3);
   for (let y = 0; y < bh; y++) for (let x = 0; x < bw; x++) {
     const pa = (x + 0.5) * k, pb = (y + 0.5) * k, u = pa + ox, v = pb + oy;
-    const [gL, gC, sheenGain] = mdl.ground(u, v);
-    const hj = an && !neutral ? (fbm(u * 0.03, v * 0.03, seed + 401, 2) - 0.5) * 0.35 : 0;   // XL: slow hue drift (+-10 deg)
+    const [gL0, gC, sheenGain] = mdl.ground(u, v);
+    const gq = ctx.grainAmp ? grain(u, v) : 0, gL = gL0 - ctx.grainAmp * 0.2 * gq;
+    // XL: slow hue drift (+-10 deg), clamped inside the identity arc so it never strays toward amber/red
+    const hj = an && !neutral ? (Math.min(338, Math.max(112, H + (fbm(u * 0.03, v * 0.03, seed + 401, 2) - 0.5) * 20)) - H) * Math.PI / 180 : 0;
     const C0 = neutral ? 0 : gC * ctx.chroma, cj = Math.cos(hr + hj), sj = Math.sin(hr + hj);
     const lab = [gL, C0 * cj, C0 * sj];
     if (sheenGain > 0) {   // iridophore sheen: thin warped streaks + leucophore flecks (pale, low chroma, same hue)
@@ -339,10 +351,10 @@ function buildLayers(state, H, ctx) {
         const t2 = (pb - ed) / Math.max(1, fe - ed);
         const ray = 0.5 + 0.5 * Math.sin(pa * 2.6 + pb * 0.6 + 2 * vnoise(pa * 0.2, pb * 0.2, seed + 511));
         const fl = 0.66 - 0.2 * t2 + 0.05 * ray + 0.07 * Math.sin(pa * 0.42 + 1.1);
-        mixInto(lab, neutral ? [fl, 0, 0] : polarLab(fl, 0.05, H + hj * 57.3), sstep(ed + 0.5, ed + 1.6, pb));
+        mixInto(lab, neutral ? [fl, 0, 0] : polarLab(fl, 0.05 * ctx.chroma, H + hj * 57.3), sstep(ed + 0.5, ed + 1.6, pb));
         const rim = sstep(0.9, 0.1, Math.abs(pb - fe));
         if (rim > 0) mixInto(lab, [0.88, lab[1] * 0.4, lab[2] * 0.4], rim * 0.7);
-        if (pb > fe) mixInto(lab, neutral ? [0.13, 0, 0] : polarLab(0.14, 0.025, H), sstep(fe, fe + 0.6, pb));
+        if (pb > fe) mixInto(lab, neutral ? [0.13, 0, 0] : polarLab(0.14, 0.025 * ctx.chroma, H), sstep(fe, fe + 0.6, pb));
       }
     }
     const n = (y * bw + x) * 3;
@@ -369,7 +381,7 @@ function buildLayers(state, H, ctx) {
     for (let y = -1; y <= bh; y++) for (let x = -1; x <= bw; x++) {
       const pa = (x + 0.5) * k, pb = (y + 0.5) * k, u = pa + ox, v = pb + oy;
       const fx = u + 5 * (fbm(u * 0.05, v * 0.05, seed + 311, 2) - 0.5);
-      let hh = 1.2 * fbm(fx * 0.11, v * 0.05, seed + 313, 3) + 0.35 * pap(u, v) + 0.1 * vnoise(u * 1.3, v * 1.3, seed + 317);
+      let hh = 1.2 * fbm(fx * 0.11, v * 0.05, seed + 313, 3) + 0.35 * pap(u, v) + ctx.grainAmp * 0.5 * grain(u, v) + 0.1 * vnoise(u * 1.3, v * 1.3, seed + 317);
       if (an) {   // convex mantle: a dome across the body, falling away past the edge onto the fin
         const ed = an.edge(pa), q = (pb - an.mid) / (ed - an.mid);
         hh += pb < ed ? 6 * (1 - q * q) : -0.8 * (pb - ed);
@@ -401,7 +413,6 @@ function layout(scale, w, h, state, session, degraded, opts) {
   const nameStyle = { fg: LABEL_FG, bg: LABEL_BG };
   if (scale === 'XL') {
     const cssH = (opts && opts.cssH) || h * 4;
-    text.push({ x: 16, y: 16, str: name, ...nameStyle });
     if (tag) text.push({ x: 16, y: cssH - 44, str: tag, ...tagStyle });
     return { text, plates, free: 0 };
   }
@@ -450,9 +461,10 @@ export function paint({ scale, w, h, state, session, t = 0, opts = {} }) {
   const ss = sc === 'XL' ? 2 : 3;                                // supersampling per axis
   const ox = ((seed >>> 8) & 255) * 1.37, oy = ((seed >>> 16) & 255) * 0.91;
   const ctx = { seed, tq, sc, visA: bw * k, visB: bh * k, aa: Math.max(0.12, k / ss), detail: sc === 'XL' ? 1 : 0.6,
-    relief: sc === 'XL' ? 1 : 0.35, chroma: sc === 'XL' ? 0.55 : 1, grid: { bw, bh, k, ss, ox, oy } };
+    relief: sc === 'XL' ? 1 : 0.35, chroma: sc === 'XL' ? 0.32 : 1, grainAmp: sc === 'XL' ? 1 : 0, grid: { bw, bh, k, ss, ox, oy } };
   ctx.an = anatomy(ctx);
   const lay = layout(scale, w, h, state, session, degraded, opts);
+  ctx.eyes = eyeList(state, ctx, tr ? 0 : lay.free * k);
   const key = `${sc}|${w}|${h}|${state}|${seed}|${H}`;
   let L0 = MEMO.get(key);
   if (!L0) {
@@ -461,7 +473,7 @@ export function paint({ scale, w, h, state, session, t = 0, opts = {} }) {
     MEMO.set(key, L0);
   }
   if (L0.px) return { pixels: L0.px.slice(), text: lay.text };      // static frame: identical for every t
-  const eyes = eyeList(state, ctx, tr ? 0 : lay.free * k);
+  const eyes = ctx.eyes;
   const { ground, cov, covFull, tone, kmix, shade, spec } = L0;
   const cloud = working ? cloudField(ctx) : null;
   const px = new Uint8ClampedArray(w * h * 4);
