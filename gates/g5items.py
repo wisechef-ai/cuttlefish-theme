@@ -77,6 +77,13 @@ _FIXTURE = json.loads(dt.FIXTURE.read_text())
 _NAMES = {s["name"] for s in _FIXTURE["sessions"]} | {_FIXTURE["degraded"]["name"]}
 
 
+def keep_alarm_for(override: bool | None, cvd: str | None) -> bool:
+    """D-R2-5 text policy for the legend task. Default: the plain variant keeps the alarm words (alarms carry literal text by
+    contract, L7); every CVD variant masks all text (the state must be named from pattern). An explicit override applies to every
+    variant and is for informational runs only. The session names are masked in every case."""
+    return (cvd is None) if override is None else override
+
+
 def _blank_text(man: gl.Manifest, direction_dir: Path, e: gl.Entry, arr: np.ndarray, keep_alarm: bool) -> np.ndarray:
     """Paint over the text cells of a TUI render so the legend tests the pattern, not the words: the session name always
     (the same name sits in the legend row and in its sample), and by default the alarm words / '?' too (text legibility is
@@ -120,7 +127,8 @@ def legend_source(man: gl.Manifest, family: str) -> dict[str, gl.Entry]:
     return {e.look: e for e in _first_per_group(pool) if e.look in LEGEND_ORDER}
 
 
-def legend_items(man: gl.Manifest, direction_dir: Path, family: str, cvd: str | None, keep_alarm: bool = False) -> list[Item]:
+def legend_items(man: gl.Manifest, direction_dir: Path, family: str, cvd: str | None, keep_alarm: bool | None = None) -> list[Item]:
+    keep_alarm = keep_alarm_for(keep_alarm, cvd)
     src = legend_source(man, family)
     if set(src) != set(LEGEND_ORDER):
         return []
@@ -203,7 +211,7 @@ def identity_items(man: gl.Manifest, direction_dir: Path, seed: int) -> list[Ite
 TASKS = ("aesthetic", "legend", "identity")
 
 
-def build_items(man: gl.Manifest, direction_dir: Path, seed: int, tasks=TASKS, keep_alarm_text: bool = False) -> list[Item]:
+def build_items(man: gl.Manifest, direction_dir: Path, seed: int, tasks=TASKS, keep_alarm_text: bool | None = None) -> list[Item]:
     items = aesthetic_items(man) if "aesthetic" in tasks else []
     if "legend" in tasks:
         for fam in ("XL", "M", "S"):
