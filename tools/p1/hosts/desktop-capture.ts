@@ -169,7 +169,12 @@ try {
       for (const tg of shot.targets) {
         let crop: number[] | null = null
         let tiles: unknown = null
-        if (tg.kind === 'field') crop = await box(page, '[data-testid="cf-p1-field"]')
+        let paint: number[] | null = null
+        if (tg.kind === 'field') {
+          crop = await box(page, '[data-testid="cf-p1-field"]')
+          // D-R2-3: the canvas' internal (low-res) size; the pane shows it upscaled with smoothing.
+          paint = await page.evaluate(() => { const c = document.querySelector('[data-testid="cf-p1-field"] canvas') as HTMLCanvasElement | null; return c ? [c.width, c.height] : null })
+        }
         else if (tg.kind === 'chip') crop = await box(page, '[data-testid="cf-p1-chip"]')
         else if (tg.kind === 'swatch') crop = await box(page, `[data-testid="cf-p1-swatch-${tg.idx}"]`)
         else if (tg.kind === 'sidebar') {
@@ -184,7 +189,7 @@ try {
             return { session_idx: Number(e.getAttribute('data-testid')!.split('-').pop()), crop: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)] }
           }).sort((a, b) => a.session_idx - b.session_idx))
         }
-        result.shots.push({ id: tg.id, file: shot.file, crop, ps, seq, kind: tg.kind, tiles })
+        result.shots.push({ id: tg.id, file: shot.file, crop, ps, seq, kind: tg.kind, tiles, paint })
         if (!crop) result.errors.push(`${tg.id}: no crop for ${tg.kind}`)
       }
     }

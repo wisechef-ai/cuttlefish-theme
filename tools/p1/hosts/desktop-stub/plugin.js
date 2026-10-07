@@ -3,8 +3,9 @@
  * Hermes desktop app. NOT the product: a stub host so P1 direction renders come from real pixels.
  *
  * Surfaces (plan scales, P1-brief §2):
- *   XL  field pane      PANES_AREA, docked right of the conversation; a <canvas> of paint() pixels at
- *                       1 logical px = 1 CSS px, text overlays as real DOM text
+ *   XL  field pane      PANES_AREA, docked right of the conversation; a <canvas> painted at low internal
+ *                       resolution (~1/4 of the pane, w*h <= 57600) and upscaled smoothly; text overlays as real DOM
+ *                       text in CSS px
  *   M   status chip     STATUSBAR_AREAS.left; CHIP_COLS × 1 cells, painted like the TUI half rung
  *                       (2 logical px per cell, each CHIP_CELL_W × CHIP_CELL_H/2 CSS px), text as DOM
  *   S   row swatch      SESSION_ROW_AREAS.leading on every sidebar row whose stored id is a fixture lineage id
@@ -59,13 +60,40 @@ function sceneSession(scene) {
 
 const sceneState = scene => (scene.degraded ? 'unknown' : scene.state ?? 'idle')
 
-function paintInto(canvas, dir, { scale, w, h, state, session, t }) {
-  const out = dir.paint({ scale, w, h, state, session, t, opts: { reducedMotion: false, depth: 'truecolor' } })
+/** XL budget (CONTRACT §2, D-R2-3): ~1/4 of the pane in CSS px, never more than 57 600 logical px (320×180). */
+export const XL_MAX_PIXELS = 57600
+export const XL_DIVISOR = 4
+/** Desktop S swatches are 4×2 logical px; at w <= 8 the host never draws text overlays (D-R2-2). */
+export const SWATCH_TEXT_MAX_W = 8
+
+export function xlPaintSize(cssW, cssH) {
+  let w = Math.max(1, Math.ceil(cssW / XL_DIVISOR))
+  let h = Math.max(1, Math.ceil(cssH / XL_DIVISOR))
+  if (w * h > XL_MAX_PIXELS) {
+    const k = Math.sqrt(XL_MAX_PIXELS / (w * h))
+    w = Math.max(1, Math.floor(w * k))
+    h = Math.max(1, Math.floor(h * k))
+    while (w * h > XL_MAX_PIXELS) { if (w >= h) w--; else h-- }
+  }
+  return { w, h }
+}
+
+/**
+ * Paint one surface into `canvas`. For XL, `w`/`h` are the pane's CSS px: the direction is painted at the low
+ * internal size (xlPaintSize) and the canvas is upscaled by the compositor with smoothing (`image-rendering: auto`).
+ * M and S paint 1 logical px : 1 canvas px and are shown pixelated. Returns the text overlays to draw.
+ */
+export function paintInto(canvas, dir, { scale, w, h, state, session, t }) {
+  const css = { w, h }
+  if (scale === 'XL') ({ w, h } = xlPaintSize(css.w, css.h))
+  const out = dir.paint({ scale, w, h, state, session, t, opts: { reducedMotion: false, depth: 'truecolor', cssW: css.w, cssH: css.h } })
   if (!out || out.pixels?.length !== w * h * 4) throw new Error(`paint returned ${out?.pixels?.length} bytes, want ${w * h * 4}`)
   canvas.width = w
   canvas.height = h
+  if (canvas.style) canvas.style.imageRendering = scale === 'XL' ? 'auto' : 'pixelated'
   const ctx2d = canvas.getContext('2d')
   ctx2d.putImageData(new ImageData(new Uint8ClampedArray(out.pixels), w, h), 0, 0)
+  if (scale === 'S' && w <= SWATCH_TEXT_MAX_W) return []
   return out.text || []
 }
 
@@ -84,7 +112,7 @@ function Overlays({ text, unit, font }) {
     }))
 }
 
-/** One painted surface: canvas scaled by CSS (pixelated) + overlays. */
+/** One painted surface: canvas scaled by CSS (XL smooth, M/S pixelated; set in paintInto) + overlays. */
 function Surface({ surfaceKey, expected, scale, cols, rows, pxPerCell, cellW, cellH, scene, session, state, testId, font }) {
   const ref = useRef(null)
   const [text, setText] = useState([])
@@ -108,7 +136,7 @@ function Surface({ surfaceKey, expected, scale, cols, rows, pxPerCell, cellW, ce
     'data-cf-seq': scene.seq,
     style: { position: 'relative', display: 'inline-block', width: cols * cellW, height: rows * cellH, flexShrink: 0, overflow: 'hidden', verticalAlign: 'middle' },
     children: [
-      jsx('canvas', { ref, style: { position: 'absolute', inset: 0, width: '100%', height: '100%', imageRendering: 'pixelated' } }),
+      jsx('canvas', { ref, style: { position: 'absolute', inset: 0, width: '100%', height: '100%' } }),
       jsx(Overlays, { text, unit: [cellW, cellH], font }),
     ],
   })

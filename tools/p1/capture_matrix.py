@@ -150,6 +150,8 @@ def manifest_entry(e: dict) -> dict:
     m["degraded"] = bool(e.get("degraded"))
     if e.get("tiles") is not None:
         m["tiles"] = e["tiles"]
+    if e.get("xl_paint") is not None:
+        m["xl_paint"] = e["xl_paint"]  # D-R2-3: the XL canvas' internal paint size [w, h] (the pane shows it upscaled)
     return m
 
 
@@ -460,6 +462,8 @@ def run_desktop_launch(renderer: str, entries: list[tuple[str, dict]], args, ctx
             e["_home"] = res.get("hermes_home")
             e["_ack"] = {"seq": s["seq"], "renderer_ack": True}
             e["crop"] = s["crop"]
+            if e.get("target") == "field" and s.get("paint"):
+                e["xl_paint"] = s["paint"]
             if e.get("target") == "sidebar":
                 e["tiles"] = s.get("tiles")
         else:

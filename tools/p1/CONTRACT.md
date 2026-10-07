@@ -42,6 +42,16 @@ export function paint({ scale, w, h, state, session, t, opts }) { ... }
 export function authoredPairs() { return [{ fg: '#..', bg: '#..', where: 'M alarm text' }, ...]; }
 ```
 
+Scale budgets (P1 round 2, lead decisions D-R2-2 / D-R2-3 in the vault `sprint-2909/briefs/P1-round2.md`):
+
+- XL is painted at low internal resolution (w*h <= 57600, ~1/4 of the pane in CSS px) and upscaled with smoothing
+  (`image-rendering: auto`); design for softness. The host calls `paint({scale:'XL', w, h})` with
+  `w = ceil(paneCssW / 4)`, `h = ceil(paneCssH / 4)`, shrunk further (same aspect) until `w*h <= 57600`
+  (320×180); `opts.cssW` / `opts.cssH` carry the pane's CSS size. XL `text` overlays stay in CSS px.
+- Desktop S (w <= 8) returns `text: []` — the sidebar row carries the name; working must move visibly at 4×2
+  (>= 3 distinct frames of 4, in the raw paint and in the host-composited crop). The host never draws overlays on
+  the swatch whatever the direction returns. The TUI pill (S, 14×2 and wider) keeps the name and the alarm text.
+
 Rules (plan L7, D1, P1-brief §4): hue = identity, pattern = state. Never use amber/red as an identity hue,
 and use them only on alarm states. Structure beats shading (it must survive the 256 rung and deutan/protan/tritan sims).
 Only `working` changes with `t`: a slow passing cloud, ≤ 48 colours, ≤ 4 fps. Degraded/unknown is a designed look.
@@ -74,6 +84,7 @@ The required matrix per direction: TUI M (6 states + degraded) × {half-truecolo
 120 cols, plus half-truecolor at 80 cols; TUI S pill for 6 states; TUI identity grid at 16 and 20 sessions;
 desktop XL, M and S for 6 states + degraded; a desktop 20-row sidebar (identity); working at 4 frames
 (t = 0, .25, .5, .75), and every other state at 2 frames (it must be byte-identical: the static proof).
+Desktop XL entries also carry `xl_paint: [w, h]`, the canvas' internal paint size (checked: `w*h <= 57600`).
 Each `capture_log` records the command line, the host process list (`ps` of the hermes / electron pids),
 both SHAs and the HERMES_HOME (a temp dir). **A render with no capture log does not count** (premortem #1).
 Browser mockups do not count.
@@ -92,6 +103,9 @@ G2 (deterministic):
   11.5° hue; at chroma 0.12 that is ≈ 0.024, so this demands real chroma, not greys). Report the full matrix + the worst pair.
 - **No identity in the alarm arc:** the identity colour of every tile has an OKLCh hue in [110°, 340°) or chroma < 0.03 (unknown/degraded).
 - **Static proof (D1):** for every non-working state, the 2 frames are pixel-identical; working frames differ.
+- **Legend text (D-R2-5, the lead's ruling, `sprint-2909/briefs/P1-round2.md`):** the plain legend variant keeps alarm text
+  (alarms carry literal text, L7); the CVD legend variants (deutan/protan/tritan) mask ALL text, so pattern alone must carry
+  INPUT vs ERROR. The identity task masks text.
 - **CVD:** Machado 2009 deutan/protan/tritan at severity 1.0, applied to every M/S render. Those simulated images feed the G5
   legend-naming task (below) and must independently reach ≥ 80 % with INPUT↔ERROR = 0 per simulation.
 
