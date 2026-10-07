@@ -72,7 +72,7 @@ Real host: capture_matrix with `--runtime upstream`, Xvfb :103, MemoryMax=8G.
 
 The probe is the exploratory aesthetic probe (`run_g5x.py --backends qwen,qwenb --tasks aesthetic`). It is NOT a gate. The table gives its median per scale across both backends. The target is median ≥ 7 and no score < 6 at each of XL, M and S. The real-animal anchor photos scored 9 on every run.
 
-| iter | commit | change | check_manifest | G2 | probe XL / M / S (median) | overall median / min |
+| iter | commit (pre-rebase branch hash) | change | check_manifest | G2 | probe XL / M / S (median) | overall median / min |
 |---|---|---|---|---|---|---|
 | 1 | 099ee00 | layered skin field (sacs ×3, sheen, leucophores, fins); strips still gradient-like | exit 0 | PASS | 4 / 2 / 2 | 2 / 1 |
 | 2 | ea5be1a | lit XL mantle, rhythmic strip motifs | aborted mid-run, superseded by iter 3 | n/a | n/a | n/a |
