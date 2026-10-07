@@ -148,7 +148,7 @@ def run(manifest_path, backends: dict, seed: int = 2909, workers: int = 4, direc
     per, cache_stats = {}, {}
     for name, fn in backends.items():
         if cache is not None:
-            fn = g5cache.cached(fn, name, g5backends.model_id(name), cache)
+            fn = g5cache.cached(fn, name, g5backends.cache_model(name), cache)
         results = run_backend(name, fn, items, pngs, raw_dir, workers)
         cache_stats[name] = {"cached": sum(1 for r in results if r["cached"]), "calls": len(results)}
         per[name] = score_backend(results, tasks)

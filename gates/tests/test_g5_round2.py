@@ -194,6 +194,23 @@ def test_wrap_serves_second_call_from_cache_and_never_caches_errors(tmp_path, pn
     assert w(png, "p") == "ANSWER" and w.last_cached is True and len(calls) == 2
 
 
+def test_empty_answers_are_not_cached(tmp_path, png):
+    c = g5cache.Cache(tmp_path / "c")
+    answers = ["", "   ", "REAL"]
+    w = g5cache.cached(lambda p, q: answers.pop(0), "glm", "m", c)
+    assert w(png, "p") == "" and w(png, "p") == "   "
+    assert w(png, "p") == "REAL" and w.last_cached is False
+    assert w(png, "p") == "REAL" and w.last_cached is True
+
+
+def test_glm_request_turns_thinking_off_and_the_cache_key_records_it(monkeypatch):
+    monkeypatch.delenv("G5_GLM_MODEL", raising=False)
+    assert g5backends.glm_config().extra_body == {"thinking": {"type": "disabled"}}
+    assert g5backends.qwen_config().extra_body == {"chat_template_kwargs": {"enable_thinking": False}}
+    assert "disabled" in g5backends.cache_model("glm") and "glm-4.6v-flash" in g5backends.cache_model("glm")
+    assert g5backends.cache_model("codex") == g5backends.model_id("codex")
+
+
 # ---- text masking defaults (D-R2-5) --------------------------------------------------------
 def test_alarm_text_policy_defaults():
     assert g5items.keep_alarm_for(None, None) is True            # plain legend keeps alarm words

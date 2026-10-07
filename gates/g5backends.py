@@ -160,16 +160,31 @@ _GLM_PACER, _QWEN_PACER = Pacer(), Pacer()
 _GLM_GATE = threading.Semaphore(int(os.environ.get("G5_GLM_CONCURRENCY", "1")))   # 3 concurrent workers drew 429s (probe 2026-10-07)
 
 
+def qwen_config() -> OpenAICompat:
+    return OpenAICompat(url=os.environ.get("G5_QWEN_URL", "http://100.106.27.136:8000/v1/chat/completions"), key_name="HERCULES_API_KEY",
+                        model=model_id("qwen"), extra_body={"chat_template_kwargs": {"enable_thinking": False}}, pacer=_QWEN_PACER)
+
+
+def glm_config() -> OpenAICompat:
+    # thinking off: glm-4.6v-flash is a reasoning model and, left on, spends the whole 1024-token budget thinking and returns an
+    # empty answer (finish_reason=length, 1023 reasoning tokens) on ~1 in 5 items. Off, the strict-JSON answer is ~7 tokens.
+    return OpenAICompat(url="https://api.z.ai/api/paas/v4/chat/completions", key_name="GLM_API_KEY", model=model_id("glm"),
+                        extra_body={"thinking": {"type": "disabled"}}, min_interval=float(os.environ.get("G5_GLM_MIN_INTERVAL", "3.0")),
+                        pacer=_GLM_PACER, gate=_GLM_GATE)
+
+
 def qwen_backend(png: Path, prompt: str) -> str:
-    cfg = OpenAICompat(url=os.environ.get("G5_QWEN_URL", "http://100.106.27.136:8000/v1/chat/completions"), key_name="HERCULES_API_KEY",
-                       model=model_id("qwen"), extra_body={"chat_template_kwargs": {"enable_thinking": False}}, pacer=_QWEN_PACER)
-    return openai_compat_call(cfg, png, prompt)
+    return openai_compat_call(qwen_config(), png, prompt)
 
 
 def glm_backend(png: Path, prompt: str) -> str:
-    cfg = OpenAICompat(url="https://api.z.ai/api/paas/v4/chat/completions", key_name="GLM_API_KEY", model=model_id("glm"),
-                       min_interval=float(os.environ.get("G5_GLM_MIN_INTERVAL", "3.0")), pacer=_GLM_PACER, gate=_GLM_GATE)
-    return openai_compat_call(cfg, png, prompt)
+    return openai_compat_call(glm_config(), png, prompt)
+
+
+def cache_model(name: str) -> str:
+    """The model plus the request settings that change its answers; part of the answer-cache key."""
+    cfg = {"qwen": qwen_config, "glm": glm_config}.get(name)
+    return f"{cfg().model}|{json.dumps(cfg().extra_body, sort_keys=True)}" if cfg else model_id(name)
 
 
 qwen_backend.retries_internal = glm_backend.retries_internal = True

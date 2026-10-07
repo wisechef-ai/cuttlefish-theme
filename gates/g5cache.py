@@ -62,7 +62,8 @@ def cached(fn, backend: str, model: str, cache: Cache):
             return hit
         tl.cached = False
         raw = fn(png, prompt)
-        cache.put(k, raw)
+        if raw and raw.strip():   # an empty/blocked reply is a transient failure, never memoised
+            cache.put(k, raw)
         return raw
 
     return CachedBackend(call, tl, getattr(fn, "retries_internal", False))
