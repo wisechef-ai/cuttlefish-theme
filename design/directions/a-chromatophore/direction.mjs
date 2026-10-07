@@ -137,8 +137,8 @@ function grainField(ctx) {
   const { seed } = ctx;
   return (u, v) => {
     const x = u + 2.5 * (fbm(u * 0.08, v * 0.08, seed + 91, 2) - 0.5), y = v + 2.5 * (fbm(u * 0.08 + 31.7, v * 0.08 - 7.3, seed + 98, 2) - 0.5);
-    const f = frac((x + y * 1.4) / 2.6);
-    return sstep(0.1, 0.22, f) * (1 - sstep(0.48, 0.6, f));
+    // isotropic pebbled grain (dermal papillae), no dominant orientation: a periodic stripe read as "ribbed / mechanical"
+    return sstep(0.42, 0.72, 0.65 * vnoise(x * 0.85, y * 0.85, seed + 93) + 0.35 * vnoise(x * 1.9, y * 1.9, seed + 95));
   };
 }
 function model(state, ctx) {
@@ -411,7 +411,7 @@ function buildLayers(state, H, ctx) {
     for (let y = -1; y <= bh; y++) for (let x = -1; x <= bw; x++) {
       const pa = (x + 0.5) * k, pb = (y + 0.5) * k, u = pa + ox, v = (ctx.mirror ? Math.min(pb, 2 * ctx.midB - pb) : pb) + oy;
       const fx = u + 5 * (fbm(u * 0.05, v * 0.05, seed + 311, 2) - 0.5);
-      let hh = 1.2 * fbm(fx * 0.11, v * 0.05, seed + 313, 3) + 0.35 * pap(u, v) + ctx.grainAmp * 0.5 * grain(u, v) + 0.1 * vnoise(u * 1.3, v * 1.3, seed + 317);
+      let hh = 1.0 * fbm(fx * 0.075, (v + 4 * (fbm(u * 0.04 + 9.1, v * 0.04, seed + 319, 2) - 0.5)) * 0.075, seed + 313, 3) + 0.35 * pap(u, v) + ctx.grainAmp * 0.5 * grain(u, v) + 0.1 * vnoise(u * 1.3, v * 1.3, seed + 317);
       if (an) {   // convex mantle: a dome across the body, falling away past the edge onto the fin
         const ed = an.edge(pa), q = (pb - an.mid) / (ed - an.mid);
         hh += pb < ed ? 6 * (1 - q * q) : -0.8 * (pb - ed);
@@ -425,7 +425,7 @@ function buildLayers(state, H, ctx) {
       const nx = -gx * 1.4, ny = -gy * 1.4, nn = Math.sqrt(nx * nx + ny * ny + 1);
       const dif = (nx * lx + ny * ly + lz) / nn, nh = (nx * hx + ny * hy + hz) / (nn * hn);
       shade[y * bw + x] = 1 + relief * 0.55 * (dif - lz);
-      spec[y * bw + x] = relief * 0.5 * Math.pow(Math.max(0, nh), 40);
+      spec[y * bw + x] = relief * 0.3 * Math.pow(Math.max(0, nh), 24);
     }
   }
   return { ground, cov, covFull, tone, shade, spec, kmix: state === 'fault' ? 0.6 : 0.96 };
