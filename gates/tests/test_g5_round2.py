@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import g5backends  # noqa: E402
 import g5cache  # noqa: E402
 import g5items  # noqa: E402
