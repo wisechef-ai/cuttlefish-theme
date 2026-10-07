@@ -1,0 +1,4 @@
+The top panel is a sheet of sixteen coloured tiles, each captioned with a letter A to P.
+The bottom panel is one single tile cropped from another rendering of the same sheet, without a caption.
+Decide which lettered tile of the sheet the bottom tile is. Match by hue and tone first. Ignore any text.
+Answer with strict JSON only, no other text: {"match": "<one letter A-P>"}

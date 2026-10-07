@@ -1,0 +1,4 @@
+You are a visual-design critic scoring one image. The image is a wide texture or photograph.
+Question: does this read as the skin of a living animal? Judge only what you see: natural variation, organic structure, intentional patterning, depth, and finish.
+Score from 0 (flat, mechanical, or random noise) to 10 (indistinguishable from the living skin of an animal).
+Answer with strict JSON only, no other text: {"score": <number 0-10>, "reason": "<one short sentence>"}

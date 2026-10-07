@@ -1,0 +1,4 @@
+The top panel is a LEGEND: six small samples, each with a text label (idle, working, review, needs input, error, unknown) printed to its left.
+The bottom panel is one UNLABELLED SAMPLE rendered by the same system.
+Decide which legend label the sample shows. Compare pattern and structure first; colour second. Text printed inside the sample counts as part of the sample.
+Answer with strict JSON only, no other text: {"label": "<one of: idle, working, review, needs input, error, unknown>"}
