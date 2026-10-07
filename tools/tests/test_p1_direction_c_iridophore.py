@@ -17,8 +17,12 @@ DIRECTION = ROOT / "design" / "directions" / "c-iridophore" / "direction.mjs"
 FX = json.loads((ROOT / "tools" / "p1" / "stub-sessions.json").read_text())
 STATES = FX["states"]
 # Sizes a host actually asks for: TUI mantle at 120/80 cols on the half (×4) and bg (×2) rungs,
-# 1-row mantle, a pill, desktop chip/swatch and an XL field pane.
-SIZES = {"XL": [(640, 360)], "M": [(118, 4), (118, 2), (78, 4), (78, 2), (118, 1)], "S": [(12, 2), (12, 1)]}
+# 1-row mantle, the desktop chip (22×2), the TUI pill (14×2 / 14×1), the desktop swatch (4×2) and
+# XL field panes at the round-2 low internal resolution (CONTRACT §2: w*h <= 57600).
+SIZES = {"XL": [(133, 431), (180, 120)], "M": [(118, 4), (118, 2), (78, 4), (78, 2), (118, 1), (22, 2)],
+         "S": [(14, 2), (14, 1), (4, 2)]}
+PILL = [(14, 2), (14, 1)]
+SWATCH = (4, 2)
 
 RUNNER = r"""
 import { pathToFileURL } from 'node:url';
@@ -146,8 +150,61 @@ def test_working_animates_with_bounded_palette():
             i += len(ts)
             for f in frames:
                 assert len(set(pixels(f))) <= 48, (sc, w, h)
-            if sc != "S":  # a 12-px pill is allowed to show a still part of the cloud
+            if (w, h) not in PILL:  # a 14-px pill may show a still part of the cloud
                 assert len({f["b64"] for f in frames}) > 1, (sc, w, h)
+
+
+def test_desktop_swatch_working_moves_visibly_at_4x2():
+    """D-R2-2 / plan 13.4 #7: the 4x2 swatch shows >= 3 distinct frames among t = 0, .25, .5, .75 (every session)."""
+    reqs = [req("S", *SWATCH, "working", s, t) for s in FX["sessions"] for t in (0.0, 0.25, 0.5, 0.75)]
+    out = paint_many(reqs)["out"]
+    for k, s in enumerate(FX["sessions"]):
+        frames = out[k * 4:(k + 1) * 4]
+        assert len({f["b64"] for f in frames}) >= 3, s["name"]
+
+
+def test_desktop_swatch_carries_no_text():
+    mx, _ = matrix()
+    for (sc, w, h, st, t), o in mx.items():
+        if sc == "S" and (w, h) == SWATCH:
+            assert o["text"] == [], (st, o["text"])
+
+
+def test_same_arguments_give_the_same_bytes():
+    """Pure: no Math.random / Date.now. Painting the same request twice in separate processes is byte-identical."""
+    reqs = [req(sc, w, h, st, _session(st), 0.6) for sc, sizes in SIZES.items() for (w, h) in sizes[:1]
+            for st in STATES]
+    a, b = paint_many(reqs)["out"], paint_many(list(reversed(reqs)))["out"]
+    assert [o["b64"] for o in a] == [o["b64"] for o in reversed(b)]
+    assert [o["text"] for o in a] == [o["text"] for o in reversed(b)]
+
+
+def _owns_identity(p, hue):
+    L, C, H = oklch(p)
+    d = abs((H - hue + 180) % 360 - 180)
+    return C >= 0.06 and d <= 30
+
+
+def test_identity_hue_owns_most_of_an_idle_tile():
+    """D-R2-1: the identity hue owns > 50 % of every idle S tile (identity grid tile 28x4, pill, swatch)."""
+    reqs, keys = [], []
+    for s in FX["sessions"]:
+        for (w, h) in [(28, 4), (14, 2), SWATCH]:
+            keys.append((s["name"], w, h, s["hue_deg"]))
+            reqs.append(req("S", w, h, "idle", s))
+    out = paint_many(reqs)["out"]
+    for (name, w, h, hue), o in zip(keys, out):
+        px = pixels(o)
+        # text cells are masked by G2; mask them here too (cell coords: each cell is 2 px tall on h=2*rows)
+        rows = h // 2 if h >= 2 else 1
+        masked = set()
+        for x in o["text"]:
+            for c in range(x["x"], x["x"] + len(x["str"])):
+                for yy in range(x["y"] * (h // rows), (x["y"] + 1) * (h // rows)):
+                    masked.add(yy * w + c)
+        keep = [p for i, p in enumerate(px) if i not in masked]
+        share = sum(_owns_identity(p, hue) for p in keep) / max(1, len(keep))
+        assert share > 0.5, (name, w, h, round(share, 2))
 
 
 def test_reduced_motion_freezes_working():
@@ -165,7 +222,8 @@ def test_degraded_claims_no_identity_hue():
             L, C, H = oklch(p)
             assert C < 0.03 or in_alarm_arc(H), (sc, w, h, p, C, H)
         strs = " ".join(x["str"] for x in o["text"])
-        assert "?" in strs, (sc, strs)
+        if (w, h) != SWATCH:  # the swatch carries no text (D-R2-2)
+            assert "?" in strs, (sc, strs)
 
 
 def test_identity_states_never_use_alarm_hues():
@@ -181,6 +239,8 @@ def test_identity_states_never_use_alarm_hues():
 def test_alarm_text_is_literal_and_unknown_carries_question_mark():
     mx, _ = matrix()
     for (sc, w, h, st, t), o in mx.items():
+        if sc == "S" and (w, h) == SWATCH:
+            continue  # the swatch carries no text (D-R2-2)
         strs = [x["str"] for x in o["text"]]
         joined = " ".join(strs)
         if st in ("needs-you", "fault"):
@@ -189,9 +249,28 @@ def test_alarm_text_is_literal_and_unknown_carries_question_mark():
             assert "?" in joined, (sc, w, h, strs)
 
 
+def test_alarm_text_is_verbatim_on_every_alarm_pill_and_mantle():
+    """Every fixture alarm session, on the TUI pill and the 80/120-col mantles: alarm_text appears as one string."""
+    alarms = [s for s in FX["sessions"] if s["alarm_text"]]
+    sizes = PILL + [(118, 4), (78, 4), (78, 2), (22, 2)]
+    reqs = [req("S" if (w, h) in PILL else "M", w, h, s["state"], s) for s in alarms for (w, h) in sizes]
+    out = paint_many(reqs)["out"]
+    k = 0
+    for s in alarms:
+        for (w, h) in sizes:
+            strs = [x["str"].strip() for x in out[k]["text"]]
+            k += 1
+            assert s["alarm_text"] in strs, (s["name"], w, h, strs)
+            for x in out[k - 1]["text"]:
+                assert 0 <= x["x"] and x["x"] + len(x["str"]) <= w, (s["name"], w, h, x)
+
+
 def test_m_and_s_carry_the_session_name_when_room():
+    """The mantle always names the session; the pill names it unless an alarm plate needs the room (L7 first)."""
     mx, _ = matrix()
     for (sc, w, h, st, t), o in mx.items():
+        if (sc == "S" and (w, h) == SWATCH) or (sc == "S" and st in ("needs-you", "fault")):
+            continue
         if sc in ("M", "S"):
             name = _session(st)["name"]
             joined = " ".join(x["str"] for x in o["text"])
@@ -201,7 +280,7 @@ def test_m_and_s_carry_the_session_name_when_room():
 def test_text_fits_inside_the_canvas_at_80_cols():
     mx, _ = matrix()
     for (sc, w, h, st, t), o in mx.items():
-        if sc == "M":
+        if sc in ("M", "S"):
             for x in o["text"]:
                 assert 0 <= x["y"] < h and 0 <= x["x"] and x["x"] + len(x["str"]) <= w, (w, h, st, x)
 
