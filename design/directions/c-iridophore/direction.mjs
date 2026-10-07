@@ -460,11 +460,16 @@ function stripPainter(state, P, w, h, t, opts, seed) {
   const dermis = x => mix(lift(deep, 0.04), base, 0.55 + 0.45 * swell(x));
   const shine = x => P.sheenAt(swell(x * 0.7 + 9));
   if (state === 'idle') {
-    // stipple: leucophore glints on a leaning lattice, a softer sheen cell beside each one
+    // stipple: leucophore glints scattered by a slow density field (clusters and quiet stretches, no
+    // lattice), each bright glint trailed by a dimmer sheen cell, plus faint lone sheen points
+    const dens = x => fbm(x / 9, 0.5, seed + 7, 2);
     return (x, y) => {
-      const k = (((x + 3 * yy(y) + wob(x)) % 7) + 7) % 7;
-      if (k === 0) return leuco;
-      return k === 1 ? mix(dermis(x), shine(x), 0.3) : dermis(x);
+      const Y = yy(y), d = dens(x);
+      const r = hash2(x, Y, seed + 11);
+      if (r > 0.94 - 0.16 * d) return leuco;
+      if (hash2(x - 1, Y, seed + 11) > 0.94 - 0.16 * dens(x - 1)) return mix(dermis(x), shine(x), 0.5);
+      if (r < 0.05 + 0.05 * d) return mix(dermis(x), shine(x), 0.3);
+      return dermis(x);
     };
   }
   if (state === 'working') {
@@ -483,23 +488,15 @@ function stripPainter(state, P, w, h, t, opts, seed) {
     };
   }
   if (state === 'review') {
-    // mottle: large dark patches with rounded corners and small pale flecks between them, two scales
-    const cells = [];
-    for (let k = 0, x = -4; x < w + 16; k++) {
-      const big = 5 + Math.round(2 * hash2(k, 10, seed)), gap = 7 + Math.round(3 * hash2(k, 9, seed));
-      cells.push({ a: x, b: x + big, fleck: x + big + Math.round(gap / 2) - 1 });
-      x += big + gap;
-    }
+    // mottle. Two scales from one warped field: large dark patches (expanded sacs) whose edges ragged-out row by
+    // row, a mid tone rim around them, and small pale flecks scattered in the light gaps.
     return (x, y) => {
       const Y = yy(y);
-      for (const c of cells) {
-        if (x >= c.a && x < c.b) {
-          const corner = (x === c.a || x === c.b - 1) && (Y === 0 || Y === 3);
-          return corner ? dermis(x) : deep;
-        }
-        // flecks sit on the middle rows; on a 2-px rung (rows 0 and 3) they fill the column so they still show
-        if ((x === c.fleck || x === c.fleck + 1) && (h <= 2 || Y === 1 || Y === 2)) return mix(leuco, shine(x), 0.4);
-      }
+      const warp = 2.2 * (vnoise(x / 4, Y / 2 + 3, seed + 21) - 0.5);
+      const v = 0.75 * fbm((x + warp) / 7, Y / 5, seed + 17, 2) + 0.25 * vnoise(x / 2.2, Y / 1.4, seed + 19);
+      if (v > 0.56) return deep;
+      if (v > 0.5) return mix(deep, dermis(x), 0.5);
+      if (v < 0.4 && hash2(x, Y, seed + 23) > 0.72) return mix(leuco, shine(x), 0.4);
       return dermis(x);
     };
   }
@@ -531,7 +528,7 @@ function stripPainter(state, P, w, h, t, opts, seed) {
       if (d < 2) return RED;
       if (d < 3) return RED_SOFT;
       if (h >= 3 && y === h - 1) return RED;
-      return (((x + 3 * yy(y) + wob(x)) % 7) + 7) % 7 === 0 ? ghost : lift(pale, 0.02 * (swell(x) - 0.5));
+      return hash2(x, yy(y), seed + 29) > 0.9 ? ghost : lift(pale, 0.02 * (swell(x) - 0.5));
     };
   }
   return () => base;
