@@ -110,6 +110,7 @@ class OpenAICompat:
     model: str
     min_interval: float = 0.0
     max_retries: int = 5
+    max_tokens: int = 1024
     extra_body: dict = dataclasses.field(default_factory=dict)
     pacer: Pacer = dataclasses.field(default_factory=Pacer, compare=False)
     gate: threading.Semaphore | None = dataclasses.field(default=None, compare=False)   # caps in-flight requests (free tiers 429 on concurrency)
@@ -124,7 +125,7 @@ def openai_compat_call(cfg: OpenAICompat, png: Path, prompt: str, post=None, sle
     post = post or _post
     key = key or _env_key(cfg.key_name)
     b64 = base64.b64encode(Path(png).read_bytes()).decode()
-    body = {"model": cfg.model, "temperature": 0, "max_tokens": 1024, **cfg.extra_body, "messages": [{"role": "user", "content": [
+    body = {"model": cfg.model, "temperature": 0, "max_tokens": cfg.max_tokens, **cfg.extra_body, "messages": [{"role": "user", "content": [
         {"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}}]}]}
     last = ""
     for attempt in range(cfg.max_retries + 1):
@@ -165,12 +166,18 @@ def qwen_config() -> OpenAICompat:
                         model=model_id("qwen"), extra_body={"chat_template_kwargs": {"enable_thinking": False}}, pacer=_QWEN_PACER)
 
 
+def glm_thinking() -> bool:
+    return os.environ.get("G5_GLM_THINKING", "off").lower() in ("1", "on", "true", "yes")
+
+
 def glm_config() -> OpenAICompat:
-    # thinking off: glm-4.6v-flash is a reasoning model and, left on, spends the whole 1024-token budget thinking and returns an
-    # empty answer (finish_reason=length, 1023 reasoning tokens) on ~1 in 5 items. Off, the strict-JSON answer is ~7 tokens.
+    # Default thinking OFF: glm-4.6v-flash is a reasoning model and, left on at 1024 tokens, spends the whole budget thinking and
+    # returns an empty answer (finish_reason=length, 1023 reasoning tokens) on ~1 in 5 items. Off, the strict-JSON answer is ~7 tokens.
+    # G5_GLM_THINKING=on keeps thinking with a 8192-token budget (slower; the cache key records the setting).
+    on = glm_thinking()
     return OpenAICompat(url="https://api.z.ai/api/paas/v4/chat/completions", key_name="GLM_API_KEY", model=model_id("glm"),
-                        extra_body={"thinking": {"type": "disabled"}}, min_interval=float(os.environ.get("G5_GLM_MIN_INTERVAL", "3.0")),
-                        pacer=_GLM_PACER, gate=_GLM_GATE)
+                        extra_body={} if on else {"thinking": {"type": "disabled"}}, max_tokens=8192 if on else 1024,
+                        min_interval=float(os.environ.get("G5_GLM_MIN_INTERVAL", "3.0")), pacer=_GLM_PACER, gate=_GLM_GATE)
 
 
 def qwen_backend(png: Path, prompt: str) -> str:
@@ -184,7 +191,10 @@ def glm_backend(png: Path, prompt: str) -> str:
 def cache_model(name: str) -> str:
     """The model plus the request settings that change its answers; part of the answer-cache key."""
     cfg = {"qwen": qwen_config, "glm": glm_config}.get(name)
-    return f"{cfg().model}|{json.dumps(cfg().extra_body, sort_keys=True)}" if cfg else model_id(name)
+    if not cfg:
+        return model_id(name)
+    c = cfg()
+    return f"{c.model}|{json.dumps(c.extra_body, sort_keys=True)}|max_tokens={c.max_tokens}"
 
 
 qwen_backend.retries_internal = glm_backend.retries_internal = True

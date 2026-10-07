@@ -33,7 +33,7 @@ How the rendered numbers are taken (so a reviewer can reproduce them):
   (alarms carry literal text by contract) with session names masked; the three CVD legends mask all text (the state must be named from pattern).
   `--keep-alarm-text` / `--mask-alarm-text` override every legend variant and are for informational runs only; g5.md records the policy in force. Invalid, refused or errored answers count as FAIL for the item.
 
-glm runs with thinking off (on, the reasoning model burns its token budget and returns an empty answer on ~1 in 5 items); empty replies are never cached.
+glm runs with thinking off by default (on at 1024 tokens the reasoning model burns its budget and returns an empty answer on ~1 in 5 items); `G5_GLM_THINKING=on` re-enables it with an 8192-token budget (the cache key records the setting). Empty replies are never cached.
 
 Backend env: `G5_QWEN_MODEL` (default `qwen3.8-27b-heretic`), `G5_QWEN_URL`, `G5_GLM_MODEL` (default `glm-4.6v-flash`), `G5_GLM_MIN_INTERVAL` (3 s),
 keys `HERCULES_API_KEY` / `GLM_API_KEY` from the environment or `~/.hermes/.env`.

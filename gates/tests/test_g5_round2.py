@@ -211,6 +211,15 @@ def test_glm_request_turns_thinking_off_and_the_cache_key_records_it(monkeypatch
     assert g5backends.cache_model("codex") == g5backends.model_id("codex")
 
 
+def test_glm_thinking_switch_changes_budget_and_cache_key(monkeypatch):
+    monkeypatch.setenv("G5_GLM_THINKING", "on")
+    on = g5backends.glm_config()
+    assert on.extra_body == {} and on.max_tokens > 1024
+    k_on = g5backends.cache_model("glm")
+    monkeypatch.delenv("G5_GLM_THINKING")
+    assert g5backends.cache_model("glm") != k_on
+
+
 # ---- text masking defaults (D-R2-5) --------------------------------------------------------
 def test_alarm_text_policy_defaults():
     assert g5items.keep_alarm_for(None, None) is True            # plain legend keeps alarm words
