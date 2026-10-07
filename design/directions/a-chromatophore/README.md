@@ -40,6 +40,7 @@ Probe = `p1/explore-r1/run_g5x.py`, qwen only, `--tasks aesthetic` (NON-gate, D-
 | iter1 | 7c1222f + live edits during the run (mixed) | 148 entries, check_manifest 0 | PASS, identity 0.0242 @16 | 4 (2) / 2 (2) / 2 (1) |
 | iter2 | 5d4a138 | 148 entries, check_manifest exit=0 | PASS, identity 0.0254 @16 | 4.0 (2) / 2.0 (1) / 2.0 (1) |
 | iter3 | f8f112b (merged v22 @4f64dec incl. arc-safe drift + shadow desaturation, plus finer/weaker XL grain amp 0.45 period 2.6) | 148 entries, check_manifest exit=0 | PASS, identity 0.0254 @16 | 7.0 (2) / 2 (1) / 2.0 (1) |
+| iter4 (rejected, not merged) | 00ff565 (branch agent/tori/cf2909-p1-da2-iter4): the periodic diagonal grain replaced by an isotropic pebbled grain, plus an isotropic warped relief | 148 entries, check_manifest exit=0 | PASS, identity 0.0260 @16 | 3.5 (2) / 3.0 (1) / 2.0 (1) |
 
 iter3 re-captures the two pixel fixes added after iter2 (the arc-safe hue drift and the shadow desaturation) on the real host, together with the finer grain. The XL scores per backend were qwen 6 and qwenb 8. Per state, on both backends: working, review and unknown scored 8, degraded 6/8, needs-you 3, idle 2 ("regular diagonal ribbed") and fault 2 ("mechanical diagonal lines").
 
@@ -54,7 +55,7 @@ Where this falls short, and why: the probe target (median >= 7, none < 6 at each
 - M/S: these are block strips with text plates, and the probe scores them about 2-4 whatever the pattern. Its ceiling for any naturalistic block strip, measured on real skin, is about 2, and only crisp geometric rhythm (chevrons) scores higher.
 - The 4x2 desktop swatch is 8 flat blocks and cannot score as "richly patterned".
 
-The finer, weaker dermal grain (amplitude 0.45, period 2.6) was captured in iter3 and moved the real-host XL median from 4 to 7. XL still misses the bar on the minimum: idle, fault and needs-you score 2-3 because the probe reads the diagonal growth-line rhythm as mechanical. The next lever is to break that diagonal regularity in those three states. M and S stay at 2, the probe's measured ceiling for naturalistic block strips.
+The finer, weaker dermal grain (amplitude 0.45, period 2.6) was captured in iter3 and moved the real-host XL median from 4 to 7. XL still misses the bar on the minimum: idle, fault and needs-you score 2-3 because the probe reads the diagonal growth-line rhythm as mechanical. iter4 tried to break that regularity everywhere with an isotropic pebbled grain. It lost the striated look that carried working, review and unknown to 8, and the XL median fell to 3.5 with idle still at 2, so it was reverted. iter3 remains the shipped module and the vault evidence. The next lever is to break the diagonal per state, only in idle, fault and needs-you. M and S stay at 2-3. The cross-direction evidence says this is structural, not specific to this design: in the R2 dev runs, the bold-graphic b-disruptive and the dark-iridescent c-iridophore also score M 2-3 and S 2 on the same probe. The reasons the probe gives at M/S are "flat, low-resolution pixel strip, mechanical", and for the 4x2 desktop swatch "flat vertical colour bands". That swatch is 8 pixels, which physically cannot carry rich pattern.
 
 ## Files
 
