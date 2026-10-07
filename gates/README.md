@@ -5,7 +5,7 @@ Dev-only instruments (never imported by a shipping entrypoint). Thresholds are f
 
     python3.12 -m venv gates/.venv && gates/.venv/bin/pip install -r gates/requirements.txt
     gates/.venv/bin/python gates/g2.py <renders>/<direction>/manifest.json     # exit 0 PASS / 1 FAIL / 2 instrument error
-    gates/.venv/bin/python gates/g5.py <renders>/<direction>/manifest.json [--backends a,b]
+    gates/.venv/bin/python gates/g5.py <renders>/<direction>/manifest.json [--backends qwen,glm] [--no-cache]
 
 | file | job |
 |---|---|
@@ -14,7 +14,8 @@ Dev-only instruments (never imported by a shipping entrypoint). Thresholds are f
 | `g2.py` | G2: writes `g2.json` + `g2.md` next to the manifest and `cvd/<kind>/...` simulations for G5 |
 | `g5lib.py` | pure G5 parts: strict answer parsing, verdicts, confusion matrix, seeded shuffle, kill-rule round counter |
 | `g5items.py` | what each blind call sees (legend sheet over one sample, identity sheet over one tile, aesthetic strips + photos) |
-| `g5backends.py` | the two vision backends (`openrouter`, `codex`); public renders / photos only |
+| `g5backends.py` | vision backends: default pair `qwen` (hercules qwen3.8-27b, local) + `glm` (zai glm-4.6v-flash, paced 3 s, 429/5xx backoff); optional `codex`, `openrouter`; `gemini:<m>` smoke only (20 req/day). Public renders / photos only |
+| `g5cache.py` | raw-answer cache keyed by (backend, model, image sha256, prompt sha256) under `gates/.g5_cache/` (git-ignored); `--no-cache` forces fresh calls, cached answers are flagged `cached` in `g5_raw/` and counted in `g5.md` |
 | `g5.py` | G5 runner: `g5.json`, `g5.md`, `g5_raw/<backend>/*.json`, appends to `g5_rounds.json` |
 | `g5_prompts/*.txt` | fixed prompts, no design vocabulary (the neutral legend labels appear only in `legend.txt`) |
 | `photos/`, `fetch_photos.py` | openly licensed real-animal anchors (see `photos/LICENSES.md`) |
@@ -28,5 +29,13 @@ How the rendered numbers are taken (so a reviewer can reproduce them):
   The report also carries a non-gating `informational_pigment_only` figure (median of non-background pixels) because a sparse-pigment
   pattern on a pale ground has a tile median that is just the ground.
 - Static proof: single-session frame groups; the desktop sidebar mixes all six states, so it is not judged.
-- G5 blindness: one image per call, fixed prompts, a throwaway cwd for `codex exec`; text is masked out of the identity task, kept in the
-  legend task (alarms carry text by contract). Invalid, refused or errored answers count as FAIL for the item.
+- G5 blindness: one image per call, fixed prompts, a throwaway cwd for `codex exec`; text policy (D-R2-5): identity masks all text; the plain legend keeps the alarm words
+  (alarms carry literal text by contract) with session names masked; the three CVD legends mask all text (the state must be named from pattern).
+  `--keep-alarm-text` / `--mask-alarm-text` override every legend variant and are for informational runs only; g5.md records the policy in force. Invalid, refused or errored answers count as FAIL for the item.
+
+Backend env: `G5_QWEN_MODEL` (default `qwen3.8-27b-heretic`), `G5_QWEN_URL`, `G5_GLM_MODEL` (default `glm-4.6v-flash`), `G5_GLM_MIN_INTERVAL` (3 s),
+keys `HERCULES_API_KEY` / `GLM_API_KEY` from the environment or `~/.hermes/.env`.
+
+Deviation (D-R2-4): Hermes' `vision_analyze` aux route cannot be driven headless (OpenRouter 400/404 on both homes; no Anthropic API key; OpenAI API
+key without credits; Gemini free tier = 20 requests/day), so G5 calls two free/local vision models directly. `codex` stays as an optional substitute.
+zai's free tier logs prompts: G5 only ever sends public renders, synthetic fixtures and openly licensed photos.
