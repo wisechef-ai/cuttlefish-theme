@@ -133,8 +133,27 @@ function anatomy(ctx) {
 
 // ---- per-state skin model (body space) ----------------------------------------------------------------------
 // E(u, v) -> [El, Em, Es] expansion at a sac centre; ground(u, v) -> [L, C, sheenGain]
+// XL idle / fault / needs-you: growth lines that turn. A single diagonal grain reads as machined ribbing on a
+// calm or blanched ground, so these states follow the isolines of a strongly warped low-frequency field instead
+// (plus a weak linear trend so the lines never stall): orientation sweeps across the mantle, spacing breathes.
+function growthPhase(ctx, s, k) {
+  const { seed } = ctx;
+  return (u, v) => {
+    const x = u + 7 * (fbm(u * 0.045, v * 0.045, seed + s, 3) - 0.5), y = v + 7 * (fbm(u * 0.045 + 31.7, v * 0.045 - 7.3, seed + s + 7, 3) - 0.5);
+    return k * (0.6 * x - 0.8 * y + 20 * fbm(x * 0.028, y * 0.028, seed + s + 2, 3));
+  };
+}
 function grainField(ctx) {
   const { seed } = ctx;
+  if (ctx.curveGrain) {
+    const ph = growthPhase(ctx, 91, 1);
+    return (u, v) => {
+      const f = frac(ph(u, v) / 2.6);
+      // on the blanched fault ground the grain fades in and out in blotches; elsewhere it stays dense
+      const blot = ctx.state === 'fault' ? 0.3 + 0.7 * sstep(0.28, 0.62, fbm(u * 0.06 + 5.1, v * 0.06, seed + 95, 2)) : 1;
+      return sstep(0.1, 0.22, f) * (1 - sstep(0.48, 0.6, f)) * blot;
+    };
+  }
   return (u, v) => {
     const x = u + 2.5 * (fbm(u * 0.08, v * 0.08, seed + 91, 2) - 0.5), y = v + 2.5 * (fbm(u * 0.08 + 31.7, v * 0.08 - 7.3, seed + 98, 2) - 0.5);
     const f = frac((x + y * 1.4) / 2.6);
@@ -149,16 +168,33 @@ function model(state, ctx) {
   if (state === 'idle' || state === 'working') {
     // stipple: most sacs retracted; the expanded few gather in loose, wavy transverse rows (the way a resting
     // Sepia's fine spots follow the skin's growth lines), so the stipple has rhythm instead of noise
-    const rows = (u, v) => { const [x, y] = warp(u, v, 0.09, 4, 13); return 0.5 + 0.5 * Math.sin((x * 0.8 + y * 0.6 + 1.6 * Math.sin(y * 0.33)) * 1.3); };
+    // XL idle: a faint light mottle of half-expanded sacs (the resting animal is never one even tone), fewer
+    // stipple sacs, growth lines that turn instead of one diagonal
+    const shadow = !ctx.breakDiag ? () => 0 : (u, v) => {
+      // a faint light mottle: soft blotches of half-expanded sacs on a loose warped lattice, three sizes
+      const [x, y] = warp(u, v, 0.06, 6, 17);
+      const sp = 11, i0 = Math.floor(x / sp), j0 = Math.floor(y / sp);
+      let best = 0;
+      for (let j = j0 - 1; j <= j0 + 1; j++) for (let i = i0 - 1; i <= i0 + 1; i++) {
+        if (hash(i, j, seed + 23) < 0.15) continue;
+        const cx = (i + 0.15 + 0.7 * hash(i, j, seed + 21)) * sp, cy = (j + 0.15 + 0.7 * hash(i, j, seed + 22)) * sp;
+        const r = sp * (0.18 + 0.3 * hash(i, j, seed + 24) ** 2), dx = (x - cx) / 1.3, dy = y - cy;
+        best = Math.max(best, sstep(r, r * 0.45, Math.sqrt(dx * dx + dy * dy)) * (0.55 + 0.45 * hash(i, j, seed + 25)));
+      }
+      return best;
+    };
+    const rph = ctx.curveRows ? growthPhase(ctx, 13, 1.3) : null;
+    const rows = rph ? (u, v) => 0.5 + 0.5 * Math.sin(rph(u, v))
+      : (u, v) => { const [x, y] = warp(u, v, 0.09, 4, 13); return 0.5 + 0.5 * Math.sin((x * 0.8 + y * 0.6 + 1.6 * Math.sin(y * 0.33)) * 1.3); };
     return {
       E: (u, v) => {
-        const T = tonus(u, v), R = rows(u, v);
-        const pm = 0.04 + 0.7 * sstep(0.62, 0.95, R), ps = 0.08 + 0.5 * sstep(0.5, 0.95, R);
+        const T = tonus(u, v), R = rows(u, v), Q = shadow(u, v);
+        const pm = ctx.breakDiag ? 0.02 + 0.45 * sstep(0.62, 0.95, R) : 0.04 + 0.7 * sstep(0.62, 0.95, R), ps = ctx.breakDiag ? 0.04 + 0.3 * sstep(0.5, 0.95, R) : 0.08 + 0.5 * sstep(0.5, 0.95, R);
         const em = hash(Math.floor(u * 7.1), Math.floor(v * 7.1), seed + 98) < pm ? 0.7 + 0.3 * T : 0.05 + 0.2 * T;
         const es = hash(Math.floor(u * 7.1), Math.floor(v * 7.1), seed + 99) < ps ? 0.85 : 0.18 + 0.3 * T;
-        return [0.03 + 0.14 * T, em, es];
+        return [0.03 + 0.14 * T + 0.6 * Q, em + 0.4 * Q, es];
       },
-      ground: (u, v) => [ctx.Lbase - 0.015 + 0.08 * (tonus(u, v) - 0.5) + (sc === 'XL' ? 0.14 * (rows(u, v) - 0.5) + 0.04 * (fbm(u * 0.4, v * 0.4, seed + 9, 2) - 0.5) : 0), 0.15, 1],
+      ground: (u, v) => [ctx.Lbase - 0.015 - 0.16 * shadow(u, v) + 0.08 * (tonus(u, v) - 0.5) + (sc === 'XL' ? 0.14 * (rows(u, v) - 0.5) + 0.04 * (fbm(u * 0.4, v * 0.4, seed + 9, 2) - 0.5) : 0), 0.15, 1],
     };
   }
   if (state === 'review') {
@@ -202,8 +238,8 @@ function model(state, ctx) {
       return Math.min(1, sstep(-e, e, f) * (1 - sstep(duty - e, duty + e, f)) + sstep(1 - e, 1 + e, f));
     };
     return {
-      E: (u, v) => { const z = band(u, v); return [z, z, 0.15 + 0.7 * z]; },
-      ground: (u, v) => { const z = band(u, v); return [0.87 - 0.40 * z, 0.06 + 0.06 * z, 1.4 * (1 - z)]; },
+      E: (u, v) => { const z = band(u, v); return ctx.breakDiag ? [0.5 * z, z, 0.15 + 0.7 * z] : [z, z, 0.15 + 0.7 * z]; },
+      ground: (u, v) => { const z = band(u, v); return [0.87 - (ctx.breakDiag ? 0.58 : 0.40) * z, 0.06 + 0.06 * z, 1.4 * (1 - z)]; },
     };
   }
   if (state === 'fault') {
@@ -251,7 +287,7 @@ function eyeList(state, ctx, freeA) {
   const { visA, visB, sc, seed } = ctx;
   if ((state !== 'needs-you' && state !== 'fault') || sc === 'Ss') return [];
   if (sc === 'XL') {
-    const r = visB * 0.14, out = [];
+    const r = visB * (ctx.breakDiag ? 0.1 : 0.14), out = [];
     // two eyespots on the mantle, between midline and edge; deimatic adds smaller ring spots
     for (const fa of [0.33, 0.66]) out.push({ a: fa * visA, b: visB * 0.5, rx: r, ry: r * 0.92 });
     if (state === 'fault') for (const [fa, fb] of [[0.16, 0.3], [0.5, 0.24], [0.84, 0.32], [0.24, 0.66], [0.78, 0.68]]) out.push({ a: fa * visA, b: fb * visB, rx: r * 0.5, ry: r * 0.46 });
@@ -474,6 +510,65 @@ const WL = 14, WC = [0.025, 0.075, 0.125];   // 14 lightness x 3 chroma steps = 
 const MEMO = new Map();
 const MEMO_MAX = 24;
 
+// ---- M: crisp sac bands ------------------------------------------------------------------------------------------
+// A chrome strip is 2-4 cells tall. There a naturalistic skin collapses into a blocky mosaic, so M draws the same
+// biology as crisp, rhythmic sac bands: one tone per cell (pale leucophore ground, a rim of half-expanded sacs, a
+// band of fully expanded sacs), mirrored about the body midline. Alarm eyes, ring spots and the red margin are the
+// same overlays as everywhere else, supersampled. a = cell column (+ a per-session phase), y = distance from midline.
+function crispTone(state, a, y, s, tq) {
+  if (state === 'idle') {                     // stipple rows: thin waving lines of sacs along the growth lines
+    const ph = ((a + 1.5 * Math.sin(a / 5) * s) % 10 + 10) % 10;
+    return ph < 1.8 ? 2 : ph < 3 ? 1 : 0;
+  }
+  if (state === 'working') {                  // passing cloud: wavefronts of expanded sacs drift along, breathing
+    const a2 = a - tq * 4;                    // one cell per frame (4 fps)
+    const ph = ((a2 + 1.5 * Math.sin(a2 / 5) * s) % 10 + 10) % 10, duty = 2 + 2 * (0.5 + 0.5 * Math.sin(a2 / 11));
+    return ph < duty ? 2 : ph < duty + 1.2 ? 1 : 0;
+  }
+  if (state === 'review') {                   // two-scale mottle: a wide blotch band, a narrow one, a pale dapple
+    const ph = ((a + 2 * y) % 13 + 13) % 13;
+    return ph < 4 ? 2 : ph < 5 ? 1 : ph >= 8 && ph < 9.2 ? 2 : 0;
+  }
+  if (state === 'needs-you') {                // zebra: chevrons that meet at the dorsal midline
+    const f = (((a + 2 * y) % 7) + 7) % 7 / 7;
+    return f < 0.43 ? 2 : f < 0.43 + 1 / 7 ? 1 : 0;
+  }
+  if (state === 'fault') {                    // deimatic blanch: only faint growth lines survive
+    const f = (((a + 2 * y) % 10) + 10) % 10;
+    return f < 1.5 ? 1 : 0;
+  }
+  const f = (((a + y) % 6) + 6) % 6 / 6;     // unknown: neutral hatch
+  return f < 0.34 ? 2 : f < 0.5 ? 1 : 0;
+}
+function paintCrisp(state, H, ctx, lay, w, h) {
+  const neutral = H == null || state === 'unknown';
+  const tones = neutral ? [[0.84, 0, 0], [0.62, 0, 0], [0.4, 0, 0]]
+    : state === 'fault' ? [[0.95, ...polarLab(0, 0.024, H).slice(1)], [0.6, ...polarLab(0, 0.035, H).slice(1)], [0.4, 0, 0]]
+      : state === 'needs-you' ? [polarLab(0.8, 0.11, H), polarLab(0.52, 0.11, H), polarLab(0.33, 0.075, H)]
+        : [polarLab(ctx.Lbase, 0.12, H), polarLab(0.52, 0.11, H), polarLab(0.33, 0.075, H)];
+  const ph0 = ((ctx.seed >>> 8) & 255) % 37;
+  const px = new Uint8ClampedArray(w * h * 4), lab = [0, 0, 0], ss = 3, inv = 1 / (ss * ss);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const yb = y + 0.5 - ctx.midB, t0 = tones[crispTone(state, x + ph0, Math.abs(yb), yb, ctx.tq)];
+    let aL = 0, aA = 0, aB = 0;
+    for (let sy = 0; sy < ss; sy++) for (let sx = 0; sx < ss; sx++) {
+      lab[0] = t0[0]; lab[1] = t0[1]; lab[2] = t0[2];
+      if (ctx.eyes.length || state === 'fault') overlay(state, ctx.eyes, lab, x + (sx + 0.5) / ss, y + (sy + 0.5) / ss, ctx);
+      aL += lab[0]; aA += lab[1]; aB += lab[2];
+    }
+    let rgb = labRgb(aL * inv, aA * inv, aB * inv);
+    if (neutral) { const gy = Math.round((rgb[0] + rgb[1] + rgb[2]) / 3); rgb = [gy, gy, gy]; }
+    const i = (y * w + x) * 4;
+    px[i] = rgb[0]; px[i + 1] = rgb[1]; px[i + 2] = rgb[2]; px[i + 3] = 255;
+  }
+  for (const pl of lay.plates) {
+    for (let y = Math.max(0, pl.y0); y < Math.min(h, pl.y1); y++) for (let x = Math.max(0, pl.x0); x < Math.min(w, pl.x1); x++) {
+      const i = (y * w + x) * 4; px[i] = pl.c[0]; px[i + 1] = pl.c[1]; px[i + 2] = pl.c[2]; px[i + 3] = 255;
+    }
+  }
+  return { pixels: px, text: lay.text };
+}
+
 // ---- paint -------------------------------------------------------------------------------------------------------
 export function paint({ scale, w, h, state, session, t = 0, opts = {} }) {
   const degraded = session.hue_deg == null;
@@ -493,11 +588,16 @@ export function paint({ scale, w, h, state, session, t = 0, opts = {} }) {
   const ctx = { seed, tq, sc, visA: bw * k, visB: bh * k, aa: Math.max(0.12, k / ss), detail: sc === 'XL' ? 1 : 0.6,
     relief: sc === 'XL' ? 1 : 0.35, chroma: sc === 'XL' ? 0.32 : 1, grainAmp: sc === 'XL' ? 0.45 : 0, grid: { bw, bh, k, ss, ox, oy } };
   ctx.an = anatomy(ctx);
+  ctx.state = state;
+  ctx.breakDiag = sc === 'XL' && (state === 'idle' || state === 'fault' || state === 'needs-you');
+  ctx.curveGrain = ctx.breakDiag;
+  ctx.curveRows = ctx.breakDiag;
   ctx.Lbase = groundLightness(H);
   ctx.mirror = sc !== 'XL';                                       // chrome strips: the centre line is the body midline
   ctx.midB = ctx.an ? ctx.an.mid : ctx.visB / 2;
   const lay = layout(scale, w, h, state, session, degraded, opts);
   ctx.eyes = eyeList(state, ctx, tr ? 0 : lay.free * k);
+  if (sc === 'M') return paintCrisp(state, H, ctx, lay, w, h);
   const key = `${sc}|${w}|${h}|${state}|${seed}|${H}`;
   let L0 = MEMO.get(key);
   if (!L0) {
