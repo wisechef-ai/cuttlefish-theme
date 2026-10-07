@@ -38,7 +38,7 @@ Probe = `p1/explore-r1/run_g5x.py`, qwen only, `--tasks aesthetic` (NON-gate, D-
 |---|---|---|---|---|
 | r1 (round 1, for reference) | v22 @4cb09e6 | p1/renders | FAIL (identity 0.000) | 0 / 2 / 2 |
 | iter1 | 7c1222f + live edits during the run (mixed) | 148 entries, check_manifest 0 | PASS, identity 0.0242 @16 | 4 (2) / 2 (2) / 2 (1) |
-| iter2 | 5d4a138 | ITER2_CAPTURE | ITER2_G2 | ITER2_PROBE |
+| iter2 | 5d4a138 | 148 entries, check_manifest exit=0 | PASS, identity 0.0254 @16 | 4.0 (2) / 2.0 (1) / 2.0 (1) |
 
 After iter2, the merged module adds two pixel-level fixes that were not re-captured: the arc-safe hue drift and the shadow desaturation (see the unit tests).
 
