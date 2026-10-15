@@ -1,0 +1,27 @@
+{"v":1,"src":"meta","kind":"trace","name":"turn","host":"tui","runtime":"upstream","runtime_sha":"f42f579cf8b","recorded_at":"2026-10-15T21:21:01Z","model":"custom:qwen38-local","profiles":["A"],"notes":"boot -> plain turn -> terminal tool turn -> /exit (synthetic prompts)"}
+{"v":1,"t":0.003,"src":"liveness","profile":"A","session":null,"lineage_root":null,"kind":"binding","payload":{"bound":false}}
+{"v":1,"t":0.003,"src":"liveness","profile":"A","session":null,"lineage_root":null,"kind":"heartbeat","payload":{}}
+{"v":1,"t":5.006,"src":"liveness","profile":"A","session":null,"lineage_root":null,"kind":"heartbeat","payload":{}}
+{"v":1,"t":10.009,"src":"liveness","profile":"A","session":null,"lineage_root":null,"kind":"heartbeat","payload":{}}
+{"v":1,"t":15.013,"src":"liveness","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"binding","payload":{"bound":true}}
+{"v":1,"t":15.013,"src":"liveness","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"heartbeat","payload":{}}
+{"v":1,"t":20.018,"src":"liveness","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"heartbeat","payload":{}}
+{"v":1,"t":22.343,"src":"hook","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"on_session_reset","payload":{}}
+{"v":1,"t":25.026,"src":"liveness","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"heartbeat","payload":{}}
+{"v":1,"t":25.729,"src":"hook","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"on_session_start","payload":{}}
+{"v":1,"t":25.782,"src":"hook","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"pre_llm_call","payload":{}}
+{"v":1,"t":30.03,"src":"liveness","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"heartbeat","payload":{}}
+{"v":1,"t":35.034,"src":"liveness","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"heartbeat","payload":{}}
+{"v":1,"t":40.038,"src":"liveness","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"heartbeat","payload":{}}
+{"v":1,"t":45.042,"src":"liveness","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"heartbeat","payload":{}}
+{"v":1,"t":47.336,"src":"hook","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"post_llm_call","payload":{}}
+{"v":1,"t":47.338,"src":"hook","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"on_session_end","payload":{"completed":true,"interrupted":false,"failed":false}}
+{"v":1,"t":48.843,"src":"hook","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"pre_llm_call","payload":{}}
+{"v":1,"t":50.045,"src":"liveness","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"heartbeat","payload":{}}
+{"v":1,"t":50.107,"src":"hook","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"pre_tool_call","payload":{"tool_name":"terminal","tool_call_id":"chatcmpl-tool-925707d49fde3a0a"}}
+{"v":1,"t":50.908,"src":"hook","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"post_tool_call","payload":{"tool_name":"terminal","tool_call_id":"chatcmpl-tool-925707d49fde3a0a"}}
+{"v":1,"t":51.954,"src":"hook","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"post_llm_call","payload":{}}
+{"v":1,"t":51.955,"src":"hook","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"on_session_end","payload":{"completed":true,"interrupted":false,"failed":false}}
+{"v":1,"t":53.802,"src":"hook","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"on_session_end","payload":{"completed":false,"interrupted":true}}
+{"v":1,"t":53.804,"src":"hook","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"on_session_finalize","payload":{}}
+{"v":1,"t":54.047,"src":"liveness","profile":"A","session":"20261015_232115_6e0c18","lineage_root":"20261015_232115_6e0c18","kind":"pid_dead","payload":{}}

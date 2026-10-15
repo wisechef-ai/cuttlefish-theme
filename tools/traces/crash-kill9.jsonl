@@ -1,0 +1,12 @@
+{"v":1,"src":"meta","kind":"trace","name":"crash-kill9","host":"tui","runtime":"upstream","runtime_sha":"f42f579cf8b","recorded_at":"2026-10-15T21:46:48Z","model":"custom:qwen38-local","profiles":["A"],"notes":"SIGKILL (process group: TUI owner + gateway) mid-turn: no hook fires for the death; heartbeat stops, pid_dead is the last line (replay now may be advanced past it)"}
+{"v":1,"t":8.011,"src":"liveness","profile":"A","session":"20261015_234655_ca0758","lineage_root":"20261015_234655_ca0758","kind":"binding","payload":{"bound":true}}
+{"v":1,"t":8.011,"src":"liveness","profile":"A","session":"20261015_234655_ca0758","lineage_root":"20261015_234655_ca0758","kind":"heartbeat","payload":{}}
+{"v":1,"t":11.785,"src":"hook","profile":"A","session":"20261015_234655_ca0758","lineage_root":"20261015_234655_ca0758","kind":"on_session_reset","payload":{}}
+{"v":1,"t":13.014,"src":"liveness","profile":"A","session":"20261015_234655_ca0758","lineage_root":"20261015_234655_ca0758","kind":"heartbeat","payload":{}}
+{"v":1,"t":13.842,"src":"hook","profile":"A","session":"20261015_234655_ca0758","lineage_root":"20261015_234655_ca0758","kind":"on_session_start","payload":{}}
+{"v":1,"t":13.855,"src":"hook","profile":"A","session":"20261015_234655_ca0758","lineage_root":"20261015_234655_ca0758","kind":"pre_llm_call","payload":{}}
+{"v":1,"t":15.901,"src":"hook","profile":"A","session":"20261015_234655_ca0758","lineage_root":"20261015_234655_ca0758","kind":"post_llm_call","payload":{}}
+{"v":1,"t":15.902,"src":"hook","profile":"A","session":"20261015_234655_ca0758","lineage_root":"20261015_234655_ca0758","kind":"on_session_end","payload":{"completed":true,"interrupted":false,"failed":false}}
+{"v":1,"t":17.716,"src":"hook","profile":"A","session":"20261015_234655_ca0758","lineage_root":"20261015_234655_ca0758","kind":"pre_llm_call","payload":{}}
+{"v":1,"t":18.016,"src":"liveness","profile":"A","session":"20261015_234655_ca0758","lineage_root":"20261015_234655_ca0758","kind":"heartbeat","payload":{}}
+{"v":1,"t":22.025,"src":"liveness","profile":"A","session":"20261015_234655_ca0758","lineage_root":"20261015_234655_ca0758","kind":"pid_dead","payload":{}}
