@@ -1,0 +1,16 @@
+{"hook":"on_session_reset","ts":0.0,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":null,"completed":null}
+{"hook":"on_session_start","ts":4.51,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":null,"completed":null}
+{"hook":"pre_llm_call","ts":4.59,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t1","completed":null}
+{"hook":"api_request_error","ts":6.06,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t1","completed":null}
+{"hook":"api_request_error","ts":9.27,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t1","completed":null}
+{"hook":"api_request_error","ts":13.64,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t1","completed":null}
+{"hook":"api_request_error","ts":19.89,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t1","completed":null}
+{"hook":"api_request_error","ts":22.3,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t1","completed":null}
+{"hook":"api_request_error","ts":26.91,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t1","completed":null}
+{"hook":"api_request_error","ts":43.07,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t1","completed":null}
+{"hook":"api_request_error","ts":46.15,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t1","completed":null}
+{"hook":"api_request_error","ts":51.88,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t1","completed":null}
+{"hook":"api_request_error","ts":85.17,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t1","completed":null}
+{"hook":"api_request_error","ts":87.73,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t1","completed":null}
+{"hook":"on_session_end","ts":93.15,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":null,"completed":false}
+{"hook":"on_session_finalize","ts":93.17,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":null,"completed":null}

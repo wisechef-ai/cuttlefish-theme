@@ -1,0 +1,1087 @@
+{
+ "schema": "cf2909.spike06-expected/1",
+ "states": [
+  "idle",
+  "working",
+  "review",
+  "needs-you",
+  "fault",
+  "unknown"
+ ],
+ "traces": {
+  "main": {
+   "source": "receipt 1.3: working 6.4->31.9 s; clarify 43.2->53.2 s; cancel 58.9->66.2 s, re-ask 68.2 stays open ~66 s",
+   "notes": [
+    "idx 17 (66.24 s): receipt says the cancelled clarify clears at the cancel and the model re-asks at 68.2 s; the 2 s gap is labelled working (CONTRACT 2: the first clarify's key is removed, second not yet added).",
+    "idx 28 (297.92 s): on_session_end{completed:false, interrupted:true} is the real end per the receipt; the window is idle until on_session_finalize (idx 29) -> unknown.",
+    "idx 4/9/14/21/24/27: on_session_end per turn -> idle (receipt: 'on_session_end fires at the end of EVERY TURN'; main.jsonl working ends 31.9 s)."
+   ],
+   "after_each_event": [
+    {
+     "hook": "on_session_reset",
+     "state": "idle",
+     "since": 0.0
+    },
+    {
+     "hook": "on_session_start",
+     "state": "idle",
+     "since": 0.0
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 6.4
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 6.4
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 31.89
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 34.14
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 34.14
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 34.14
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 34.14
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 39.59
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 41.53
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "needs-you",
+     "since": 43.18
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 53.16
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 53.16
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 54.29
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 57.45
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "needs-you",
+     "since": 58.88
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 66.24
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "needs-you",
+     "since": 68.17
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 134.86
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 134.86
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 136.32
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 265.9
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 265.9
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 268.19
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 293.77
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 293.77
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 295.0
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 295.0
+    },
+    {
+     "hook": "on_session_finalize",
+     "state": "unknown",
+     "since": 297.93
+    }
+   ]
+  },
+  "error": {
+   "source": "receipt: dead base_url, api_request_error once per attempt (8 in 85 s in the receipt run; this raw log holds 11 within 88 s), no turn-end hook, fault until exit",
+   "notes": [
+    "The receipt prose says 8 retries; the raw error.jsonl has 11 api_request_error events (idx 3-13). Receipt count is a prose summary of the same run; the artifact is authoritative for the fixture.",
+    "idx 14 (93.15 s): on_session_end{completed:false, interrupted:true} at /exit. The receipt does not say whether this clears fault; labelled fault from CONTRACT 2 ('fault is sticky across on_session_end{completed:false}').",
+    "idx 15: on_session_finalize -> unknown (receipt: 'on_session_finalize seen' is a synthesised-unknown trigger)."
+   ],
+   "after_each_event": [
+    {
+     "hook": "on_session_reset",
+     "state": "idle",
+     "since": 0.0
+    },
+    {
+     "hook": "on_session_start",
+     "state": "idle",
+     "since": 0.0
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 4.59
+    },
+    {
+     "hook": "api_request_error",
+     "state": "fault",
+     "since": 6.06
+    },
+    {
+     "hook": "api_request_error",
+     "state": "fault",
+     "since": 6.06
+    },
+    {
+     "hook": "api_request_error",
+     "state": "fault",
+     "since": 6.06
+    },
+    {
+     "hook": "api_request_error",
+     "state": "fault",
+     "since": 6.06
+    },
+    {
+     "hook": "api_request_error",
+     "state": "fault",
+     "since": 6.06
+    },
+    {
+     "hook": "api_request_error",
+     "state": "fault",
+     "since": 6.06
+    },
+    {
+     "hook": "api_request_error",
+     "state": "fault",
+     "since": 6.06
+    },
+    {
+     "hook": "api_request_error",
+     "state": "fault",
+     "since": 6.06
+    },
+    {
+     "hook": "api_request_error",
+     "state": "fault",
+     "since": 6.06
+    },
+    {
+     "hook": "api_request_error",
+     "state": "fault",
+     "since": 6.06
+    },
+    {
+     "hook": "api_request_error",
+     "state": "fault",
+     "since": 6.06
+    },
+    {
+     "hook": "on_session_end",
+     "state": "fault",
+     "since": 6.06
+    },
+    {
+     "hook": "on_session_finalize",
+     "state": "unknown",
+     "since": 93.17
+    }
+   ]
+  },
+  "failed": {
+   "source": "receipt: HTTP 401 stub, api_request_error once, no on_session_end/post_llm_call, next user turn starts with a plain pre_llm_call and errors again",
+   "notes": [
+    "idx 3 -> 4: the fault (401) is sticky until the next user turn starts; pre_llm_call (idx 4, 47.05 s) clears it back to working, and the second 401 (idx 5) faults again (receipt: 'errors again').",
+    "idx 6 (77.49 s): on_session_end{completed:false} at exit; fault stays sticky per CONTRACT 2 (receipt silent). idx 7 finalize -> unknown."
+   ],
+   "after_each_event": [
+    {
+     "hook": "on_session_reset",
+     "state": "idle",
+     "since": 0.0
+    },
+    {
+     "hook": "on_session_start",
+     "state": "idle",
+     "since": 0.0
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 3.49
+    },
+    {
+     "hook": "api_request_error",
+     "state": "fault",
+     "since": 4.48
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 47.05
+    },
+    {
+     "hook": "api_request_error",
+     "state": "fault",
+     "since": 47.21
+    },
+    {
+     "hook": "on_session_end",
+     "state": "fault",
+     "since": 47.21
+    },
+    {
+     "hook": "on_session_finalize",
+     "state": "unknown",
+     "since": 77.49
+    }
+   ]
+  },
+  "approval": {
+   "source": "receipt: pre_approval_request when the dialog opens, post_approval_response when answered; sequence pre_tool_call(terminal), pre_approval_request, (user), post_approval_response, post_tool_call",
+   "notes": [
+    "needs-you spans 18.53 s -> 109.58 s (a human sat on the dialog for ~91 s).",
+    "idx 9 (113.76 s): on_session_end{completed:false} with no pending key -> idle until finalize (idx 10)."
+   ],
+   "after_each_event": [
+    {
+     "hook": "on_session_reset",
+     "state": "idle",
+     "since": 0.0
+    },
+    {
+     "hook": "on_session_start",
+     "state": "idle",
+     "since": 0.0
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 6.49
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 6.49
+    },
+    {
+     "hook": "pre_approval_request",
+     "state": "needs-you",
+     "since": 18.53
+    },
+    {
+     "hook": "post_approval_response",
+     "state": "working",
+     "since": 109.58
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 109.58
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 109.58
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 112.81
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 112.81
+    },
+    {
+     "hook": "on_session_finalize",
+     "state": "unknown",
+     "since": 113.77
+    }
+   ]
+  },
+  "rotate": {
+   "source": "receipt Compression: rotate.jsonl is the IN-PLACE /compress run: id unchanged, nothing else fires; plain turns",
+   "notes": [
+    "Despite its name this artifact never rotates the id (one session id throughout); the rotating case is rotate_lineage.jsonl."
+   ],
+   "after_each_event": [
+    {
+     "hook": "on_session_reset",
+     "state": "idle",
+     "since": 0.0
+    },
+    {
+     "hook": "on_session_start",
+     "state": "idle",
+     "since": 0.0
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 5.39
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 5.39
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 22.53
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 24.42
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 24.42
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 25.7
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 47.56
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 47.56
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 48.38
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 48.38
+    },
+    {
+     "hook": "on_session_finalize",
+     "state": "unknown",
+     "since": 51.53
+    }
+   ]
+  },
+  "verify_approval": {
+   "source": "receipt: pre_verify 21.6 s (review, ~100 ms) then post_llm_call/on_session_end; approval 25.9 -> 32.2 s",
+   "notes": [
+    "review lasts idx 5 (21.59 s) -> idx 6 (21.68 s) = 90 ms, matching the receipt's '~100 ms'.",
+    "idx 6: the receipt table says review is cleared by post_llm_call; CONTRACT 2 maps post_llm_call from review to working (not idle). Labelled working; idle follows at on_session_end (idx 7, 21.70 s).",
+    "idx 11/12 (32.22 s): post_approval_response and post_tool_call arrive in the same instant; both labelled working."
+   ],
+   "after_each_event": [
+    {
+     "hook": "on_session_reset",
+     "state": "idle",
+     "since": 0.0
+    },
+    {
+     "hook": "on_session_start",
+     "state": "idle",
+     "since": 0.0
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 4.79
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 4.79
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 4.79
+    },
+    {
+     "hook": "pre_verify",
+     "state": "review",
+     "since": 21.59
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 21.68
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 21.7
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 22.92
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 22.92
+    },
+    {
+     "hook": "pre_approval_request",
+     "state": "needs-you",
+     "since": 25.92
+    },
+    {
+     "hook": "post_approval_response",
+     "state": "working",
+     "since": 32.22
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 32.22
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 32.22
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 33.91
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 33.91
+    },
+    {
+     "hook": "on_session_finalize",
+     "state": "unknown",
+     "since": 36.36
+    }
+   ]
+  },
+  "approval_chain": {
+   "source": "receipt 'Approval' + lineage run (spike 05/06 single-TUI): 18 sequential approvals over 6 turns, each pre_approval_request..post_approval_response = needs-you",
+   "notes": [
+    "idx 87 (pre_approval_request c18) is never answered: the run was stopped (agent_loop_stopped, not a subscribed hook). The receipt does not say what a session end does to a still-open dialog; labelled idle at idx 88 from CONTRACT 2 (on_session_end clears pending). A UI may disagree; this is the one place the contract, not the receipt, decides.",
+    "Approvals are stacked in a single turn (idx 12-58): after each post_approval_response the state returns to working, not idle (no turn end yet)."
+   ],
+   "after_each_event": [
+    {
+     "hook": "on_session_reset",
+     "state": "idle",
+     "since": 0.0
+    },
+    {
+     "hook": "on_session_start",
+     "state": "idle",
+     "since": 0.0
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 5.3
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 5.3
+    },
+    {
+     "hook": "on_session_end",
+     "state": "working",
+     "since": 5.3
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 5.3
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 5.3
+    },
+    {
+     "hook": "pre_approval_request",
+     "state": "needs-you",
+     "since": 47.03
+    },
+    {
+     "hook": "post_approval_response",
+     "state": "working",
+     "since": 50.24
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 50.24
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 50.24
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 51.68
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 54.07
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 54.07
+    },
+    {
+     "hook": "pre_approval_request",
+     "state": "needs-you",
+     "since": 56.05
+    },
+    {
+     "hook": "post_approval_response",
+     "state": "working",
+     "since": 59.03
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 59.03
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 59.03
+    },
+    {
+     "hook": "pre_approval_request",
+     "state": "needs-you",
+     "since": 60.85
+    },
+    {
+     "hook": "post_approval_response",
+     "state": "working",
+     "since": 63.63
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 63.63
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 63.63
+    },
+    {
+     "hook": "pre_approval_request",
+     "state": "needs-you",
+     "since": 65.49
+    },
+    {
+     "hook": "post_approval_response",
+     "state": "working",
+     "since": 68.33
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 68.33
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 68.33
+    },
+    {
+     "hook": "pre_approval_request",
+     "state": "needs-you",
+     "since": 72.85
+    },
+    {
+     "hook": "post_approval_response",
+     "state": "working",
+     "since": 75.87
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 75.87
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 75.87
+    },
+    {
+     "hook": "pre_approval_request",
+     "state": "needs-you",
+     "since": 77.76
+    },
+    {
+     "hook": "post_approval_response",
+     "state": "working",
+     "since": 80.79
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 80.79
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 80.79
+    },
+    {
+     "hook": "pre_approval_request",
+     "state": "needs-you",
+     "since": 91.19
+    },
+    {
+     "hook": "post_approval_response",
+     "state": "working",
+     "since": 93.6
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 93.6
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 93.6
+    },
+    {
+     "hook": "pre_approval_request",
+     "state": "needs-you",
+     "since": 96.37
+    },
+    {
+     "hook": "post_approval_response",
+     "state": "working",
+     "since": 99.45
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 99.45
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 99.45
+    },
+    {
+     "hook": "pre_approval_request",
+     "state": "needs-you",
+     "since": 104.35
+    },
+    {
+     "hook": "post_approval_response",
+     "state": "working",
+     "since": 107.28
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 107.28
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 107.28
+    },
+    {
+     "hook": "pre_approval_request",
+     "state": "needs-you",
+     "since": 109.43
+    },
+    {
+     "hook": "post_approval_response",
+     "state": "working",
+     "since": 111.61
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 111.61
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 111.61
+    },
+    {
+     "hook": "pre_approval_request",
+     "state": "needs-you",
+     "since": 114.1
+    },
+    {
+     "hook": "post_approval_response",
+     "state": "working",
+     "since": 117.15
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 117.15
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 117.15
+    },
+    {
+     "hook": "pre_approval_request",
+     "state": "needs-you",
+     "since": 121.18
+    },
+    {
+     "hook": "post_approval_response",
+     "state": "working",
+     "since": 124.28
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 124.28
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 124.28
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 125.68
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 128.05
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 128.05
+    },
+    {
+     "hook": "pre_approval_request",
+     "state": "needs-you",
+     "since": 130.31
+    },
+    {
+     "hook": "post_approval_response",
+     "state": "working",
+     "since": 133.44
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 133.44
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 133.44
+    },
+    {
+     "hook": "pre_approval_request",
+     "state": "needs-you",
+     "since": 135.64
+    },
+    {
+     "hook": "post_approval_response",
+     "state": "working",
+     "since": 139.02
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 139.02
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 139.02
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 142.39
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 144.77
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 144.77
+    },
+    {
+     "hook": "pre_approval_request",
+     "state": "needs-you",
+     "since": 147.07
+    },
+    {
+     "hook": "post_approval_response",
+     "state": "working",
+     "since": 150.23
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 150.23
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 150.23
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 151.97
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 153.57
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 153.57
+    },
+    {
+     "hook": "pre_approval_request",
+     "state": "needs-you",
+     "since": 155.98
+    },
+    {
+     "hook": "post_approval_response",
+     "state": "working",
+     "since": 158.22
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 158.22
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 158.22
+    },
+    {
+     "hook": "pre_approval_request",
+     "state": "needs-you",
+     "since": 159.96
+    },
+    {
+     "hook": "post_approval_response",
+     "state": "working",
+     "since": 162.85
+    },
+    {
+     "hook": "post_tool_call",
+     "state": "working",
+     "since": 162.85
+    },
+    {
+     "hook": "pre_tool_call",
+     "state": "working",
+     "since": 162.85
+    },
+    {
+     "hook": "pre_approval_request",
+     "state": "needs-you",
+     "since": 164.68
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 166.27
+    },
+    {
+     "hook": "on_session_finalize",
+     "state": "unknown",
+     "since": 166.29
+    }
+   ]
+  },
+  "rotate_lineage": {
+   "source": "receipt Compression/Ids: rotating compression, child id appears unannounced on the next pre_llm_call (115737_78f947 -> 120603_0bed33), on_session_start NOT re-fired",
+   "notes": [
+    "S2 (child) appears first at idx 10 (pre_llm_call) with no reset/start hook, exactly as the receipt describes; lineage.json maps S2 -> S1 (state.db parent link). Both ids belong to ONE lineage root (S1), so the reducer input is the whole file in arrival order.",
+    "idx 13: on_session_end{completed:false} then idx 14 finalize carry the child id S2."
+   ],
+   "after_each_event": [
+    {
+     "hook": "on_session_reset",
+     "state": "idle",
+     "since": 0.0
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 9.48
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 9.48
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 97.14
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 99.25
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 99.25
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 146.25
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 147.32
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 147.32
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 194.34
+    },
+    {
+     "hook": "pre_llm_call",
+     "state": "working",
+     "since": 220.96
+    },
+    {
+     "hook": "post_llm_call",
+     "state": "working",
+     "since": 220.96
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 223.73
+    },
+    {
+     "hook": "on_session_end",
+     "state": "idle",
+     "since": 223.73
+    },
+    {
+     "hook": "on_session_finalize",
+     "state": "unknown",
+     "since": 224.85
+    }
+   ]
+  }
+ }
+}
