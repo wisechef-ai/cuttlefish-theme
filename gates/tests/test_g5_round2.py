@@ -119,7 +119,7 @@ def test_pacing_enforces_the_min_interval_between_calls(png):
 def test_backends_resolve_and_default_pair():
     assert g5backends.resolve("qwen") and g5backends.resolve("glm") and g5backends.resolve("codex")
     assert g5backends.resolve("nope") is None
-    assert g5backends.DEFAULT_BACKENDS == "qwen,glm"
+    assert g5backends.DEFAULT_BACKENDS == "qwen,nemotron"   # the pair validated on GOOD/BAD (2026-10-15); glm measured 50 % legend on GOOD
 
 
 def test_model_ids_are_configurable_through_env(monkeypatch):

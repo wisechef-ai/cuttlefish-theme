@@ -8,8 +8,10 @@ codex  : OpenAI via ``codex exec -i`` run in an empty temp dir with user config 
 gemini:<model> : Google generativelanguage REST (GEMINI_API_KEY; free tier is 20 requests/day per model: smoke only).
 openrouter : OpenRouter chat completions with an image part (optional; default anthropic/claude-sonnet-4.5).
 
-The default pair is ``qwen,glm``: two independent model families that are free/local, so a full gate run costs nothing and never
-leaves the quota.
+The default pair is ``qwen,nemotron``: two independent model families (Alibaba Qwen, NVIDIA Nemotron), both local on hercules, so a
+full gate run costs nothing and nothing leaves the fleet. Both were validated on the GOOD/BAD fixtures on 2026-10-15 (plain legend
+96 % vs 38 % for qwen and 95 % vs 45 % for nemotron; CVD 79-88 % vs 29-35 %). The old default ``glm`` scored 50 % on GOOD in round 2,
+which is too weak to tell GOOD from BAD. ``codex`` is an optional third family once it passes the anchor probe.
 
 DEVIATION (D-R2-4, logged on t_0c601204): the Hermes ``vision_analyze`` path cannot be driven headless today. Its auxiliary vision
 route resolves to an OpenRouter endpoint that answers 400 "claude-sonnet-5-5 is not a valid model ID" (default home) or
@@ -82,7 +84,7 @@ def gemini_backend(png: Path, prompt: str, model: str = "gemini-3-flash-preview"
     return "".join(p.get("text", "") for p in parts)   # a blocked/empty reply is scored as invalid
 
 
-DEFAULT_BACKENDS = "qwen,glm"
+DEFAULT_BACKENDS = "qwen,nemotron"
 BACKOFF_BASE = 2.0           # seconds; doubles per retry, plus up to BACKOFF_BASE of jitter
 RETRYABLE = {408, 425, 429, 500, 502, 503, 504}
 

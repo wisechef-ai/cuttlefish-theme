@@ -5,7 +5,7 @@ Dev-only instruments (never imported by a shipping entrypoint). Thresholds are f
 
     python3.12 -m venv gates/.venv && gates/.venv/bin/pip install -r gates/requirements.txt
     gates/.venv/bin/python gates/g2.py <renders>/<direction>/manifest.json     # exit 0 PASS / 1 FAIL / 2 instrument error
-    gates/.venv/bin/python gates/g5.py <renders>/<direction>/manifest.json [--backends qwen,glm] [--no-cache]
+    gates/.venv/bin/python gates/g5.py <renders>/<direction>/manifest.json [--backends qwen,nemotron] [--no-cache]
 
 | file | job |
 |---|---|
@@ -14,7 +14,7 @@ Dev-only instruments (never imported by a shipping entrypoint). Thresholds are f
 | `g2.py` | G2: writes `g2.json` + `g2.md` next to the manifest and `cvd/<kind>/...` simulations for G5 |
 | `g5lib.py` | pure G5 parts: strict answer parsing, verdicts, confusion matrix, seeded shuffle, kill-rule round counter |
 | `g5items.py` | what each blind call sees (legend sheet over one sample, identity sheet over one tile, aesthetic strips + photos) |
-| `g5backends.py` | vision backends: default pair `qwen` (hercules qwen3.8-27b, local) + `glm` (zai glm-4.6v-flash, paced 3 s, 429/5xx backoff); `nemotron` (hercules nemotron-3.5-super-vl, a second local family); optional `codex`, `openrouter`; `gemini:<m>` smoke only (20 req/day). Public renders / photos only |
+| `g5backends.py` | vision backends: default pair `qwen` (hercules qwen3.8-27b, local) + `nemotron` (hercules nemotron-3.5-super-vl, a second local family; both validated on GOOD/BAD 2026-10-15); `glm` (zai glm-4.6v-flash, paced 3 s, 429/5xx backoff; too weak a discriminator: 50 % legend on GOOD); optional `codex`, `openrouter`; `gemini:<m>` smoke only (20 req/day). Public renders / photos only |
 | `g5cache.py` | raw-answer cache keyed by (backend, model, image sha256, prompt sha256) under `gates/.g5_cache/` (git-ignored); `--no-cache` forces fresh calls, cached answers are flagged `cached` in `g5_raw/` and counted in `g5.md` |
 | `g5.py` | G5 runner: `g5.json`, `g5.md`, `g5_raw/<backend>/*.json`, appends to `g5_rounds.json`. Runs the anchor probe first on every backend (below) |
 | `g5_prompts/*.txt` | fixed prompts, no design vocabulary (the neutral legend labels appear only in `legend.txt`) |

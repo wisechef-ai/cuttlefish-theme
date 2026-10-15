@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """G5: blind vision gate (tools/p1/CONTRACT.md section 5). Two independent vision backends, fixed prompts, no design context.
 
-    gates/.venv/bin/python gates/g5.py <manifest.json> [--backends qwen,glm] [--seed 2909] [--workers 4]
+    gates/.venv/bin/python gates/g5.py <manifest.json> [--backends qwen,nemotron] [--seed 2909] [--workers 4]
 
 Exit 0 = PASS (every backend passes every task), 1 = FAIL, 2 = instrument error, 3 = partial run (--tasks subset) with no failure. Writes g5.json + g5.md next to the manifest, every
 raw model response under g5_raw/<backend>/, and appends the run to gates/g5_rounds.json (the kill-rule counter).
