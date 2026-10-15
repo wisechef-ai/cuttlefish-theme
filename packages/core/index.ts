@@ -13,3 +13,4 @@ export type { State, HookEvent, HookModel, HookModels, HookPayload, Tracker } fr
 export { initial as desktopInitial, reduce as desktopReduce, resolve as desktopResolve, storedIds as desktopStoredIds, classifyParity, CORE_DOT_LABELS } from './domain/state-desktop.ts';
 export type { DesktopInput, DesktopModel, Parity } from './domain/state-desktop.ts';
 export * from './app/replay.ts';
+export * from './domain/field-shader.ts';
