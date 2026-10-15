@@ -1,0 +1,121 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { initial, reduce, resolve, storedIds, classifyParity, CORE_DOT_LABELS, type DesktopInput, type DesktopModel } from '../domain/state-desktop.ts';
+
+const info = (rt: string, stored: string): DesktopInput => ({ kind: 'session.info', session: rt, payload: { stored_session_id: stored } });
+const snap = (gateway: string, busyBySession: Record<string, boolean> = {}): DesktopInput => ({ kind: 'state', payload: { gateway, busyBySession } });
+const start = (rt: string): DesktopInput => ({ kind: 'message.start', session: rt });
+const complete = (rt: string, status: string): DesktopInput => ({ kind: 'message.complete', session: rt, payload: { status } });
+const dot = (stored: string, label: string): DesktopInput => ({ kind: 'dot', session: stored, payload: { label } });
+const fold = (inputs: DesktopInput[], m: DesktopModel = initial()) => inputs.reduce(reduce, m);
+const S = 'stored-1';
+
+// ---- contract §3 table: one test per row -------------------------------------------------------------------
+
+test('desktop.state snapshot: gateway open + busy[runtime] true is working, mapped runtime -> stored', () => {
+  const m = fold([info('rt1', S), snap('open', { rt1: true })]);
+  assert.equal(resolve(m, S), 'working');
+  assert.equal(resolve(fold([snap('open', { rt1: false })], m), S), 'idle');
+});
+
+test('desktop.state snapshot: gateway not open is unknown, overriding a stale busy (upstream shows a killed session busy ~26 s)', () => {
+  const busy = fold([info('rt1', S), snap('open', { rt1: true })]);
+  for (const gw of ['closed', 'connecting']) assert.equal(resolve(fold([snap(gw, { rt1: true })], busy), S), 'unknown');
+  assert.equal(resolve(fold([snap('open', { rt1: false })], fold([snap('closed', { rt1: true })], busy)), S), 'idle');   // reopened, busy cleared
+});
+
+test('before any snapshot the gateway is unknown, so everything is unknown', () => {
+  assert.equal(resolve(fold([info('rt1', S)]), S), 'unknown');
+  assert.equal(resolve(initial(), S), 'unknown');
+});
+
+test('message.complete with status error is fault, sticky until the next message.start', () => {
+  const open = fold([snap('open'), info('rt1', S)]);
+  const failed = fold([complete('rt1', 'error')], open);
+  assert.equal(resolve(failed, S), 'fault');
+  assert.equal(resolve(fold([snap('open', { rt1: false })], failed), S), 'fault');   // busy going false does not clear it
+  assert.equal(resolve(fold([start('rt1')], failed), S), 'idle');
+  assert.equal(resolve(fold([start('rt1'), snap('open', { rt1: true })], failed), S), 'working');
+});
+
+test('message.complete with any other status does not fault', () => {
+  assert.equal(resolve(fold([snap('open'), info('rt1', S), complete('rt1', 'complete')]), S), 'idle');
+});
+
+test('desktop.dot "Needs your input" is needs-you (outranks fault and working); any other label clears it', () => {
+  const base = fold([snap('open', { rt1: true }), info('rt1', S), complete('rt1', 'error')]);
+  assert.equal(resolve(base, S), 'fault');
+  const asked = fold([dot(S, 'Needs your input')], base);
+  assert.equal(resolve(asked, S), 'needs-you');
+  assert.equal(resolve(fold([dot(S, 'Session running')], asked), S), 'fault');
+  assert.equal(resolve(fold([dot(S, '')], fold([start('rt1')], asked)), S), 'working');
+});
+
+test('needs-you also loses to a closed gateway', () => {
+  assert.equal(resolve(fold([snap('closed'), info('rt1', S), dot(S, 'Needs your input')]), S), 'unknown');
+});
+
+test('desktop never resolves review (spike 07: no signal exists)', () => {
+  const m = fold([snap('open', { rt1: true }), info('rt1', S), snap('open', { rt1: false })]);
+  assert.notEqual(resolve(m, S), 'review');
+});
+
+// ---- runtime -> stored mapping with buffering ----------------------------------------------------------------
+
+test('events for a runtime id with no mapping yet are buffered and applied once session.info maps it', () => {
+  const early = fold([snap('open', { rt9: true }), start('rt9'), complete('rt9', 'error')]);
+  assert.deepEqual(storedIds(early), []);                       // nothing is attributable yet
+  const mapped = fold([info('rt9', 'stored-9')], early);
+  assert.deepEqual(storedIds(mapped), ['stored-9']);
+  assert.equal(resolve(mapped, 'stored-9'), 'fault');           // the buffered error landed on the stored id
+});
+
+test('buffered events keep their order: busy then a later idle snapshot ends idle, not busy', () => {
+  const m = fold([snap('open', { rt9: true }), snap('open', { rt9: false }), info('rt9', 'stored-9')]);
+  assert.equal(resolve(m, 'stored-9'), 'idle');
+});
+
+test('two runtime ids map to two stored ids independently', () => {
+  const m = fold([snap('open', { a: true, b: false }), info('a', 'sa'), info('b', 'sb')]);
+  assert.equal(resolve(m, 'sa'), 'working');
+  assert.equal(resolve(m, 'sb'), 'idle');
+  assert.deepEqual(storedIds(m), ['sa', 'sb']);
+});
+
+test('reduce is pure: the input model is never mutated', () => {
+  const m0 = fold([snap('open'), info('rt1', S)]);
+  const j = JSON.stringify(m0);
+  reduce(m0, snap('open', { rt1: true }));
+  reduce(m0, complete('rt1', 'error'));
+  assert.equal(JSON.stringify(m0), j);
+});
+
+// ---- parity vs core's SessionStatusDot ----------------------------------------------------------------------------
+
+test('core dot labels are the observed i18n strings', () => {
+  assert.deepEqual(CORE_DOT_LABELS, { working: 'Session running', needsYou: 'Needs your input' });
+});
+
+test('parity: working / needs-you / idle must equal core; core idle dot has no label', () => {
+  assert.equal(classifyParity('working', 'Session running'), 'match');
+  assert.equal(classifyParity('needs-you', 'Needs your input'), 'match');
+  assert.equal(classifyParity('idle', null), 'match');
+  assert.equal(classifyParity('idle', ''), 'match');
+});
+
+test('parity: the only allowed divergences are unknown while the gateway is not open, and fault where core paints idle', () => {
+  assert.equal(classifyParity('unknown', 'Session running'), 'allowed:gateway-not-open');
+  assert.equal(classifyParity('unknown', null), 'allowed:gateway-not-open');
+  assert.equal(classifyParity('fault', null), 'allowed:fault-not-painted');
+  assert.equal(classifyParity('fault', ''), 'allowed:fault-not-painted');
+});
+
+test('parity: every other pairing is a MISMATCH', () => {
+  assert.equal(classifyParity('working', null), 'MISMATCH');
+  assert.equal(classifyParity('idle', 'Session running'), 'MISMATCH');
+  assert.equal(classifyParity('needs-you', 'Session running'), 'MISMATCH');
+  assert.equal(classifyParity('working', 'Needs your input'), 'MISMATCH');
+  assert.equal(classifyParity('fault', 'Session running'), 'MISMATCH');
+  assert.equal(classifyParity('idle', 'Background task running'), 'MISMATCH');
+  assert.equal(classifyParity('review', null), 'MISMATCH');
+});
