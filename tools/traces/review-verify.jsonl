@@ -1,0 +1,22 @@
+{"v":1,"src":"meta","kind":"trace","name":"review-verify","host":"tui","runtime":"upstream","runtime_sha":"f42f579cf8b","recorded_at":"2026-10-15T21:26:14Z","model":"custom:qwen38-local","profiles":["A"],"notes":"write_file turn: pre_verify fires once (~100 ms before the turn ends); a plain turn before it fires none"}
+{"v":1,"t":10.029,"src":"liveness","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"binding","payload":{"bound":true}}
+{"v":1,"t":10.029,"src":"liveness","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"heartbeat","payload":{}}
+{"v":1,"t":14.184,"src":"hook","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"on_session_reset","payload":{}}
+{"v":1,"t":15.033,"src":"liveness","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"heartbeat","payload":{}}
+{"v":1,"t":16.634,"src":"hook","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"on_session_start","payload":{}}
+{"v":1,"t":16.655,"src":"hook","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"pre_llm_call","payload":{}}
+{"v":1,"t":20.038,"src":"liveness","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"heartbeat","payload":{}}
+{"v":1,"t":23.953,"src":"hook","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"post_llm_call","payload":{}}
+{"v":1,"t":23.955,"src":"hook","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"on_session_end","payload":{"completed":true,"interrupted":false,"failed":false}}
+{"v":1,"t":25.043,"src":"liveness","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"heartbeat","payload":{}}
+{"v":1,"t":25.563,"src":"hook","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"pre_llm_call","payload":{}}
+{"v":1,"t":27.347,"src":"hook","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"pre_tool_call","payload":{"tool_name":"write_file","tool_call_id":"chatcmpl-tool-9182ea52339b2718"}}
+{"v":1,"t":30.049,"src":"liveness","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"heartbeat","payload":{}}
+{"v":1,"t":34.284,"src":"hook","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"post_tool_call","payload":{"tool_name":"write_file","tool_call_id":"chatcmpl-tool-9182ea52339b2718"}}
+{"v":1,"t":35.054,"src":"liveness","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"heartbeat","payload":{}}
+{"v":1,"t":35.465,"src":"hook","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"pre_verify","payload":{}}
+{"v":1,"t":35.494,"src":"hook","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"post_llm_call","payload":{}}
+{"v":1,"t":35.495,"src":"hook","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"on_session_end","payload":{"completed":true,"interrupted":false,"failed":false}}
+{"v":1,"t":37.264,"src":"hook","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"on_session_end","payload":{"completed":false,"interrupted":true}}
+{"v":1,"t":37.266,"src":"hook","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"on_session_finalize","payload":{}}
+{"v":1,"t":37.557,"src":"liveness","profile":"A","session":"20261015_232623_347114","lineage_root":"20261015_232623_347114","kind":"pid_dead","payload":{}}

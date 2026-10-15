@@ -1,0 +1,20 @@
+{"v":1,"src":"meta","kind":"trace","name":"tool-error","host":"tui","runtime":"upstream","runtime_sha":"f42f579cf8b","recorded_at":"2026-10-15T21:25:44Z","model":"custom:qwen38-local","profiles":["A"],"notes":"terminal command exits non-zero + read_file on a missing file: the turn still ends normally (no api_request_error)"}
+{"v":1,"t":8.516,"src":"liveness","profile":"A","session":"20261015_232552_82e286","lineage_root":"20261015_232552_82e286","kind":"binding","payload":{"bound":true}}
+{"v":1,"t":8.516,"src":"liveness","profile":"A","session":"20261015_232552_82e286","lineage_root":"20261015_232552_82e286","kind":"heartbeat","payload":{}}
+{"v":1,"t":13.038,"src":"hook","profile":"A","session":"20261015_232552_82e286","lineage_root":"20261015_232552_82e286","kind":"on_session_reset","payload":{}}
+{"v":1,"t":13.526,"src":"liveness","profile":"A","session":"20261015_232552_82e286","lineage_root":"20261015_232552_82e286","kind":"heartbeat","payload":{}}
+{"v":1,"t":15.578,"src":"hook","profile":"A","session":"20261015_232552_82e286","lineage_root":"20261015_232552_82e286","kind":"on_session_start","payload":{}}
+{"v":1,"t":15.592,"src":"hook","profile":"A","session":"20261015_232552_82e286","lineage_root":"20261015_232552_82e286","kind":"pre_llm_call","payload":{}}
+{"v":1,"t":18.53,"src":"liveness","profile":"A","session":"20261015_232552_82e286","lineage_root":"20261015_232552_82e286","kind":"heartbeat","payload":{}}
+{"v":1,"t":18.87,"src":"hook","profile":"A","session":"20261015_232552_82e286","lineage_root":"20261015_232552_82e286","kind":"pre_tool_call","payload":{"tool_name":"terminal","tool_call_id":"chatcmpl-tool-84937d4e3c4e4883"}}
+{"v":1,"t":19.495,"src":"hook","profile":"A","session":"20261015_232552_82e286","lineage_root":"20261015_232552_82e286","kind":"post_tool_call","payload":{"tool_name":"terminal","tool_call_id":"chatcmpl-tool-84937d4e3c4e4883"}}
+{"v":1,"t":22.506,"src":"hook","profile":"A","session":"20261015_232552_82e286","lineage_root":"20261015_232552_82e286","kind":"post_llm_call","payload":{}}
+{"v":1,"t":22.508,"src":"hook","profile":"A","session":"20261015_232552_82e286","lineage_root":"20261015_232552_82e286","kind":"on_session_end","payload":{"completed":true,"interrupted":false,"failed":false}}
+{"v":1,"t":23.54,"src":"liveness","profile":"A","session":"20261015_232552_82e286","lineage_root":"20261015_232552_82e286","kind":"heartbeat","payload":{}}
+{"v":1,"t":24.112,"src":"hook","profile":"A","session":"20261015_232552_82e286","lineage_root":"20261015_232552_82e286","kind":"pre_llm_call","payload":{}}
+{"v":1,"t":25.038,"src":"hook","profile":"A","session":"20261015_232552_82e286","lineage_root":"20261015_232552_82e286","kind":"pre_tool_call","payload":{"tool_name":"read_file","tool_call_id":"chatcmpl-tool-84a78baf8d04ef1f"}}
+{"v":1,"t":25.219,"src":"hook","profile":"A","session":"20261015_232552_82e286","lineage_root":"20261015_232552_82e286","kind":"post_tool_call","payload":{"tool_name":"read_file","tool_call_id":"chatcmpl-tool-84a78baf8d04ef1f"}}
+{"v":1,"t":27.078,"src":"hook","profile":"A","session":"20261015_232552_82e286","lineage_root":"20261015_232552_82e286","kind":"post_llm_call","payload":{}}
+{"v":1,"t":27.08,"src":"hook","profile":"A","session":"20261015_232552_82e286","lineage_root":"20261015_232552_82e286","kind":"on_session_end","payload":{"completed":true,"interrupted":false,"failed":false}}
+{"v":1,"t":28.548,"src":"liveness","profile":"A","session":"20261015_232552_82e286","lineage_root":"20261015_232552_82e286","kind":"heartbeat","payload":{}}
+{"v":1,"t":29.053,"src":"liveness","profile":"A","session":"20261015_232552_82e286","lineage_root":"20261015_232552_82e286","kind":"pid_dead","payload":{}}
