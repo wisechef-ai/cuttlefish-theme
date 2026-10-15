@@ -1,0 +1,36 @@
+name: core
+
+# packages/core: pure domain + ports + app. Oracle parity against design/directions/d-dots, identity
+# golden vectors (cross-checked against python hashlib), property tests. P2-STATE / P2-SHADER extend this.
+on:
+  push:
+    branches: [v22, "agent/**"]
+    paths: ["packages/core/**", "desktop/core.bundle.js", "tui/core.bundle.mjs", "tools/traces/**", ".github/workflows/core.yml"]
+  pull_request:
+    branches: [v22]
+    paths: ["packages/core/**", "desktop/core.bundle.js", "tui/core.bundle.mjs", "tools/traces/**", ".github/workflows/core.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: packages/core
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - run: npm ci
+      - run: npm test
+      # Generated artefacts must be fresh (regenerate -> no diff).
+      - run: node tools/gen-tokens.mjs --check
+      - run: node tools/gen-identity-vectors.mjs --check
+      - run: python3 tools/gen-blake2b-vectors.py --check

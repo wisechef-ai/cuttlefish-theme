@@ -1,0 +1,14 @@
+{
+  "name": "@cuttlefish/core",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "description": "cf2909 shared core: pure domain + ports + app (no I/O in domain).",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "fast-check": "4.10.2"
+  }
+}
