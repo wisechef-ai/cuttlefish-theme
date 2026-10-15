@@ -18,11 +18,11 @@ def test_first_hook_allocates_and_persists(home, clock):
     s = store(home, clock)
     ident = s.ensure("20261015_a", live_roots=lambda: set())
     assert ident.lineage_root == "20261015_a" and ident.allocated is True
-    assert ident.hue_cd == A.allocate("20261015_a", []).hue_cd
+    assert ident.slot == A.allocate("20261015_a", []).slot
     doc = read_identity(home)
     assert doc["schema"] == "cf2909.identity/1" and doc["rev"] >= 1
     e = doc["sessions"]["20261015_a"]
-    assert e["hue_cd"] == ident.hue_cd and e["hue_deg"] == ident.hue_cd / 100
+    assert e["slot"] == ident.slot and e["hue_deg"] == A.hue_of_slot(ident.slot) == ident.hue_deg
     assert e["allocated_at"] == clock() and e["name"].startswith("s-")
 
 
@@ -33,19 +33,19 @@ def test_persistence_second_allocation_with_different_peers_keeps_stored_hue(hom
     for i in range(10):
         store(home, clock).ensure(f"peer-{i}", live_roots=lambda: set())
     again = store(home, clock).ensure("root-1", live_roots=lambda: {f"peer-{i}" for i in range(10)})
-    assert again.hue_cd == first.hue_cd and again.allocated is False
+    assert again.slot == first.slot and again.allocated is False
 
 
 def test_peers_are_the_stored_hues_of_live_roots_only(home, clock):
     s = store(home, clock)
     s.ensure("p1", live_roots=lambda: set())
     s.ensure("p2", live_roots=lambda: {"p1"})
-    p1 = read_identity(home)["sessions"]["p1"]["hue_cd"]
-    expect = A.allocate("me", [p1]).hue_cd
-    assert s.ensure("me", live_roots=lambda: {"p1", "me"}).hue_cd == expect  # self is never a peer
+    p1 = read_identity(home)["sessions"]["p1"]["slot"]
+    expect = A.allocate("me", [p1]).slot
+    assert s.ensure("me", live_roots=lambda: {"p1", "me"}).slot == expect  # self is never a peer
     # p2 is not live -> not a peer
     s2 = store(home, clock)
-    assert s2.ensure("me2", live_roots=lambda: {"p1"}).hue_cd == A.allocate("me2", [p1]).hue_cd
+    assert s2.ensure("me2", live_roots=lambda: {"p1"}).slot == A.allocate("me2", [p1]).slot
 
 
 def test_order_independence_cold_warm_and_shuffled(home, clock):
@@ -54,18 +54,18 @@ def test_order_independence_cold_warm_and_shuffled(home, clock):
     first = {}
     warm = store(home, clock)
     for rid in ids:  # warm: one long-lived store allocates in arrival order
-        first[rid] = warm.ensure(rid, live_roots=lambda: set(live)).hue_cd
+        first[rid] = warm.ensure(rid, live_roots=lambda: set(live)).slot
         live.add(rid)
     for trial in range(3):  # cold + shuffled hook order: fresh process each time, same answers
         for rid in random.Random(trial).sample(ids, len(ids)):
             cold = I.IdentityStore(home, clock=clock).ensure(rid, live_roots=lambda: set(ids))
-            assert cold.hue_cd == first[rid] and cold.allocated is False
-            assert warm.ensure(rid, live_roots=lambda: set()).hue_cd == first[rid]
+            assert cold.slot == first[rid] and cold.allocated is False
+            assert warm.ensure(rid, live_roots=lambda: set()).slot == first[rid]
     assert len(set(first.values())) >= 8
 
 
 def test_alone_in_any_order_gets_the_hash_slot(home, clock):
-    assert store(home, clock).ensure("zzz", live_roots=lambda: set()).hue_cd == A.allocate("zzz", []).hue_cd
+    assert store(home, clock).ensure("zzz", live_roots=lambda: set()).slot == A.allocate("zzz", []).slot
 
 
 def test_rotation_unknown_child_resolves_to_known_root(home, clock, make_state_db):
@@ -75,7 +75,7 @@ def test_rotation_unknown_child_resolves_to_known_root(home, clock, make_state_d
     b = store(home, clock).ensure("child", live_roots=lambda: {"root"})
     c = store(home, clock).ensure("grandchild", live_roots=lambda: {"root"})
     assert a.lineage_root == b.lineage_root == c.lineage_root == "root"
-    assert a.hue_cd == b.hue_cd == c.hue_cd and b.allocated is False
+    assert a.slot == b.slot == c.slot and b.allocated is False
     assert list(read_identity(home)["sessions"]) == ["root"]
 
 
@@ -136,7 +136,7 @@ def test_hash_label_upgrades_to_title_once_the_title_exists(home, clock, make_st
     con.close()
     clock.advance(120)
     ident = store(home, clock).ensure("late", live_roots=lambda: set())
-    assert ident.name == "Named now" and ident.hue_cd == A.allocate("late", []).hue_cd
+    assert ident.name == "Named now" and ident.slot == A.allocate("late", []).slot
 
 
 def test_sweep_drops_old_entries_and_caps_at_512(home, clock):
@@ -148,7 +148,7 @@ def test_sweep_drops_old_entries_and_caps_at_512(home, clock):
     assert list(read_identity(home)["sessions"]) == ["new"]
     doc = read_identity(home)
     for i in range(600):
-        doc["sessions"][f"bulk-{i}"] = {"hue_cd": 11179, "hue_deg": 111.79, "name": "n",
+        doc["sessions"][f"bulk-{i}"] = {"slot": 0, "hue_deg": 115.75, "name": "n",
                                         "allocated_at": clock(), "last_seen": clock() - i}
     (home / "cuttlefish" / "identity.json").write_text(json.dumps(doc))
     store(home, clock).sweep()
@@ -160,4 +160,4 @@ def test_corrupt_identity_file_does_not_break_allocation(home, clock):
     d = home / "cuttlefish"
     d.mkdir()
     (d / "identity.json").write_text("{not json")
-    assert store(home, clock).ensure("r", live_roots=lambda: set()).hue_cd == A.allocate("r", []).hue_cd
+    assert store(home, clock).ensure("r", live_roots=lambda: set()).slot == A.allocate("r", []).slot

@@ -19,7 +19,7 @@ MAX_ENTRIES = 512
 MAX_AGE_S = 30 * 86400
 TOUCH_EVERY_S = 60
 
-Identity = namedtuple("Identity", "lineage_root hue_cd hue_deg name allocated")
+Identity = namedtuple("Identity", "lineage_root slot hue_deg name allocated")
 
 
 class IdentityStore:
@@ -106,7 +106,7 @@ class IdentityStore:
 
     @staticmethod
     def _ident(root, e, allocated):
-        return Identity(root, e["hue_cd"], e["hue_deg"], e["name"], allocated)
+        return Identity(root, e["slot"], e["hue_deg"], e["name"], allocated)
 
     # -- API ----------------------------------------------------------------------------------
     def ensure(self, session_id, *, live_roots):
@@ -121,13 +121,13 @@ class IdentityStore:
             with self._file_lock():
                 doc = self._read()
                 e = doc["sessions"].get(root)
-                allocated = e is None
+                allocated = not isinstance(e, dict) or not allocator.is_slot(e.get("slot"))   # a known root is never re-allocated
                 if allocated:
-                    peers = [doc["sessions"][r]["hue_cd"] for r in live_roots()
+                    peers = [doc["sessions"][r]["slot"] for r in live_roots()
                              if r != root and isinstance(doc["sessions"].get(r), dict)
-                             and isinstance(doc["sessions"][r].get("hue_cd"), int)]
+                             and allocator.is_slot(doc["sessions"][r].get("slot"))]
                     a = allocator.allocate(root, peers)
-                    e = {"hue_cd": a.hue_cd, "hue_deg": a.hue_cd / 100,
+                    e = {"slot": a.slot, "hue_deg": a.hue_deg,
                          "name": self._title(root) or allocator.default_name(root),
                          "allocated_at": now, "last_seen": now}
                     doc["sessions"][root] = e

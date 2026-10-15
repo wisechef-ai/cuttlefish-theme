@@ -55,7 +55,7 @@ def state():
     ident = _identity_doc()["sessions"]
     sessions, sig = {}, {}
     for root, e in sorted(_bus.read_entries(home).items()):
-        resolved = _resolve.resolve(e, now=now, this_host=host, pid_alive=_pid_alive)
+        resolved = _resolve.resolve_entry(e, now=now, this_host=host, pid_alive=_pid_alive)
         rec = ident.get(root) if isinstance(ident.get(root), dict) else {}
         since = e.get("since")
         alarm = int(now - since) if resolved == "needs-you" and isinstance(since, (int, float)) else None

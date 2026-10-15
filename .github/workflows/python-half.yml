@@ -1,15 +1,15 @@
 name: python-half
 
-# v22 Python (agent) half: domain, identity store, bus, hooks, dashboard API, contract vectors.
+# v22 Python (agent) half: domain, identity store, bus, hooks, dashboard API; parity vs the TS bundle (needs node, preinstalled on ubuntu-latest).
 on:
   push:
     branches: ["agent/**"]
-    paths: ["python/**", "dashboard/**", "__init__.py", "plugin.yaml", "packages/core/spec/**",
-            "tools/make_contract_vectors.py", ".github/workflows/python-half.yml"]
+    paths: ["python/**", "dashboard/**", "__init__.py", "plugin.yaml", "packages/core/spec/**", "packages/core/fixtures/**", "tui/core.bundle.mjs", "tools/traces/**",
+            ".github/workflows/python-half.yml"]
   pull_request:
     branches: [v22]
-    paths: ["python/**", "dashboard/**", "__init__.py", "plugin.yaml", "packages/core/spec/**",
-            "tools/make_contract_vectors.py", ".github/workflows/python-half.yml"]
+    paths: ["python/**", "dashboard/**", "__init__.py", "plugin.yaml", "packages/core/spec/**", "packages/core/fixtures/**", "tui/core.bundle.mjs", "tools/traces/**",
+            ".github/workflows/python-half.yml"]
 
 permissions:
   contents: read
@@ -24,5 +24,4 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install pytest fastapi httpx pyyaml
-      - run: python tools/make_contract_vectors.py --check
       - run: python -m pytest python/tests -q -s

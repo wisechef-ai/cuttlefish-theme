@@ -37,7 +37,7 @@ class Runtime:
         sid = ev["session_id"]
         if not sid:  # auxiliary hooks (compression) carry an empty id
             return
-        if hook in _TOOL_HOOKS and ev["tool_name"] != "clarify":  # hot path: only clarify matters
+        if hook in _TOOL_HOOKS and ev["payload"].get("tool_name") != "clarify":  # hot path: only clarify matters
             return
         ident = self.store.ensure(sid, live_roots=lambda: bus.live_roots(
             self.home, now=ts, this_host=self.host, pid_alive=self.pid_alive))

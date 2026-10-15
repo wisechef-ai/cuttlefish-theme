@@ -1,48 +1,63 @@
-"""CONTRACT §1 — identity allocator, ``cf2909.identity/1``. Integer arithmetic only."""
+"""CONTRACT (packages/core/CONTRACT.md) §1 — identity allocator. Identity is a hue SLOT: 20 slots on [110, 340).
+
+Pure: no clock, no randomness, no I/O. Mirrors packages/core/domain/identity.ts exactly."""
 import hashlib
 from collections import namedtuple
 
-GRID = 64
-ARC_LO_CD = 11000
-ARC_SPAN_CD = 23000
-FULL_CD = 36000
+ARC_START = 110.0   # degrees, inclusive (tokens.identity.hue_arc_deg)
+ARC_END = 340.0     # exclusive
+SLOTS = 20
+STEP = (ARC_END - ARC_START) / SLOTS    # 11.5
+CAP = 3             # slot distance beyond which spacing is "far enough"
 NAME_MAX = 16
 
-Allocation = namedtuple("Allocation", "hue_cd k base digest_hex")
+Allocation = namedtuple("Allocation", "slot hue_deg crowded")
 
 
-def cand(k):
-    return ARC_LO_CD + (ARC_SPAN_CD * (2 * k + 1)) // (2 * GRID)
+def is_slot(k):
+    return isinstance(k, int) and not isinstance(k, bool) and 0 <= k < SLOTS
 
 
-def digest(lineage_root):
-    return hashlib.blake2b(lineage_root.encode("utf-8"), digest_size=8).digest()
+def hue_of_slot(k):
+    """115.75 ... 334.25 (exact in binary64)."""
+    if not is_slot(k):
+        raise ValueError(f"slot must be an integer in 0..{SLOTS - 1}, got {k!r}")
+    return ARC_START + STEP * (k + 0.5)
 
 
-def base_of(lineage_root):
-    return digest(lineage_root)[7] & 63
+def _digest(lineage_root):
+    return hashlib.blake2b(lineage_root.encode("utf-8"), digest_size=32).digest()
 
 
-def dist(a, b):
-    d = abs(a - b)
-    return min(d, FULL_CD - d)
+def _require_root(lineage_root):
+    if not isinstance(lineage_root, str) or not lineage_root.strip():
+        raise ValueError("lineage root is empty: degrade to unbound, never guess an identity")
 
 
-def allocate(lineage_root, peers_cd):
-    d = digest(lineage_root)
-    base = d[7] & 63
-    peers = list(peers_cd)
+def preferred(lineage_root):
+    """First 8 bytes (big endian) of blake2b-256(utf8(root)) mod 20."""
+    _require_root(lineage_root)
+    return int.from_bytes(_digest(lineage_root)[:8], "big") % SLOTS
+
+
+def allocate(lineage_root, peers):
+    """Pick a slot given the slots held by OTHER live sessions (duplicates allowed, order irrelevant).
+
+    Capped farthest-point over the free slots: far enough first, then closest to the hash, then the
+    lowest index. All slots taken: the hash slot repeats and ``crowded`` is surfaced, never hidden."""
+    pref = preferred(lineage_root)
+    peers = list(peers)
+    for p in peers:
+        if not is_slot(p):
+            raise ValueError(f"peer slot must be an integer in 0..{SLOTS - 1}, got {p!r}")
     if not peers:
-        k_star = base
-    else:
-        k_star, best = base, -1
-        for j in range(GRID):
-            k = (base + j) % GRID
-            c = cand(k)
-            score = min(dist(c, p) for p in peers)
-            if score > best:
-                k_star, best = k, score
-    return Allocation(cand(k_star), k_star, base, d.hex())
+        return Allocation(pref, round(hue_of_slot(pref), 2), False)
+    held = set(peers)
+    free = [k for k in range(SLOTS) if k not in held]
+    if not free:
+        return Allocation(pref, round(hue_of_slot(pref), 2), True)
+    best = max(free, key=lambda k: (min(CAP, min(abs(k - p) for p in held)), -abs(k - pref), -k))
+    return Allocation(best, round(hue_of_slot(best), 2), False)
 
 
 def trim_name(text):
@@ -50,4 +65,4 @@ def trim_name(text):
 
 
 def default_name(lineage_root):
-    return "s-" + digest(lineage_root).hex()[0:4]
+    return "s-" + _digest(lineage_root).hex()[0:4]

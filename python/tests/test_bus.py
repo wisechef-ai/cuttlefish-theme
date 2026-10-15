@@ -63,7 +63,7 @@ def test_seq_is_monotonic_and_journal_is_bounded(home, clock):
         w.record("d", "r", ev("pre_llm_call" if i % 2 == 0 else "on_session_end", clock(), completed=True))
         assert read(home, "r")["seq"] == i + 1
     e = read(home, "r")
-    assert len(e["journal"]) == 32 and e["journal"][-1]["ts"] == clock()
+    assert len(e["journal"]) == 32 and e["journal"][-1]["t"] == clock()
 
 
 def test_file_name_replaces_unsafe_characters(home, clock):

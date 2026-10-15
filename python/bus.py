@@ -78,7 +78,7 @@ def read_entries(home):
 def live_roots(home, *, now, this_host, pid_alive):
     """Lineage roots whose entry resolves to a live (non-unknown) state: the allocator's peers."""
     return {r for r, e in read_entries(home).items()
-            if resolve.resolve(e, now=now, this_host=this_host, pid_alive=pid_alive) != "unknown"}
+            if resolve.resolve_entry(e, now=now, this_host=this_host, pid_alive=pid_alive) != "unknown"}
 
 
 def sweep(home, now, limit=SWEEP_FILES):
@@ -106,11 +106,11 @@ def sweep(home, now, limit=SWEEP_FILES):
 
 
 class _Slot:
-    __slots__ = ("durable_id", "rst", "state", "since", "seq", "journal", "source", "entry")
+    __slots__ = ("durable_id", "model", "state", "since", "seq", "journal", "source", "entry")
 
     def __init__(self):
         self.durable_id = ""
-        self.rst = reducer.initial()
+        self.model = reducer.initial()
         self.state = "idle"
         self.since = None
         self.seq = 0
@@ -150,9 +150,12 @@ class BusWriter:
         e = read_json(paths.bus_file(self.home, root))
         if isinstance(e, dict) and isinstance(e.get("journal"), list) and isinstance(e.get("seq"), int):
             try:
-                out, rst = reducer.fold(e["journal"])
-                slot.rst, slot.seq, slot.journal = rst, e["seq"], e["journal"][-JOURNAL_MAX:]
-                slot.state = e.get("state", reducer.output(rst))
+                model = reducer.initial()
+                for j in e["journal"]:
+                    model = reducer.reduce(model, j)
+                slot.model, slot.seq, slot.journal = model, e["seq"], e["journal"][-JOURNAL_MAX:]
+                last = e["journal"][-1]["t"] if e["journal"] else 0
+                slot.state = e.get("state") or resolve.resolve(model, last)
                 slot.since = e.get("since")
             except Exception:
                 slot = _Slot()
@@ -164,15 +167,19 @@ class BusWriter:
             slot = self._slots.get(root)
             if slot is None:
                 slot = self._slots[root] = self._load(root)
-            out, slot.rst = reducer.fold([event], slot.rst, slot.since)
-            slot.state, slot.since = out[0]["state"], out[0]["since"]
+            slot.model = reducer.reduce(slot.model, event)
+            state = resolve.resolve(slot.model, event["t"])
+            if state != slot.state or slot.since is None:
+                slot.since = event["t"]
+            slot.state = state
             slot.journal = (slot.journal + [event])[-JOURNAL_MAX:]
             slot.seq += 1
-            slot.durable_id, slot.source = durable_id, event["hook"]
+            slot.durable_id, slot.source = durable_id, event["kind"]
             slot.entry = {
                 "schema": SCHEMA, "profile_home": str(self.home), "durable_id": durable_id,
                 "lineage_root": root, "owner_pid": self.pid, "owner_host": self.host, "seq": slot.seq,
                 "state": slot.state, "since": slot.since, "source": slot.source,
+                "review_until": slot.model["review_until"],
                 "heartbeat": self.clock(), "journal": slot.journal,
             }
             target = paths.bus_file(self.home, root)

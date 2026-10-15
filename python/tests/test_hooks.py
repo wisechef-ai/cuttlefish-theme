@@ -119,7 +119,10 @@ def test_pre_verify_returns_none_in_every_case(home, clock):
     cb = rt(home, clock).callbacks()
     cb["pre_llm_call"](session_id="s")
     assert cb["pre_verify"](session_id="s", coding=True, attempt=0, final_response="x", changed_paths=["a"]) is None
-    assert bus(home, "s")["state"] == "review"
+    e = bus(home, "s")
+    assert e["state"] == "working" and e["review_until"] == clock() + 0.6   # working > review: the pulse is held
+    cb["on_session_end"](session_id="s", completed=True)
+    assert cb["pre_verify"](session_id="s") is None and bus(home, "s")["state"] == "review"
     assert cb["pre_verify"]() is None
     r = rt(home, clock)
     r.store.ensure = lambda *a, **k: 1 / 0

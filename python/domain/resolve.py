@@ -1,10 +1,29 @@
-"""CONTRACT §3 — what a reader may show, ``cf2909.resolve/1``. ``now`` and ``pid_alive`` are injected."""
+"""CONTRACT (packages/core/CONTRACT.md) §2 resolve — what a reader may show. ``now`` is injected.
 
-STALE_S = 30
+``resolve(model, now)`` is the contract function. ``resolve_entry`` applies the same rules to a bus file
+(§5 entry), where the owner pid is probed instead of replaying liveness events."""
+
+STALE_S = 20.0   # the bus heartbeats every 5 s while the owner lives
 STATES = ("idle", "working", "review", "needs-you", "fault", "unknown")
 
 
-def resolve(entry, *, now, this_host, pid_alive):
+def resolve(model, now):
+    """First match wins. "Turn ended" is never needs-you; stale is never the last known state."""
+    if (model["last_seen"] is None or model["finalized"] or model["pid_alive"] is False
+            or model["bound"] is False or now - model["last_seen"] > STALE_S):
+        return "unknown"
+    if model["pending"]:
+        return "needs-you"
+    if model["fault"]:
+        return "fault"
+    if model["in_turn"]:
+        return "working"
+    if model["review_until"] is not None and now < model["review_until"]:
+        return "review"
+    return "idle"
+
+
+def resolve_entry(entry, *, now, this_host, pid_alive):
     """Never the last known state: anything doubtful is ``unknown``."""
     if not isinstance(entry, dict):
         return "unknown"
@@ -20,4 +39,8 @@ def resolve(entry, *, now, this_host, pid_alive):
         pid = entry.get("owner_pid")
         if isinstance(pid, bool) or not isinstance(pid, int) or not pid_alive(pid):
             return "unknown"
+    if state == "review":                    # the pulse ends with no event: the entry carries its deadline
+        until = entry.get("review_until")
+        if isinstance(until, (int, float)) and not isinstance(until, bool) and now >= until:
+            return "idle"
     return state

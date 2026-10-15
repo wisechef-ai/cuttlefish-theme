@@ -58,7 +58,7 @@ def test_state_resolves_and_shapes_each_session(api, home, clock):
     s = out["sessions"]["s1"]
     assert s["state"] == "needs-you" and s["raw_state"] == "needs-you"
     assert s["since"] == clock() - 7 and s["durable_id"] == "s1"
-    assert s["hue_deg"] == json.loads(P.identity_file(home).read_text())["sessions"]["s1"]["hue_cd"] / 100
+    assert s["hue_deg"] == json.loads(P.identity_file(home).read_text())["sessions"]["s1"]["hue_deg"]
     assert s["name"].startswith("s-") and s["alarm_age_s"] == 7
 
 

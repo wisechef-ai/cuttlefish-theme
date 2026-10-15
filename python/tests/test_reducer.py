@@ -1,156 +1,163 @@
-"""CONTRACT §2: one test per table row, then the precedence overlaps."""
+"""CONTRACT §2: one test per event-table row, then the precedence overlaps. Events are {t, kind, payload}."""
 from cuttlefish_theme.python.domain import reducer as R
+from cuttlefish_theme.python.domain import resolve as V
 
 
-def ev(hook, ts=1.0, sid="s", tool=None, call=None, turn=None, completed=None):
-    return {"hook": hook, "ts": ts, "session_id": sid, "tool_name": tool,
-            "tool_call_id": call, "turn_id": turn, "completed": completed}
+def ev(kind, t=1.0, **payload):
+    return {"t": t, "kind": kind, "payload": payload}
 
 
-def states(*events):
-    out, _ = R.fold(list(events))
-    return [o["state"] for o in out]
+def run(*events, now=None):
+    m = R.initial()
+    for e in events:
+        m = R.reduce(m, e)
+    return m, V.resolve(m, events[-1]["t"] if now is None else now)
 
 
-def final(*events):
-    return states(*events)[-1]
+def state(*events, now=None):
+    return run(*events, now=now)[1]
 
 
-def test_fresh_machine_is_idle():
-    assert R.output(R.initial()) == "idle"
+def test_initial_model_has_the_contract_fields_and_is_unknown_until_first_event():
+    m = R.initial()
+    assert m == {"in_turn": False, "pending": [], "fault": False, "review_until": None, "finalized": False,
+                 "last_seen": None, "bound": True, "pid_alive": None}
+    assert V.resolve(m, 5.0) == "unknown"
 
 
-def test_pre_llm_call_starts_working():
-    assert states(ev("pre_llm_call")) == ["working"]
+def test_reduce_is_pure():
+    m = R.initial()
+    m2 = R.reduce(m, ev("pre_tool_call", tool_name="clarify", tool_call_id="c"))
+    assert m == R.initial() and m2["pending"] == ["clarify:c"]
 
 
-def test_session_end_returns_to_idle():
-    assert states(ev("pre_llm_call"), ev("on_session_end", completed=True)) == ["working", "idle"]
+def test_pre_llm_call_starts_working_and_clears_fault_and_finalized():
+    assert state(ev("pre_llm_call")) == "working"
+    assert state(ev("on_session_finalize"), ev("pre_llm_call", 2)) == "working"
+    assert state(ev("api_request_error"), ev("pre_llm_call", 2)) == "working"
 
 
-def test_on_session_reset_clears_everything():
-    out = final(ev("pre_llm_call"), ev("pre_tool_call", tool="clarify", call="c1"),
-                ev("api_request_error"), ev("on_session_reset"))
-    assert out == "idle"
+def test_session_start_is_proof_of_life_only():
+    m, s = run(ev("on_session_start", 4.0))
+    assert s == "idle" and m["last_seen"] == 4.0 and m["in_turn"] is False
 
 
-def test_on_session_start_alone_changes_nothing_but_unfinalizes():
-    assert final(ev("on_session_start")) == "idle"
-    assert final(ev("on_session_finalize"), ev("on_session_start")) == "idle"
+def test_session_end_returns_to_idle_drops_pending_and_completed_clears_fault():
+    assert state(ev("pre_llm_call"), ev("on_session_end", 2, completed=True)) == "idle"
+    assert state(ev("pre_tool_call", tool_name="clarify", tool_call_id="a"), ev("on_session_end", 2, completed=False)) == "idle"
+    assert state(ev("api_request_error"), ev("on_session_end", 2, completed=False)) == "fault"
+    assert state(ev("api_request_error"), ev("on_session_end", 2, completed=True)) == "idle"
+    assert state(ev("api_request_error"), ev("on_session_end", 2, completed="yes")) == "fault"  # only `is True`
 
 
-def test_pre_verify_moves_working_to_review_only():
-    assert states(ev("pre_llm_call"), ev("pre_verify")) == ["working", "review"]
-    assert final(ev("pre_verify")) == "idle"  # base is idle: no effect
+def test_session_reset_clears_everything_and_the_pid_latch():
+    e = [ev("pre_llm_call"), ev("pre_tool_call", 2, tool_name="clarify", tool_call_id="c"), ev("api_request_error", 3),
+         ev("pre_verify", 4), ev("pid_dead", 5)]
+    m, s = run(*e, ev("on_session_reset", 6))
+    assert s == "idle" and m["pid_alive"] is None and m["review_until"] is None and m["pending"] == []
 
 
-def test_post_llm_call_returns_review_to_working_and_clears_fault():
-    assert states(ev("pre_llm_call"), ev("pre_verify"), ev("post_llm_call")) == ["working", "review", "working"]
-    assert final(ev("pre_llm_call"), ev("api_request_error"), ev("post_llm_call")) == "working"
-
-
-def test_clarify_pending_until_matching_post_tool_call():
-    seq = [ev("pre_llm_call"), ev("pre_tool_call", tool="clarify", call="c1")]
-    assert states(*seq) == ["working", "needs-you"]
-    assert final(*seq, ev("post_tool_call", tool="clarify", call="c1")) == "working"
+def test_clarify_pending_until_the_matching_post_tool_call():
+    seq = [ev("pre_llm_call"), ev("pre_tool_call", 2, tool_name="clarify", tool_call_id="c1")]
+    assert state(*seq) == "needs-you"
+    assert state(*seq, ev("post_tool_call", 3, tool_name="clarify", tool_call_id="c1")) == "working"
+    assert state(*seq, ev("post_tool_call", 3, tool_name="clarify", tool_call_id="zz")) == "needs-you"
 
 
 def test_other_tools_never_raise_needs_you():
-    assert final(ev("pre_llm_call"), ev("pre_tool_call", tool="terminal", call="t1")) == "working"
+    assert state(ev("pre_llm_call"), ev("pre_tool_call", 2, tool_name="terminal", tool_call_id="t")) == "working"
 
 
 def test_cancelled_then_reasked_clarify_does_not_stick():
-    # spike 06: Ctrl-C fires post_tool_call at once; the model may re-ask with a NEW tool_call_id
-    out = states(ev("pre_llm_call"),
-                 ev("pre_tool_call", tool="clarify", call="c1"),
-                 ev("post_tool_call", tool="clarify", call="c1"),
-                 ev("pre_tool_call", tool="clarify", call="c2"),
-                 ev("post_tool_call", tool="clarify", call="c2"))
-    assert out == ["working", "needs-you", "working", "needs-you", "working"]
+    seq = [ev("pre_llm_call"), ev("pre_tool_call", 2, tool_name="clarify", tool_call_id="c1"),
+           ev("post_tool_call", 3, tool_name="clarify", tool_call_id="c1"),
+           ev("pre_tool_call", 4, tool_name="clarify", tool_call_id="c2")]
+    assert state(*seq) == "needs-you"
+    assert state(*seq, ev("post_tool_call", 5, tool_name="clarify", tool_call_id="c2")) == "working"
 
 
-def test_two_open_clarifies_need_both_closed():
-    seq = [ev("pre_tool_call", tool="clarify", call="a"), ev("pre_tool_call", tool="clarify", call="b"),
-           ev("post_tool_call", tool="clarify", call="a")]
-    assert final(*seq) == "needs-you"
-    assert final(*seq, ev("post_tool_call", tool="clarify", call="b")) == "idle"
+def test_approval_key_is_tool_call_id_else_session_key_slash_pattern_key():
+    a = ev("pre_approval_request", tool_call_id="x")
+    assert state(a, ev("post_approval_response", 2, tool_call_id="x")) == "idle"
+    assert state(a, ev("post_approval_response", 2, tool_call_id="y")) == "needs-you"
+    b = ev("pre_approval_request", session_key="k", pattern_key="p")
+    assert R.reduce(R.initial(), b)["pending"] == ["approval:k/p"]
+    assert state(b, ev("post_approval_response", 2, session_key="k", pattern_key="p")) == "idle"
+    assert R.reduce(R.initial(), ev("pre_approval_request"))["pending"] == ["approval:/"]
 
 
-def test_approval_keyed_on_tool_call_id_then_turn_id_then_empty():
-    assert final(ev("pre_approval_request", call="x"), ev("post_approval_response", call="x")) == "idle"
-    assert final(ev("pre_approval_request", call="x"), ev("post_approval_response", call="y")) == "needs-you"
-    assert final(ev("pre_approval_request", turn="T"), ev("post_approval_response", turn="T")) == "idle"
-    assert final(ev("pre_approval_request"), ev("post_approval_response")) == "idle"
-    assert final(ev("pre_approval_request"), ev("pre_tool_call", tool="clarify", call="")) == "needs-you"
+def test_clarify_and_approval_keys_do_not_collide_and_pending_is_sorted_and_deduped():
+    m = R.initial()
+    for e in (ev("pre_approval_request", tool_call_id="k"), ev("pre_tool_call", tool_name="clarify", tool_call_id="k"),
+              ev("pre_tool_call", tool_name="clarify", tool_call_id="k")):
+        m = R.reduce(m, e)
+    assert m["pending"] == ["approval:k", "clarify:k"]
 
 
-def test_clarify_and_approval_keys_do_not_collide():
-    seq = [ev("pre_tool_call", tool="clarify", call="k"), ev("pre_approval_request", call="k"),
-           ev("post_approval_response", call="k")]
-    assert final(*seq) == "needs-you"
+def test_api_request_error_is_sticky_fault_and_post_llm_call_clears_it():
+    seq = [ev("pre_llm_call"), ev("api_request_error", 2), ev("api_request_error", 3)]
+    assert state(*seq) == "fault"
+    assert state(*seq, ev("post_llm_call", 4)) == "working"
 
 
-def test_api_request_error_sets_fault_and_is_sticky_across_failed_session_end():
-    seq = [ev("pre_llm_call"), ev("api_request_error")]
-    assert states(*seq) == ["working", "fault"]
-    assert final(*seq, ev("on_session_end", completed=False)) == "fault"
+def test_pre_verify_sets_a_600ms_review_pulse_under_working():
+    m, s = run(ev("pre_verify", 10.0))
+    assert m["review_until"] == 10.6 and s == "review"
+    assert V.resolve(m, 10.59) == "review" and V.resolve(m, 10.6) == "idle"
+    assert state(ev("pre_llm_call", 9), ev("pre_verify", 10.0)) == "working"  # working > review
 
 
-def test_fault_clears_on_completed_session_end_or_next_turn():
-    base = [ev("pre_llm_call"), ev("api_request_error")]
-    assert final(*base, ev("on_session_end", completed=True)) == "idle"
-    assert final(*base, ev("pre_llm_call")) == "working"
-
-
-def test_401_turn_with_no_end_hook_stays_fault():
-    seq = [ev("pre_llm_call"), ev("api_request_error"), ev("api_request_error")]
-    assert states(*seq) == ["working", "fault", "fault"]
-
-
-def test_session_end_is_never_needs_you_and_drops_pending():
-    assert final(ev("pre_tool_call", tool="clarify", call="a"), ev("on_session_end", completed=False)) == "idle"
+def test_precedence_needs_you_over_fault_over_working_over_review_over_idle():
+    seq = [ev("pre_llm_call"), ev("pre_verify", 2), ev("api_request_error", 3)]
+    assert state(*seq) == "fault"
+    assert state(*seq, ev("pre_tool_call", 4, tool_name="clarify", tool_call_id="a")) == "needs-you"
 
 
 def test_finalize_is_unknown_and_wins_over_everything():
-    assert final(ev("pre_llm_call"), ev("pre_tool_call", tool="clarify", call="a"),
-                 ev("api_request_error"), ev("on_session_finalize")) == "unknown"
+    assert state(ev("pre_llm_call"), ev("pre_tool_call", 2, tool_name="clarify", tool_call_id="a"),
+                 ev("api_request_error", 3), ev("on_session_finalize", 4)) == "unknown"
 
 
-def test_new_turn_after_finalize_revives():
-    assert final(ev("on_session_finalize"), ev("pre_llm_call")) == "working"
+def test_stale_is_unknown_strictly_after_20s():
+    assert V.STALE_S == 20.0
+    m = R.reduce(R.initial(), ev("pre_llm_call", 100.0))
+    assert V.resolve(m, 120.0) == "working" and V.resolve(m, 120.001) == "unknown"
 
 
-def test_precedence_needs_you_over_fault_over_base():
-    seq = [ev("pre_llm_call"), ev("api_request_error"), ev("pre_tool_call", tool="clarify", call="a")]
-    assert states(*seq) == ["working", "fault", "needs-you"]
-    assert final(*seq, ev("post_tool_call", tool="clarify", call="a")) == "fault"
+def test_heartbeat_marks_alive_and_pid_dead_latches_until_heartbeat_or_reset():
+    m, s = run(ev("pre_llm_call"), ev("pid_dead", 2))
+    assert s == "unknown" and m["pid_alive"] is False
+    for other in (ev("pre_llm_call", 3), ev("post_llm_call", 4), ev("on_session_start", 5), ev("api_request_error", 6)):
+        m = R.reduce(m, other)
+        assert V.resolve(m, other["t"]) == "unknown"          # other hooks do NOT revive it
+    m = R.reduce(m, ev("heartbeat", 7))
+    assert m["pid_alive"] is True and V.resolve(m, 7) != "unknown"
 
 
-def test_unsubscribed_and_unknown_hooks_are_ignored():
-    assert states(ev("pre_llm_call"), ev("on_stream_delta"), ev("whatever")) == ["working"] * 3
+def test_heartbeat_alone_refreshes_last_seen_only():
+    m = R.reduce(R.initial(), ev("heartbeat", 3.0))
+    assert m["last_seen"] == 3.0 and m["pid_alive"] is True and V.resolve(m, 3.0) == "idle"
 
 
-def test_since_is_the_ts_of_the_event_that_last_changed_the_output():
-    out, _ = R.fold([ev("pre_llm_call", ts=10.0), ev("post_llm_call", ts=11.0),
-                     ev("pre_tool_call", ts=12.0, tool="clarify", call="a"),
-                     ev("pre_tool_call", ts=13.0, tool="terminal", call="t")])
-    assert [(o["state"], o["since"]) for o in out] == [
-        ("working", 10.0), ("working", 10.0), ("needs-you", 12.0), ("needs-you", 12.0)]
+def test_binding_false_is_unknown_true_restores_and_only_literal_true_binds():
+    m = R.reduce(R.initial(), ev("binding", 1, bound=False))
+    assert V.resolve(m, 1) == "unknown"
+    assert V.resolve(R.reduce(m, ev("binding", 2, bound=True)), 2) == "idle"
+    assert V.resolve(R.reduce(R.initial(), ev("binding", 1, bound="yes")), 1) == "unknown"
 
 
-def test_rotation_ids_change_but_the_stream_is_one_lineage():
-    out = states(ev("pre_llm_call", sid="parent"), ev("pre_tool_call", sid="child", tool="clarify", call="a"),
-                 ev("post_tool_call", sid="child", tool="clarify", call="a"))
-    assert out == ["working", "needs-you", "working"]
+def test_every_event_sets_last_seen_and_unknown_kinds_are_proof_of_life_only():
+    m = R.reduce(R.initial(), ev("on_stream_delta", 7.5))
+    assert m["last_seen"] == 7.5 and V.resolve(m, 7.5) == "idle"
 
 
-def test_normalise_builds_the_event_dict():
+def test_normalise_builds_the_event_dict_with_a_whitelisted_payload():
     n = R.normalise("pre_tool_call", {"session_id": "s1", "tool_name": "clarify", "tool_call_id": "c1",
-                                      "turn_id": "t1", "args": {"secret": "x"}}, 12.5)
-    assert n == {"hook": "pre_tool_call", "ts": 12.5, "session_id": "s1", "tool_name": "clarify",
-                 "tool_call_id": "c1", "turn_id": "t1", "completed": None}
+                                      "args": {"secret": "x"}, "user_message": "hello"}, 12.5)
+    assert n == {"t": 12.5, "kind": "pre_tool_call", "session_id": "s1",
+                 "payload": {"tool_name": "clarify", "tool_call_id": "c1"}}
     n2 = R.normalise("on_session_end", {"session_id": "s", "completed": True, "failed": False}, 1.0)
-    assert n2["completed"] is True and n2["tool_name"] is None
-    n3 = R.normalise("pre_approval_request", {"session_key": "k", "command": "rm -rf /"}, 1.0)
-    assert n3["session_id"] == "k" and "command" not in n3
-    assert R.normalise("on_session_end", {"session_id": "s", "completed": "yes"}, 1.0)["completed"] is None
+    assert n2["payload"] == {"completed": True}
+    n3 = R.normalise("pre_approval_request", {"session_key": "k", "pattern_key": "p", "command": "rm -rf /"}, 1.0)
+    assert n3["session_id"] == "k" and n3["payload"] == {"session_key": "k", "pattern_key": "p"}
+    assert R.normalise("on_session_end", {"session_id": "s", "completed": "yes"}, 1.0)["payload"] == {}
