@@ -105,3 +105,61 @@ def test_staged_cache_commits_or_discards(tmp_path):
     off = g5cache.Staged(g5cache.Cache(tmp_path, enabled=False))
     off.put("ef" + "0" * 62, "z")
     assert off.commit() == 0
+
+
+# --- family check: a model id is not a family (2026-10-16: hercules served ONE checkpoint under every id) ------------------------
+
+HERCULES_MODELS_20261016 = {"object": "list", "data": [
+    {"id": m, "root": "/home/adam/models/Nemotron-3.5-Super-VL-120B-A12B-NVFP4"}
+    for m in ("nemotron-3.5-super-vl", "local-llm", "qwen3.8-27b-heretic", "superqwen3.8-27b")]}
+
+
+def test_served_identity_reads_the_root_not_the_alias(monkeypatch):
+    monkeypatch.setenv("HERCULES_API_KEY", "k")
+    fetch = lambda url, key: HERCULES_MODELS_20261016
+    assert g5backends.served_identity("qwen", fetch) == g5backends.served_identity("nemotron", fetch) == "hercules:Nemotron-3.5-Super-VL-120B-A12B-NVFP4"
+
+
+def test_served_identity_distinguishes_a_real_second_checkpoint(monkeypatch):
+    monkeypatch.setenv("HERCULES_API_KEY", "k")
+    two = {"data": [{"id": "qwen3.8-27b-heretic", "root": "/m/Qwen3.8-27B"}, {"id": "nemotron-3.5-super-vl", "root": "/m/Nemotron-3.5"}]}
+    fetch = lambda url, key: two
+    assert g5backends.served_identity("qwen", fetch) != g5backends.served_identity("nemotron", fetch)
+
+
+def test_unserved_or_unreachable_model_is_an_instrument_error(monkeypatch):
+    monkeypatch.setenv("HERCULES_API_KEY", "k")
+    with pytest.raises(g5backends.TransportError, match="not served"):
+        g5backends.served_identity("qwen", lambda url, key: {"data": [{"id": "other", "root": "/m/x"}]})
+
+    def down(url, key):
+        raise OSError("connection refused")
+    with pytest.raises(g5backends.TransportError, match="cannot ask"):
+        g5backends.served_identity("nemotron", down)
+
+
+def test_codex_and_glm_identities_need_no_network():
+    assert g5backends.served_identity("codex").startswith("openai:codex")
+    assert g5backends.served_identity("glm").startswith("zai:")
+
+
+def test_family_check_refuses_two_lanes_on_one_checkpoint():
+    with pytest.raises(g5.SameWeights, match="same model"):
+        g5.family_check(["qwen", "nemotron"], identify=lambda n: "hercules:Nemotron")
+    assert g5.family_check(["nemotron", "codex"], identify=lambda n: n) == {"nemotron": "nemotron", "codex": "codex"}
+
+
+def test_run_refuses_same_weights_before_any_call(tmp_path):
+    calls = []
+
+    def fn(png, prompt):
+        calls.append(png)
+        return '{"score": 9}'
+    with pytest.raises(g5.SameWeights):
+        g5.run(tmp_path / "no-manifest-needed.json", {"qwen": fn, "nemotron": fn}, rounds_file=None, identify=lambda n: "hercules:same")
+    assert calls == []
+
+
+def test_default_pair_is_two_distinct_families_by_construction():
+    names = g5backends.DEFAULT_BACKENDS.split(",")
+    assert len(names) == 2 and not set(names) <= set(g5backends.HERCULES_LANES), "both default lanes on hercules = one checkpoint today"

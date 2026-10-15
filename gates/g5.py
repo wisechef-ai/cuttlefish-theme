@@ -34,6 +34,23 @@ class BlindBackend(RuntimeError):
     """A backend failed the anchor probe: it could not see its images. Nothing it answered is cached or scored, no round is recorded."""
 
 
+class SameWeights(RuntimeError):
+    """Two lanes resolve to the same served weights: the "two independent families" premise is false. Nothing is run."""
+
+
+def family_check(names, identify=None) -> dict:
+    """``{backend: served identity}``; raises SameWeights when two backends share one (2026-10-16: hercules served one checkpoint
+    under every model id, so the validated "qwen,nemotron" pair was Nemotron twice)."""
+    identify = identify or g5backends.served_identity
+    served = {n: identify(n) for n in names}
+    seen = {}
+    for n, ident in served.items():
+        if ident in seen:
+            raise SameWeights(f"backends {seen[ident]!r} and {n!r} are the same model ({ident}); G5 needs two independent families")
+        seen[ident] = n
+    return served
+
+
 def anchor_probe(results: list[dict]) -> dict:
     """The blindness guard. Real-animal anchor photos score ~9 for a sighted model and 0 ("the image was unavailable") for a blind
     one (P1 G5, 2026-10-15: every codex answer was blind and it was caught by hand). A backend passes only if every anchor answer is
@@ -124,6 +141,8 @@ def to_markdown(rep: dict) -> str:
     ca = rep.get("cache", {})
     if ca:
         L += ["Answer cache: " + ", ".join(f"`{b}` {c['cached']}/{c['calls']} answers served from cache" for b, c in ca.items()) + (" (cache disabled)" if not rep.get("cache_enabled", True) else "") + ".", ""]
+    if rep.get("served"):
+        L += ["Served weights (family check: two lanes on one checkpoint are refused): " + ", ".join(f"`{b}` = {w}" for b, w in rep["served"].items()) + ".", ""]
     if rep.get("anchor_probe"):
         L += ["Anchor probe (blindness guard, run first; a backend below the floor is refused before scoring): " + ", ".join(
             f'`{b}` median {p["median"]} over {p["n"]} photos -> {"ok" if p["ok"] else "**BLIND**"}' for b, p in rep["anchor_probe"].items()) + ".", ""]
@@ -148,9 +167,10 @@ def to_markdown(rep: dict) -> str:
 
 def run(manifest_path, backends: dict, seed: int = 2909, workers: int = 4, direction_dir_hint=None, rounds_file: Path | None = ROUNDS_FILE, limit=None,
         sample: int | None = None, tasks=g5items.TASKS, keep_alarm_text: bool | None = None, cache: g5cache.Cache | None = None,
-        anchor_guard: bool = True) -> dict:
+        anchor_guard: bool = True, identify=None) -> dict:
     """``anchor_guard`` (default on; the CLI has no switch) runs the anchor photos first on every backend and raises BlindBackend
     when a backend cannot see them, before the rest of the items are spent. Off only in tests that score scripted refusals."""
+    served = family_check(list(backends), identify)   # before any image is rendered or any call is made
     man = gl.load_manifest(manifest_path)
     ddir = dt.resolve_direction_dir(man.direction, direction_dir_hint)
     items = g5items.build_items(man, ddir, seed, tasks, keep_alarm_text)
@@ -193,7 +213,7 @@ def run(manifest_path, backends: dict, seed: int = 2909, workers: int = 4, direc
         cache_stats[name] = {"cached": sum(1 for r in results if r["cached"]), "calls": len(results)}
         per[name] = score_backend(results, tasks)
     rep = {"schema": "cf2909.p1.g5/1", "direction": man.direction, "manifest": str(man.path), "seed": seed, "items": len(items),
-           "backends": list(backends), "models": {b: g5backends.label(b) for b in backends}, "per_backend": per,
+           "backends": list(backends), "models": {b: g5backends.label(b) for b in backends}, "served": served, "per_backend": per,
            "pass": all(s["pass"] for s in per.values()), "synthetic": bool(man.raw.get("synthetic")), "sampled_per_cell": sample,
            "keep_alarm_text": keep_alarm_text, "cache": cache_stats, "anchor_probe": probes, "cache_enabled": bool(cache and cache.enabled), "tasks": list(tasks), "partial": tuple(tasks) != g5items.TASKS}
     if rounds_file is not None:

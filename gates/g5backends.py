@@ -8,10 +8,9 @@ codex  : OpenAI via ``codex exec -i`` run in an empty temp dir with user config 
 gemini:<model> : Google generativelanguage REST (GEMINI_API_KEY; free tier is 20 requests/day per model: smoke only).
 openrouter : OpenRouter chat completions with an image part (optional; default anthropic/claude-sonnet-4.5).
 
-The default pair is ``qwen,nemotron``: two independent model families (Alibaba Qwen, NVIDIA Nemotron), both local on hercules, so a
-full gate run costs nothing and nothing leaves the fleet. Both were validated on the GOOD/BAD fixtures on 2026-10-15 (plain legend
-96 % vs 38 % for qwen and 95 % vs 45 % for nemotron; CVD 79-88 % vs 29-35 %). The old default ``glm`` scored 50 % on GOOD in round 2,
-which is too weak to tell GOOD from BAD. ``codex`` is an optional third family once it passes the anchor probe.
+DEFAULT PAIR: see ``DEFAULT_BACKENDS`` and the family-validation note in gates/README.md. Two lanes count as two families only if
+``served_identity`` differs: ``g5.run`` refuses a pair that resolves to the same weights (hercules aliases every model id to the one
+checkpoint it serves, so ``qwen`` and ``nemotron`` were the same model on 2026-10-16).
 
 DEVIATION (D-R2-4, logged on t_0c601204): the Hermes ``vision_analyze`` path cannot be driven headless today. Its auxiliary vision
 route resolves to an OpenRouter endpoint that answers 400 "claude-sonnet-5-5 is not a valid model ID" (default home) or
@@ -84,7 +83,7 @@ def gemini_backend(png: Path, prompt: str, model: str = "gemini-3-flash-preview"
     return "".join(p.get("text", "") for p in parts)   # a blocked/empty reply is scored as invalid
 
 
-DEFAULT_BACKENDS = "qwen,nemotron"
+DEFAULT_BACKENDS = "nemotron,codex"
 BACKOFF_BASE = 2.0           # seconds; doubles per retry, plus up to BACKOFF_BASE of jitter
 RETRYABLE = {408, 425, 429, 500, 502, 503, 504}
 
@@ -215,6 +214,41 @@ def cache_model(name: str) -> str:
 
 
 qwen_backend.retries_internal = glm_backend.retries_internal = nemotron_backend.retries_internal = True
+
+
+HERCULES_LANES = ("qwen", "nemotron")
+
+
+def _get_json(url: str, key: str) -> dict:
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {key}"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.load(r)
+
+
+def served_identity(name: str, fetch=None) -> str:
+    """The weights that actually answer for a lane, which is what "two independent families" has to mean.
+
+    A model id is not a family. On 2026-10-16 hercules answered to ``qwen3.8-27b-heretic``, ``superqwen3.8-27b``, ``local-llm`` and
+    ``nemotron-3.5-super-vl`` with ONE checkpoint (every ``/v1/models`` entry had ``root`` = Nemotron-3.5-Super-VL), so the
+    ``qwen`` lane silently ran nemotron and a "qwen,nemotron" pair was one model asked twice. For the hercules lanes this asks the
+    server (``/v1/models`` -> ``root``); an unserved model id is a TransportError. Every other lane is identified by its provider
+    and model id (no network)."""
+    if name in HERCULES_LANES:
+        cfg = qwen_config() if name == "qwen" else nemotron_config()
+        url = cfg.url.rsplit("/chat/completions", 1)[0] + "/models"
+        try:
+            data = (fetch or _get_json)(url, _env_key(cfg.key_name))
+        except Exception as e:  # noqa: BLE001: the identity of an instrument we cannot reach is unknown, never assumed
+            raise TransportError(f"{name}: cannot ask {url} which weights serve {cfg.model!r}: {e}") from e
+        for m in data.get("data", []):
+            if m.get("id") == cfg.model:
+                return "hercules:" + Path(str(m.get("root") or m["id"])).name
+        raise TransportError(f"{name}: {cfg.model!r} is not served at {url} (served: {[m.get('id') for m in data.get('data', [])]})")
+    if name == "codex":
+        return f"openai:codex:{CODEX_MODEL or 'default'}"
+    if name == "glm":
+        return f"zai:{model_id('glm')}"
+    return name
 
 
 CODEX_IMAGE_NAME = "image.png"

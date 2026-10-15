@@ -5,7 +5,7 @@ Dev-only instruments (never imported by a shipping entrypoint). Thresholds are f
 
     python3.12 -m venv gates/.venv && gates/.venv/bin/pip install -r gates/requirements.txt
     gates/.venv/bin/python gates/g2.py <renders>/<direction>/manifest.json     # exit 0 PASS / 1 FAIL / 2 instrument error
-    gates/.venv/bin/python gates/g5.py <renders>/<direction>/manifest.json [--backends qwen,nemotron] [--no-cache]
+    gates/.venv/bin/python gates/g5.py <renders>/<direction>/manifest.json [--backends nemotron,codex] [--no-cache]
 
 | file | job |
 |---|---|
@@ -14,7 +14,7 @@ Dev-only instruments (never imported by a shipping entrypoint). Thresholds are f
 | `g2.py` | G2: writes `g2.json` + `g2.md` next to the manifest and `cvd/<kind>/...` simulations for G5 |
 | `g5lib.py` | pure G5 parts: strict answer parsing, verdicts, confusion matrix, seeded shuffle, kill-rule round counter |
 | `g5items.py` | what each blind call sees (legend sheet over one sample, identity sheet over one tile, aesthetic strips + photos) |
-| `g5backends.py` | vision backends: default pair `qwen` (hercules qwen3.8-27b, local) + `nemotron` (hercules nemotron-3.5-super-vl, a second local family; both validated on GOOD/BAD 2026-10-15); `glm` (zai glm-4.6v-flash, paced 3 s, 429/5xx backoff; too weak a discriminator: 50 % legend on GOOD); optional `codex`, `openrouter`; `gemini:<m>` smoke only (20 req/day). Public renders / photos only |
+| `g5backends.py` | vision backends: default pair `nemotron` (hercules, local) + `codex` (OpenAI via `codex exec`), the only two independent families reachable today, see *Family check* below; `qwen` (hercules, but hercules currently serves Nemotron under the qwen ids, so the family check refuses it next to `nemotron`); `glm` (zai glm-4.6v-flash, paced 3 s, 429/5xx backoff; too weak a discriminator: 50 % legend on GOOD); `openrouter` (no credits today), `gemini:<m>` smoke only (20 req/day). Public renders / photos only |
 | `g5cache.py` | raw-answer cache keyed by (backend, model, image sha256, prompt sha256) under `gates/.g5_cache/` (git-ignored); `--no-cache` forces fresh calls, cached answers are flagged `cached` in `g5_raw/` and counted in `g5.md` |
 | `g5.py` | G5 runner: `g5.json`, `g5.md`, `g5_raw/<backend>/*.json`, appends to `g5_rounds.json`. Runs the anchor probe first on every backend (below) |
 | `g5_prompts/*.txt` | fixed prompts, no design vocabulary (the neutral legend labels appear only in `legend.txt`) |
@@ -40,6 +40,11 @@ Anchor probe (blindness guard): before the rest of a backend's items, the six an
 >= 7, the run stops with exit 2 (`BlindBackend`): the backend's new answers are not cached, nothing is scored and no kill-rule round is recorded. A
 blind run scores the anchors 0 ("the image was unavailable"), which is how the 2026-10-15 codex run was caught by hand. Cached answers are judged too.
 The guard has no CLI switch.
+
+Family check (same-weights guard): "two independent families" means two different served checkpoints, not two model ids. Before any image is
+rendered, `g5.run` asks each hercules lane which weights answer (`/v1/models` -> `root`) and refuses the run (exit 2, `SameWeights`) if two lanes
+resolve to one checkpoint; `g5.json` records the result under `served`. On 2026-10-16 hercules answered to `qwen3.8-27b-heretic`, `superqwen3.8-27b`,
+`local-llm` and `nemotron-3.5-super-vl` with ONE Nemotron checkpoint, so the earlier "qwen,nemotron" validation was Nemotron run twice.
 
 Backend env: `G5_NEMOTRON_MODEL` (default `nemotron-3.5-super-vl`), `G5_QWEN_MODEL` (default `qwen3.8-27b-heretic`), `G5_QWEN_URL`, `G5_GLM_MODEL` (default `glm-4.6v-flash`), `G5_GLM_MIN_INTERVAL` (3 s),
 keys `HERCULES_API_KEY` / `GLM_API_KEY` from the environment or `~/.hermes/.env`.
