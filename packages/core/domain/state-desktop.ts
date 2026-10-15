@@ -75,8 +75,6 @@ export function reduce(model: DesktopModel, input: DesktopInput): DesktopModel {
   switch (input.kind) {
     case 'state': {
       let m: DesktopModel = typeof p.gateway === 'string' ? { ...model, gateway: p.gateway } : model;
-      if (p.focused_session_id && p.focused_stored_session_id) m = learn(m, p.focused_session_id, p.focused_stored_session_id);
-      if (input.session && p.stored_session_id) m = learn(m, input.session, p.stored_session_id);
       if (p.busyBySession) m = { ...m, busy_rt: { ...p.busyBySession } };     // a snapshot replaces: absent runtimes no longer count
       else if (typeof p.busy === 'boolean' && input.session) m = { ...m, busy_rt: set(m.busy_rt, input.session, p.busy) };
       return m;
