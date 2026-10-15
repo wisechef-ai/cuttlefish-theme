@@ -186,21 +186,40 @@ def convert_desktop(raw):
         rt = e.get("session_id") or None
         lines.append(_line(ms(r["t"]), "desktop.event", profile, rt, lin.root(rt2stored.get(rt)), typ,
                            _event_payload(typ, e.get("payload"))))
-    last = None
+    # State lines carry only what was KNOWN at that snapshot: a session.info seen at or before it, or the host's own
+    # focused pair in it (focused_session_id / focused_stored_session_id). No look-ahead into later session.info.
+    infos = sorted((r["t"], e["session_id"], e["payload"]["stored_session_id"]) for r in events
+                   for e in [r["event"]] if e.get("type") == "session.info" and e.get("session_id")
+                   and (e.get("payload") or {}).get("stored_session_id"))
+    known, seen_info, last, prev_busy = {}, 0, None, {}
     for s in states:
+        while seen_info < len(infos) and infos[seen_info][0] <= s["t"]:
+            known[infos[seen_info][1]] = infos[seen_info][2]
+            seen_info += 1
+        frt, fstored = s.get("focusedSessionId"), s.get("focusedStoredSessionId")
+        if frt and fstored:
+            known[frt] = fstored
         busy = s.get("busyBySession") or {}
-        sig = (s.get("gateway"), tuple(sorted(busy.items())), s.get("focusedStoredSessionId"))
+        sig = (s.get("gateway"), tuple(sorted(busy.items())), frt, fstored)
         if sig == last:
             continue
         last = sig
+        focus_pair = {}
+        if frt:
+            focus_pair["focused_session_id"] = frt
+        if fstored:
+            focus_pair["focused_stored_session_id"] = fstored
         if not busy:
-            lines.append(_line(ms(s["t"]), "desktop.state", profile, None, None, "state", {"gateway": s.get("gateway")}))
-        for rt, b in sorted(busy.items()):
-            payload = {"gateway": s.get("gateway"), "busy": bool(b)}
-            stored = rt2stored.get(rt)
+            lines.append(_line(ms(s["t"]), "desktop.state", profile, None, None, "state", {"gateway": s.get("gateway"), **focus_pair}))
+        # a runtime that left the snapshot no longer counts as busy: say so explicitly (a snapshot REPLACES the busy map)
+        rows = {**{rt: False for rt in prev_busy if rt not in busy}, **{rt: bool(b) for rt, b in busy.items()}}
+        for rt, b in sorted(rows.items()):
+            payload = {"gateway": s.get("gateway"), "busy": b, **focus_pair}
+            stored = known.get(rt)
             if stored:
                 payload["stored_session_id"] = stored
             lines.append(_line(ms(s["t"]), "desktop.state", profile, rt, lin.root(stored), "state", payload))
+        prev_busy = busy
     focus = sorted((s["t"], s["focusedStoredSessionId"]) for s in states if s.get("focusedStoredSessionId"))
     last_label = None
     for d in _rows(raw / "dots.jsonl"):

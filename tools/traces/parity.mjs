@@ -27,6 +27,7 @@ for (const [k, p] of Object.entries(bundlePaths)) bundles[k] = await import(path
 const files = readdirSync(dir).filter(f => f.endsWith('.jsonl')).sort();
 const outDir = join(dir, 'out');
 let diffs = 0, bad = 0, mismatches = 0;
+const lags = {};   // trace -> distinct render-lag episodes (one per root + our-change time), seconds
 const reached = Object.fromEntries(STATES.map(s => [s, []]));
 const rows = [];
 const parity = {};
@@ -49,6 +50,7 @@ for (const f of files) {
   const seen = new Set();
   for (const root_ of Object.values(r.roots)) for (const s of root_.samples) {
     seen.add(s.state);
+    if (s.parity === 'allowed:render-lag') (lags[name] ??= new Map()).set(`${Object.keys(r.roots).find(k => r.roots[k] === root_)}@${s.since}`, s.lag_s);
     if (s.parity) parity[name] = { ...(parity[name] ?? {}), [s.parity]: ((parity[name] ?? {})[s.parity] ?? 0) + 1 };
   }
   if (r.host === 'desktop') parity[name] = { match: 0, MISMATCH: 0, ...(parity[name] ?? {}) };
@@ -66,6 +68,10 @@ for (const [n, c] of Object.entries(parity)) {
   mismatches += c.MISMATCH ?? 0;
   console.log(`\ncore-dot parity ${n}: ${Object.keys(c).sort().map(k => `${k}=${c[k]}`).join(' ')}`);
 }
+const med = a => { const b = [...a].sort((x, y) => x - y), n = b.length; return n % 2 ? b[(n - 1) / 2] : (b[n / 2 - 1] + b[n / 2]) / 2; };
+const allLags = [];
+for (const [n, m] of Object.entries(lags)) { const v = [...m.values()]; allLags.push(...v); console.log(`render-lag ${n}: episodes=${v.length} max=${Math.max(...v) * 1000} ms median=${Math.round(med(v) * 1e6) / 1000} ms`); }
+if (allLags.length) console.log(`render-lag all desktop traces: episodes=${allLags.length} max=${Math.max(...allLags) * 1000} ms median=${Math.round(med(allLags) * 1e6) / 1000} ms (limit 500 ms)`);
 const missing = STATES.filter(s => reached[s].length === 0);
 if (flag('--require-all') && missing.length) console.log(`\nNOT REACHED: ${missing.join(', ')}`);
 

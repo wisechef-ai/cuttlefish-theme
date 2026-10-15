@@ -17,7 +17,7 @@ _spec.loader.exec_module(convert)
 
 WHITELIST = {
     "tool_name", "tool_call_id", "session_key", "pattern_key", "completed", "interrupted", "failed",
-    "status_code", "retryable", "choice", "status", "error_surface", "stored_session_id", "gateway",
+    "status_code", "retryable", "choice", "status", "error_surface", "stored_session_id", "focused_session_id", "focused_stored_session_id", "gateway",
     "busy", "label", "bound",
 }
 SECRET_PROMPT = "please delete /home/adam/secrets and use api_key sk-abc123"
@@ -164,7 +164,7 @@ def test_desktop_events_keep_status_and_error_code_only(tmp_path):
     mc = by[("desktop.event", "message.complete")]
     assert mc["session"] == "rt1" and mc["payload"] == {"status": "error", "error_surface": {"code": "provider_unreachable"}}
     st = by[("desktop.state", "state")]
-    assert st["payload"] == {"gateway": "open", "busy": True, "stored_session_id": "S1"} and st["session"] == "rt1"
+    assert st["payload"] == {"gateway": "open", "busy": True, "stored_session_id": "S1", "focused_session_id": "rt1", "focused_stored_session_id": "S1"} and st["session"] == "rt1"
     dots = [l for l in lines if l["src"] == "desktop.dot"]
     assert [d["payload"]["label"] for d in dots] == ["Needs your input", ""]
     assert all(d["session"] == "S1" and d["lineage_root"] == "S1" for d in dots)
@@ -172,3 +172,28 @@ def test_desktop_events_keep_status_and_error_code_only(tmp_path):
     blob = json.dumps(lines)
     for leak in ("private reply", "sk-abc", "/home/", "secret", "mark"):
         assert leak not in blob
+
+
+def test_desktop_state_lines_carry_only_a_mapping_known_at_that_time(tmp_path):
+    raw = tmp_path / "raw"
+    raw.mkdir()
+    (raw / "meta.json").write_text(json.dumps({"name": "d", "host": "desktop", "profiles": ["A"], "t0": 1000.0,
+                                               "recorded_at": "x", "model": "m", "runtime": "upstream",
+                                               "runtime_sha": "f42f579cf8b", "notes": ""}))
+    (raw / "events.jsonl").write_text(json.dumps({"t": 1003000, "event": {"type": "session.info", "session_id": "rt2",
+                                                  "payload": {"stored_session_id": "S2"}}}) + "\n")
+    st = lambda t, busy, **kw: json.dumps({"t": t, "busyBySession": busy, "gateway": "open", "profile": "default", **kw}) + "\n"
+    (raw / "states.jsonl").write_text(
+        st(1001000, {"rt2": True})                                                       # before session.info, no focus: unmapped
+        + st(1002000, {"rt2": True}, focusedSessionId="rt2", focusedStoredSessionId="S2")  # the host's own pair: mapped now
+        + st(1004000, {"rt2": False, "rt3": True}))                                      # rt2 known from session.info by now
+    (raw / "dots.jsonl").write_text("")
+    db = sqlite3.connect(raw / "state-A.db")
+    db.execute("create table sessions (id text primary key, parent_session_id text)")
+    db.commit(); db.close()
+    lines = [l for l in convert.convert_desktop(raw) if l["src"] == "desktop.state"]
+    first, second, third_a, third_b = lines
+    assert "stored_session_id" not in first["payload"] and "focused_session_id" not in first["payload"]      # no look-ahead
+    assert second["payload"]["stored_session_id"] == "S2" and second["payload"]["focused_stored_session_id"] == "S2"
+    assert (third_a["session"], third_a["payload"]["busy"], third_a["payload"]["stored_session_id"]) == ("rt2", False, "S2")
+    assert third_b["session"] == "rt3" and "stored_session_id" not in third_b["payload"]

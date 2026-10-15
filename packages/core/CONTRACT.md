@@ -112,21 +112,30 @@ state + `since` (time of the last change of the resolved value); TS replays the 
 
 ## 3. State reducer (desktop vocabulary — spike 07)
 
-Keyed by **stored** id (runtime → stored via `session.info.payload.stored_session_id`; events for a runtime id
-with no known mapping are buffered/applied once mapped). Model: `busy`, `gateway`, `fault`, `needs_input`.
+Keyed by **stored** id. The host speaks **runtime** ids; the runtime → stored mapping is learned from (a) `session.info.payload.stored_session_id`,
+(b) the host's live focused pair on a state snapshot (`focused_session_id` + `focused_stored_session_id` = `host.state.focusedSessionId` /
+`focusedStoredSessionId`, same instant as the busy flip), and (c) a `stored_session_id` on a state line that was KNOWN at that snapshot (the converter
+never looks ahead). Other events (`message.*`) for a runtime id with no known mapping are buffered/applied once mapped.
+Model: `busy_rt` (**per runtime id**), `gateway`, `fault`, `needs_input`.
 
 | input | effect |
 |---|---|
-| `desktop.state` snapshot `{gateway, busyBySession{rt:bool}}` | gateway := value; busy[stored(rt)] := value |
+| `desktop.state` snapshot `{gateway, busyBySession{rt:bool}}` | gateway := value; busy_rt := the snapshot (REPLACES: a runtime absent from the latest snapshot no longer counts) |
+| `desktop.state` line `{gateway, busy, session: rt}` | gateway := value; busy_rt[rt] := busy |
 | event `message.start` | fault F |
 | event `message.complete` `status=='error'` | fault T (sticky until next message.start) |
 | `desktop.dot` `{stored_id, label}` | needs_input := (label == 'Needs your input') |
 
-resolve: `unknown` if gateway != 'open' → `needs-you` if needs_input → `fault` → `working` if busy → `idle`.
+busy(stored) = OR over the runtime ids mapped to `stored` that are busy in busy_rt. Last-writer-wins across runtime ids is a bug: after a kill the app
+resumes the same stored session in a NEW runtime id while the dead runtime still reports `busy:false` (desktop-kill t=43.5; we showed idle ~25 s while working).
+resolve: `unknown` if gateway != 'open' → `needs-you` if needs_input → `fault` → `working` if busy(stored) → `idle`.
 No `review` on desktop (spike 07: no signal). Parity vs core's `SessionStatusDot`: ours `working`/`needs-you`
-must equal core `Session running`/`Needs your input`; the only allowed divergence is ours=`unknown` while
-gateway != 'open' (core shows stale busy up to ~26 s after a kill) and ours=`fault` where core shows idle
-(core paints no fault dot). Every divergence is listed in the parity report with its rule.
+must equal core `Session running`/`Needs your input`; the only allowed divergences are
+`allowed:gateway-not-open` (ours=`unknown` while gateway != 'open'; core shows stale busy up to ~26 s after a kill),
+`allowed:fault-not-painted` (ours=`fault` where core shows idle) and
+`allowed:render-lag` (core's dot repaints from the DOM ~80–250 ms after the host state: it differs from ours for ≤ **500 ms** after OUR resolved state last
+changed AND core's dot then agrees — match or another allowed rule — within that window and before our state changes again; the sample carries `lag_s`).
+Any longer or never-converging disagreement stays `MISMATCH`. Every divergence is listed in the parity report with its rule.
 
 ## 4. Trace format — `tools/traces/*.jsonl`
 
