@@ -50,6 +50,38 @@ class Cache:
         os.replace(tmp, p)   # atomic: a crash never leaves a half-written entry
 
 
+class Staged:
+    """Reads through to ``cache``; holds new answers in memory until ``commit()``. G5 commits a backend's answers only after its
+    anchor probe proves the backend could see the images, so a blind run never poisons the cache (``discard()`` drops them)."""
+
+    def __init__(self, cache: Cache):
+        self.cache, self.pending, self._lock = cache, {}, threading.Lock()
+        self.enabled = cache.enabled
+
+    def get(self, k: str):
+        with self._lock:
+            if k in self.pending:
+                return self.pending[k]
+        return self.cache.get(k)
+
+    def put(self, k: str, raw: str) -> None:
+        if self.enabled:
+            with self._lock:
+                self.pending[k] = raw
+
+    def commit(self) -> int:
+        with self._lock:
+            items, self.pending = list(self.pending.items()), {}
+        for k, raw in items:
+            self.cache.put(k, raw)
+        return len(items)
+
+    def discard(self) -> int:
+        with self._lock:
+            n, self.pending = len(self.pending), {}
+        return n
+
+
 def cached(fn, backend: str, model: str, cache: Cache):
     """Wrap ``fn(png, prompt)``. ``wrapper.last_cached`` reports whether the calling thread's last answer came from disk."""
     tl = threading.local()

@@ -14,9 +14,9 @@ Dev-only instruments (never imported by a shipping entrypoint). Thresholds are f
 | `g2.py` | G2: writes `g2.json` + `g2.md` next to the manifest and `cvd/<kind>/...` simulations for G5 |
 | `g5lib.py` | pure G5 parts: strict answer parsing, verdicts, confusion matrix, seeded shuffle, kill-rule round counter |
 | `g5items.py` | what each blind call sees (legend sheet over one sample, identity sheet over one tile, aesthetic strips + photos) |
-| `g5backends.py` | vision backends: default pair `qwen` (hercules qwen3.8-27b, local) + `glm` (zai glm-4.6v-flash, paced 3 s, 429/5xx backoff); optional `codex`, `openrouter`; `gemini:<m>` smoke only (20 req/day). Public renders / photos only |
+| `g5backends.py` | vision backends: default pair `qwen` (hercules qwen3.8-27b, local) + `glm` (zai glm-4.6v-flash, paced 3 s, 429/5xx backoff); `nemotron` (hercules nemotron-3.5-super-vl, a second local family); optional `codex`, `openrouter`; `gemini:<m>` smoke only (20 req/day). Public renders / photos only |
 | `g5cache.py` | raw-answer cache keyed by (backend, model, image sha256, prompt sha256) under `gates/.g5_cache/` (git-ignored); `--no-cache` forces fresh calls, cached answers are flagged `cached` in `g5_raw/` and counted in `g5.md` |
-| `g5.py` | G5 runner: `g5.json`, `g5.md`, `g5_raw/<backend>/*.json`, appends to `g5_rounds.json` |
+| `g5.py` | G5 runner: `g5.json`, `g5.md`, `g5_raw/<backend>/*.json`, appends to `g5_rounds.json`. Runs the anchor probe first on every backend (below) |
 | `g5_prompts/*.txt` | fixed prompts, no design vocabulary (the neutral legend labels appear only in `legend.txt`) |
 | `photos/`, `fetch_photos.py` | openly licensed real-animal anchors (see `photos/LICENSES.md`) |
 | `tests/` | unit tests for the pure parts + the instruments proven on `fixtures/good` and `fixtures/bad` (synthetic renders, not host evidence) |
@@ -29,13 +29,19 @@ How the rendered numbers are taken (so a reviewer can reproduce them):
   The report also carries a non-gating `informational_pigment_only` figure (median of non-background pixels) because a sparse-pigment
   pattern on a pale ground has a tile median that is just the ground.
 - Static proof: single-session frame groups; the desktop sidebar mixes all six states, so it is not judged.
-- G5 blindness: one image per call, fixed prompts, a throwaway cwd for `codex exec`; text policy (D-R2-5): identity masks all text; the plain legend keeps the alarm words
+- G5 blindness: one image per call, fixed prompts, a throwaway cwd for `codex exec` (the image is copied in under a neutral name and passed by absolute
+  path: codex prints `<image path=...>` into the prompt, item ids carry the truth, and an unreadable `-i` path is silently replaced by a text note); text policy (D-R2-5): identity masks all text; the plain legend keeps the alarm words
   (alarms carry literal text by contract) with session names masked; the three CVD legends mask all text (the state must be named from pattern).
   `--keep-alarm-text` / `--mask-alarm-text` override every legend variant and are for informational runs only; g5.md records the policy in force. Invalid, refused or errored answers count as FAIL for the item.
 
 glm runs with thinking off by default (on at 1024 tokens the reasoning model burns its budget and returns an empty answer on ~1 in 5 items); `G5_GLM_THINKING=on` re-enables it with an 8192-token budget (the cache key records the setting). Empty replies are never cached.
 
-Backend env: `G5_QWEN_MODEL` (default `qwen3.8-27b-heretic`), `G5_QWEN_URL`, `G5_GLM_MODEL` (default `glm-4.6v-flash`), `G5_GLM_MIN_INTERVAL` (3 s),
+Anchor probe (blindness guard): before the rest of a backend's items, the six anchor photos are scored. Unless every answer is valid and the median is
+>= 7, the run stops with exit 2 (`BlindBackend`): the backend's new answers are not cached, nothing is scored and no kill-rule round is recorded. A
+blind run scores the anchors 0 ("the image was unavailable"), which is how the 2026-10-15 codex run was caught by hand. Cached answers are judged too.
+The guard has no CLI switch.
+
+Backend env: `G5_NEMOTRON_MODEL` (default `nemotron-3.5-super-vl`), `G5_QWEN_MODEL` (default `qwen3.8-27b-heretic`), `G5_QWEN_URL`, `G5_GLM_MODEL` (default `glm-4.6v-flash`), `G5_GLM_MIN_INTERVAL` (3 s),
 keys `HERCULES_API_KEY` / `GLM_API_KEY` from the environment or `~/.hermes/.env`.
 
 Deviation (D-R2-4): Hermes' `vision_analyze` aux route cannot be driven headless (OpenRouter 400/404 on both homes; no Anthropic API key; OpenAI API
