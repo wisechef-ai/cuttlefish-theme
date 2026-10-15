@@ -1,0 +1,10 @@
+{
+  "name": "cuttlefish-theme",
+  "label": "Cuttlefish",
+  "description": "Session identity and state API for the cuttlefish surfaces (read-only)",
+  "icon": "Puzzle",
+  "version": "0.22.0",
+  "tab": {"path": "/cuttlefish-theme", "position": "end", "hidden": true},
+  "entry": "dist/index.js",
+  "api": "plugin_api.py"
+}

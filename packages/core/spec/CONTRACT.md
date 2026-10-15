@@ -1,88 +1,30 @@
 # Shared contract: identity allocator, state reducer, bus and file layout
 
-`cf2909.contract/1`. Decided by the P3 lead on 2026-10-15 (card t_e4178545) so that the TS core (P2) and the
-Python half (P3), built in parallel, implement **one** algorithm. Both sides are tested against the golden
-vectors in this directory (`identity-vectors.json`, `state-vectors.json`), which the Python reference
-generates (`python3 tools/make_contract_vectors.py [--check]`, once P3-CORE lands; CI runs `--check`). A change to anything
-below is a logged lead decision, bumps the schema suffix, and regenerates the vectors in the same PR.
+`cf2909.contract/2`. Decided by the P3 lead on 2026-10-15 (card t_e4178545); revised 2026-10-16 (P3-ALIGN, ruling by the P2
+lead) so that §1–§3 are no longer restated here: the P23 contract in `packages/core/CONTRACT.md` is the single
+algorithm. This file keeps the P3-owned parts: files (§4), bus entry (§5), HTTP (§6). A change to anything
+below is a logged lead decision and bumps the schema suffix.
 
 Precedence: plan §0/§8 > §13 > this file > phase text.
 
-## 1. Identity allocator — `cf2909.identity/1`
+## 1. Allocator, reducer, resolution: see `packages/core/CONTRACT.md`
 
-All arithmetic is **integer** (hue in centidegrees, `cd`) so the two languages cannot drift on rounding.
+The identity allocator (20 hue slots, blake2b-256 preferred slot, `CAP = 3` capped farthest-point), the hook
+state reducer (event table, `STALE_S = 20.0`, 600 ms `review` dwell, `pid_dead` latch, `binding`) and
+`resolve` live in **`packages/core/CONTRACT.md` §1–§2**, and only there. This file does not restate them: a
+second copy of the algorithm is how the two halves drifted once already (see `LOG.md`, P3-ALIGN).
 
-```
-GRID        = 64
-ARC_LO_CD   = 11000          # 110.00°  (tokens.json identity.hue_arc_deg)
-ARC_SPAN_CD = 23000          # 340.00° - 110.00°
-cand(k)     = ARC_LO_CD + (ARC_SPAN_CD * (2*k + 1)) // (2*GRID)     # k in 0..63, floor division
-digest      = blake2b(utf8(lineage_root), digest_size=8)            # 8 bytes, unkeyed, no salt/person
-base        = digest[7] & 63                                        # last byte, low 6 bits
-dist(a, b)  = min(|a - b|, 36000 - |a - b|)                         # circular, centidegrees
-```
-
-- `peers` = the persisted `hue_cd` of every OTHER lineage root whose bus entry resolves to a live state
-  (§3 resolution ≠ `unknown`) at allocation time. Self is never a peer. Duplicates are kept.
-- No peers → `k* = base`.
-- Otherwise, for `j = 0..63`: `k = (base + j) % 64`, `score(k) = min over peers of dist(cand(k), p)`.
-  `k*` = the first `k` in that order with the maximum score (strict `>` when scanning, so ties go to the
-  smallest `j`).
-- Result: `hue_cd = cand(k*)` (int), `hue_deg = hue_cd / 100` (a JSON number; readers must not round it).
-- **Persistence (G0 contract 4):** once a lineage root has an entry in `identity.json` it is NEVER
-  re-allocated, whatever the peers become. Identity is therefore independent of hook order and cache state
-  after the first allocation.
-- **Fallback (registry unreachable, TS readers):** the same formula with `peers = []`, i.e. `cand(base)`,
-  plus the name label (§1.4 "same hash without peer spacing").
-- Known limit (documented, not hidden): online farthest-point never moves a persisted hue, so the worst
-  live pair at ≥ 17 peers can be as close as ~230°/32 ≈ 7.2°. G2's frozen 16/20-session identity grid is
-  measured on the evenly spaced P1 stub, not on this allocator; the P23 reviewer gets the simulated worst
-  case from the CORE card's property test.
-
-### Name label
-
-`name` = the first non-empty of: `state.db sessions.title` of the lineage root (read-only), else
-`"s-" + hex(digest)[0:4]`. Trimmed to 16 code points. Readers display it verbatim.
-
-## 2. State reducer — `cf2909.state/1`
-
-Input: the normalised event stream for ONE lineage root, in arrival order. Output: `state` ∈
-`idle | working | review | needs-you | fault | unknown`. Derived from spike 06 (§1.3 TUI column).
-
-Normalised event: `{"hook": str, "ts": float (unix s), "session_id": str, "tool_name": str|null,
-"tool_call_id": str|null, "turn_id": str|null, "completed": bool|null}`.
-
-Reducer state: `base ∈ {idle, working, review}` (initial `idle`), `pending: ordered set of keys`,
-`fault: bool`, `finalized: bool`.
-
-| hook | effect |
-|---|---|
-| `on_session_reset` | base=idle, pending=∅, fault=false, finalized=false |
-| `on_session_start` | finalized=false (no other effect) |
-| `pre_llm_call` | base=working, pending=∅, fault=false, finalized=false |
-| `pre_verify` | if base=working: base=review |
-| `post_llm_call` | fault=false; if base=review: base=working |
-| `on_session_end` | base=idle, pending=∅; if completed is true: fault=false |
-| `pre_tool_call` with tool_name `clarify` | pending += `"clarify:" + tool_call_id` |
-| `post_tool_call` with tool_name `clarify` | pending -= `"clarify:" + tool_call_id` |
-| `pre_approval_request` | pending += `"approval:" + (tool_call_id or turn_id or "")` |
-| `post_approval_response` | pending -= the same key |
-| `api_request_error` | fault=true |
-| `on_session_finalize` | finalized=true |
-| anything else | ignored (`on_stream_*` is never subscribed) |
-
-Output precedence: `finalized → unknown`; else `pending ≠ ∅ → needs-you`; else `fault → fault`; else
-`base`. "Turn ended" (`on_session_end`) is never needs-you. Fault is sticky across `on_session_end{completed:false}`
-(a 401 turn has no end hook at all).
-
-`since` = `ts` of the event that last CHANGED the output state.
-
-## 3. Resolution (what a reader may show) — `cf2909.resolve/1`
-
-`resolved = unknown` if any of: the bus entry is missing; `finalized`; `owner_host == this host` and
-`owner_pid` is not alive; `now - heartbeat > STALE_S` (`STALE_S = 30`). Otherwise `resolved = state`.
-Never the last known state. A reader on another host (remote desktop) only gets resolved values from
-`GET /state`, never the raw file.
+- Python implements them in `python/domain/{allocator,reducer,resolve}.py`; TS in `packages/core/domain/`.
+- One source of golden vectors: `packages/core/fixtures/identity-vectors.json` (2,101 cases). The Python test
+  suite matches it 2101/2101, compares 10,000 random cases against `tui/core.bundle.mjs`, and replays every
+  `tools/traces/*.jsonl` TUI trace through `python/domain/replay.py` against the bundle's `replayJson`.
+- Persistence (this file's part): a lineage root with an entry in `identity.json` is NEVER re-allocated.
+- Name label: `name` = `state.db sessions.title` of the lineage root (read-only) if non-empty, else
+  `"s-" + hex(blake2b(utf8(root), digest_size=32))[0:4]`; trimmed to 16 code points.
+- Bus-entry resolution (reader side, `resolve_entry`): `unknown` if the entry is missing or malformed, its
+  `state` is `unknown` (finalized), `owner_host == this host` and `owner_pid` is not alive, or
+  `now - heartbeat > STALE_S`; a `review` entry whose `review_until` has passed reads `idle`. Otherwise
+  `state`. A reader on another host only gets resolved values from `GET /state`, never the raw file.
 
 ## 4. Files (per `HERMES_HOME`; one write target each — G0 contract 1)
 
@@ -90,7 +32,7 @@ All under `<HERMES_HOME>/cuttlefish/`. Every write is atomic (`tmp` in the same 
 
 | file | writer | content |
 |---|---|---|
-| `identity.json` | Python half only | `{"schema":"cf2909.identity/1","rev":int,"sessions":{<lineage_root>:{"hue_cd":int,"hue_deg":num,"name":str,"allocated_at":num,"last_seen":num}}}` |
+| `identity.json` | Python half only | `{"schema":"cf2909.identity/1","rev":int,"sessions":{<lineage_root>:{"slot":int (0..19),"hue_deg":num (2 dp),"name":str,"allocated_at":num,"last_seen":num}}}` |
 | `bus/<lineage_root>.json` | Python half only (the agent process) | see §5 |
 | `state.json` | `hermes cuttlefish set` | `{"schema":"cf2909.prefs/1","mantle":"on"\|"off"\|1\|2,"cells":"auto"\|"half"\|"bg","dots":"blocks"\|"braille"}` |
 | `ledger.json` | `hermes cuttlefish setup` | exactly what setup changed (paths created, prior `display.skin`, links), so `uninstall` restores only that |
@@ -106,12 +48,13 @@ their heartbeat is older than 24 h. A sweep touches at most 64 files per call.
 ```
 {"schema":"cf2909.bus/1", "profile_home": str, "durable_id": str (current stored session_id),
  "lineage_root": str, "owner_pid": int, "owner_host": str, "seq": int (monotonic per file),
- "state": str (§2 output), "since": num, "source": str (the hook that produced it),
+ "state": str (core CONTRACT §2 resolve at the last event), "since": num (time of the last change of `state`),
+ "source": str (the hook that produced it), "review_until": num|null (the 600 ms review pulse deadline),
  "heartbeat": num (unix s, refreshed every 5 s by the owner process while alive),
- "journal": [ last ≤ 32 normalised events (§2) ] }
+ "journal": [ last ≤ 32 events {"t","kind","payload","session_id"} (core CONTRACT §2) ] }
 ```
 
-`hermes cuttlefish doctor --json` replays `journal` through the §2 reducer: `state_parity_ok` is true iff
+`hermes cuttlefish doctor --json` replays `journal` through the core-CONTRACT §2 reducer: `state_parity_ok` is true iff
 every bus entry's stored `state` equals the replay (the journal holds enough events because the reducer
 resets on `on_session_reset` / `pre_llm_call`; an entry whose journal overflowed without one of those is
 reported, not silently passed). `ok` is false if any entry whose owner pid is alive has a stale heartbeat

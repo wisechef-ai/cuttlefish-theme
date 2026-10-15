@@ -1,1 +1,2 @@
 - 2026-10-01 cf2909 P1-DB: direction B b-disruptive added (design/directions/b-disruptive, 11 behaviour tests)
+- 2026-10-16 cf2909 P3-ALIGN: Python allocator+reducer moved to packages/core/CONTRACT.md (20 slots, STALE_S 20, 600 ms review dwell, working > review) per P2-LEAD ruling; vectors 2101/2101, random 10000/10000 vs TS bundle, 11/11 TUI traces; spec/CONTRACT.md -> cf2909.contract/2 (pointer, §4–§6 kept); spec vectors + make_contract_vectors.py deleted
