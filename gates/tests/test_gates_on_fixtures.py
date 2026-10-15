@@ -64,7 +64,8 @@ class Scripted:
 def test_g5_pipeline_scores_saves_raw_and_counts_rounds(renders, tmp_path):
     a, b = Scripted(), Scripted(legend="I refuse", score="no")
     rounds = tmp_path / "rounds.json"
-    rep = g5.run(renders["bad"], {"a": a, "b": b}, seed=7, workers=2, rounds_file=rounds, limit=60)
+    # anchor_guard off: this test scores a backend that refuses everything; with the guard on it is refused before scoring (below)
+    rep = g5.run(renders["bad"], {"a": a, "b": b}, seed=7, workers=2, rounds_file=rounds, limit=60, anchor_guard=False)
     assert rep["items"] == 60 and not rep["pass"]
     assert rep["per_backend"]["b"]["invalid_or_failed_calls"] >= 55          # refusals are counted, never skipped
     assert rep["per_backend"]["b"]["legend"]["accuracy"] == 0.0
@@ -101,3 +102,50 @@ def test_legend_text_policy_follows_d_r2_5_and_overrides_work(renders):
     for cvd in ("deutan", "protan", "tritan"):                                       # CVD default = masked (pattern-only)
         a = sample(cvd, None)
         assert np.array_equal(a, sample(cvd, False)) and not np.array_equal(a, sample(cvd, True))
+
+
+BLIND = '{"score": 0, "reason": "The image was unavailable, so its resemblance to living animal skin could not be assessed."}'
+
+
+def _cache_files(root):
+    return sorted(Path(root).rglob("*.json"))
+
+
+def test_a_blind_backend_is_refused_before_scoring_and_nothing_is_cached(renders, tmp_path):
+    import g5cache
+    blind, sighted = Scripted(score=BLIND), Scripted(score='{"score": 9}')
+    rounds, cache = tmp_path / "rounds.json", g5cache.Cache(tmp_path / "cache")
+    with pytest.raises(g5.BlindBackend, match="anchor probe"):
+        g5.run(renders["good"], {"blind": blind, "sighted": sighted}, seed=3, workers=2, rounds_file=rounds, limit=40, cache=cache)
+    n_photos = len(g5.g5items.anchor_items())
+    assert n_photos >= 3 and len(blind.seen) == n_photos          # only the probe was spent, never the other items
+    assert sighted.seen == []                                     # refused before the next backend runs
+    assert _cache_files(tmp_path / "cache") == []                 # no blind answer is cached
+    assert not rounds.exists()                                    # no kill-rule round is recorded
+
+
+def test_blind_answers_already_in_the_cache_are_still_refused(renders, tmp_path):
+    import g5backends
+    import g5cache
+    cache = g5cache.Cache(tmp_path / "cache")
+    g5.run(renders["good"], {"a": Scripted(score=BLIND), "b": Scripted()}, seed=3, rounds_file=None, limit=10, cache=g5cache.Cache(tmp_path / "x", enabled=False), anchor_guard=False)
+    # poison: put blind anchor answers into the cache under backend "a", as the 2026-10-15 codex run did
+    for it in g5.g5items.anchor_items():
+        png = renders["good"].parent / "g5_raw" / "images" / f"{it.id}.png"
+        it.image.save(png)
+        cache.put(g5cache.key("a", g5backends.cache_model("a"), png, it.prompt), BLIND)
+    fresh = Scripted(score='{"score": 9}')
+    with pytest.raises(g5.BlindBackend, match="served from cache"):
+        g5.run(renders["good"], {"a": fresh, "b": Scripted()}, seed=3, rounds_file=None, limit=10, cache=cache)
+    assert fresh.seen == []                                       # every probe answer came from the poisoned cache
+
+
+def test_a_sighted_run_records_the_probe_and_commits_its_cache(renders, tmp_path):
+    import g5cache
+    a, b = Scripted(score='{"score": 9}'), Scripted(score='{"score": 8}')
+    rep = g5.run(renders["good"], {"a": a, "b": b}, seed=3, rounds_file=None, limit=12, cache=g5cache.Cache(tmp_path / "cache"))
+    assert rep["anchor_probe"]["a"]["ok"] and rep["anchor_probe"]["a"]["median"] == 9 and rep["anchor_probe"]["b"]["median"] == 8
+    n_photos = len(g5.g5items.anchor_items())
+    probe_extra = n_photos - sum(1 for r in rep["per_backend"]["a"]["anchor_photos"]["scores"])
+    assert len(_cache_files(tmp_path / "cache")) == 2 * (12 + probe_extra)
+    assert "Anchor probe" in g5.to_markdown(rep)

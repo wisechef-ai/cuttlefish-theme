@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """G5: blind vision gate (tools/p1/CONTRACT.md section 5). Two independent vision backends, fixed prompts, no design context.
 
-    gates/.venv/bin/python gates/g5.py <manifest.json> [--backends qwen,glm] [--seed 2909] [--workers 4]
+    gates/.venv/bin/python gates/g5.py <manifest.json> [--backends qwen,nemotron] [--seed 2909] [--workers 4]
 
 Exit 0 = PASS (every backend passes every task), 1 = FAIL, 2 = instrument error, 3 = partial run (--tasks subset) with no failure. Writes g5.json + g5.md next to the manifest, every
 raw model response under g5_raw/<backend>/, and appends the run to gates/g5_rounds.json (the kill-rule counter).
@@ -28,6 +28,39 @@ import gatelib as gl  # noqa: E402
 
 ROUNDS_FILE = Path(__file__).resolve().parent / "g5_rounds.json"
 ANCHOR_MEDIAN_MIN = g5lib.AESTHETIC_MEDIAN_MIN
+
+
+class BlindBackend(RuntimeError):
+    """A backend failed the anchor probe: it could not see its images. Nothing it answered is cached or scored, no round is recorded."""
+
+
+class SameWeights(RuntimeError):
+    """Two lanes resolve to the same served weights: the "two independent families" premise is false. Nothing is run."""
+
+
+def family_check(names, identify=None) -> dict:
+    """``{backend: served identity}``; raises SameWeights when two backends share one (2026-10-16: hercules served one checkpoint
+    under every model id, so the validated "qwen,nemotron" pair was Nemotron twice)."""
+    identify = identify or g5backends.served_identity
+    served = {n: identify(n) for n in names}
+    seen = {}
+    for n, ident in served.items():
+        if ident in seen:
+            raise SameWeights(f"backends {seen[ident]!r} and {n!r} are the same model ({ident}); G5 needs two independent families")
+        seen[ident] = n
+    return served
+
+
+def anchor_probe(results: list[dict]) -> dict:
+    """The blindness guard. Real-animal anchor photos score ~9 for a sighted model and 0 ("the image was unavailable") for a blind
+    one (P1 G5, 2026-10-15: every codex answer was blind and it was caught by hand). A backend passes only if every anchor answer is
+    valid and their median is >= ANCHOR_MEDIAN_MIN."""
+    scores = [r["value"] if r["valid"] else None for r in results]
+    good = [v for v in scores if v is not None]
+    med = statistics.median(good) if good else None
+    ok = bool(scores) and len(good) == len(scores) and med is not None and med >= ANCHOR_MEDIAN_MIN
+    return {"ok": ok, "median": med, "scores": scores, "floor": ANCHOR_MEDIAN_MIN, "n": len(scores),
+            "cached": sum(1 for r in results if r.get("cached")), "errors": [r["transport_error"] or r["parse_error"] for r in results if not r["valid"]][:3]}
 
 
 def ask(backend_fn, item: g5items.Item, png: Path, attempts: int = 5) -> dict:
@@ -108,6 +141,11 @@ def to_markdown(rep: dict) -> str:
     ca = rep.get("cache", {})
     if ca:
         L += ["Answer cache: " + ", ".join(f"`{b}` {c['cached']}/{c['calls']} answers served from cache" for b, c in ca.items()) + (" (cache disabled)" if not rep.get("cache_enabled", True) else "") + ".", ""]
+    if rep.get("served"):
+        L += ["Served weights (family check: two lanes on one checkpoint are refused): " + ", ".join(f"`{b}` = {w}" for b, w in rep["served"].items()) + ".", ""]
+    if rep.get("anchor_probe"):
+        L += ["Anchor probe (blindness guard, run first; a backend below the floor is refused before scoring): " + ", ".join(
+            f'`{b}` median {p["median"]} over {p["n"]} photos -> {"ok" if p["ok"] else "**BLIND**"}' for b, p in rep["anchor_probe"].items()) + ".", ""]
     for b, s in rep["per_backend"].items():
         a, lg = s["aesthetic"], s["legend"]
         L += [f"## Backend `{b}`: {'PASS' if s['pass'] else 'FAIL'}", "",
@@ -128,7 +166,11 @@ def to_markdown(rep: dict) -> str:
 
 
 def run(manifest_path, backends: dict, seed: int = 2909, workers: int = 4, direction_dir_hint=None, rounds_file: Path | None = ROUNDS_FILE, limit=None,
-        sample: int | None = None, tasks=g5items.TASKS, keep_alarm_text: bool | None = None, cache: g5cache.Cache | None = None) -> dict:
+        sample: int | None = None, tasks=g5items.TASKS, keep_alarm_text: bool | None = None, cache: g5cache.Cache | None = None,
+        anchor_guard: bool = True, identify=None) -> dict:
+    """``anchor_guard`` (default on; the CLI has no switch) runs the anchor photos first on every backend and raises BlindBackend
+    when a backend cannot see them, before the rest of the items are spent. Off only in tests that score scripted refusals."""
+    served = family_check(list(backends), identify)   # before any image is rendered or any call is made
     man = gl.load_manifest(manifest_path)
     ddir = dt.resolve_direction_dir(man.direction, direction_dir_hint)
     items = g5items.build_items(man, ddir, seed, tasks, keep_alarm_text)
@@ -141,21 +183,39 @@ def run(manifest_path, backends: dict, seed: int = 2909, workers: int = 4, direc
     raw_dir = man.root / "g5_raw"
     img_dir = raw_dir / "images"
     img_dir.mkdir(parents=True, exist_ok=True)
+    ids = {it.id for it in items}
+    probe_items = [it for it in items if it.family == "photo"] + [a for a in g5items.anchor_items() if a.id not in ids] if anchor_guard else []
     pngs = {}
-    for it in items:
-        pngs[it.id] = img_dir / f"{it.id}.png"
+    for it in items + [p for p in probe_items if p.id not in ids]:
+        pngs[it.id] = (img_dir / f"{it.id}.png").resolve()
         it.image.save(pngs[it.id])
-    per, cache_stats = {}, {}
+    per, cache_stats, probes = {}, {}, {}
     for name, fn in backends.items():
-        if cache is not None:
-            fn = g5cache.cached(fn, name, g5backends.cache_model(name), cache)
-        results = run_backend(name, fn, items, pngs, raw_dir, workers)
+        staged = g5cache.Staged(cache) if cache is not None else None
+        if staged is not None:
+            fn = g5cache.cached(fn, name, g5backends.cache_model(name), staged)
+        done = {}
+        if anchor_guard:
+            probe = run_backend(name, fn, probe_items, pngs, raw_dir, workers)
+            probes[name] = anchor_probe(probe)
+            if not probes[name]["ok"]:
+                dropped = staged.discard() if staged is not None else 0
+                p = probes[name]
+                raise BlindBackend(f"backend {name!r} failed the anchor probe: median {p['median']} < {ANCHOR_MEDIAN_MIN} or invalid answers "
+                                   f"(scores {p['scores']}; {p['cached']} served from cache; e.g. {p['errors']}). It cannot see its images: "
+                                   f"{dropped} new answers NOT cached, nothing scored, no round recorded. Raw answers kept in {raw_dir / name}.")
+            done = {r["id"]: r for r in probe}
+        rest = run_backend(name, fn, [it for it in items if it.id not in done], pngs, raw_dir, workers)
+        done.update({r["id"]: r for r in rest})
+        results = [done[it.id] for it in items]
+        if staged is not None:
+            staged.commit()
         cache_stats[name] = {"cached": sum(1 for r in results if r["cached"]), "calls": len(results)}
         per[name] = score_backend(results, tasks)
     rep = {"schema": "cf2909.p1.g5/1", "direction": man.direction, "manifest": str(man.path), "seed": seed, "items": len(items),
-           "backends": list(backends), "models": {b: g5backends.label(b) for b in backends}, "per_backend": per,
+           "backends": list(backends), "models": {b: g5backends.label(b) for b in backends}, "served": served, "per_backend": per,
            "pass": all(s["pass"] for s in per.values()), "synthetic": bool(man.raw.get("synthetic")), "sampled_per_cell": sample,
-           "keep_alarm_text": keep_alarm_text, "cache": cache_stats, "cache_enabled": bool(cache and cache.enabled), "tasks": list(tasks), "partial": tuple(tasks) != g5items.TASKS}
+           "keep_alarm_text": keep_alarm_text, "cache": cache_stats, "anchor_probe": probes, "cache_enabled": bool(cache and cache.enabled), "tasks": list(tasks), "partial": tuple(tasks) != g5items.TASKS}
     if rounds_file is not None:
         rep["round"] = g5lib.record_round(rounds_file, man.direction, rep["pass"], backends=list(backends), seed=seed,
                                           manifest=str(man.path), synthetic=rep["synthetic"])
@@ -184,7 +244,7 @@ def main(argv=None) -> int:
         return 2
     names = [n.strip() for n in a.backends.split(",") if n.strip()]
     if len(set(names)) < 2 or any(g5backends.resolve(n) is None for n in names):
-        print(f"G5 needs two distinct backends: qwen, glm, codex, gemini:<model>, openrouter[:<vendor/model>]; got {names}", file=sys.stderr)
+        print(f"G5 needs two distinct backends: qwen, glm, nemotron, codex, gemini:<model>, openrouter[:<vendor/model>]; got {names}", file=sys.stderr)
         return 2
     try:
         rep = run(a.manifest, {n: g5backends.resolve(n) for n in names}, a.seed, a.workers, a.direction_dir,

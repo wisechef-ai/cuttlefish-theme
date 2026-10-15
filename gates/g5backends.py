@@ -1,14 +1,16 @@
 """Vision backends for G5. Each is ``fn(png_path, prompt) -> raw answer text``; exceptions mean a transport failure.
 
 qwen   : qwen3.8-27b on hercules (OpenAI-compatible, local, private-safe; HERCULES_API_KEY; model via G5_QWEN_MODEL; thinking off).
+nemotron : nemotron-3.5-super-vl on the same hercules server (a second, NVIDIA model family; model via G5_NEMOTRON_MODEL; thinking off).
 glm    : zai glm-4.6v-flash (OpenAI-compatible, free tier; GLM_API_KEY; model via G5_GLM_MODEL). Paced (G5_GLM_MIN_INTERVAL, default 3 s)
          and held to one in-flight request (G5_GLM_CONCURRENCY) because 3 concurrent workers draw 429s; 429/5xx are retried with exponential backoff + jitter, bounded, then a TransportError.
 codex  : OpenAI via ``codex exec -i`` run in an empty temp dir with user config and rules ignored, so no repo or design context loads (optional).
 gemini:<model> : Google generativelanguage REST (GEMINI_API_KEY; free tier is 20 requests/day per model: smoke only).
 openrouter : OpenRouter chat completions with an image part (optional; default anthropic/claude-sonnet-4.5).
 
-The default pair is ``qwen,glm``: two independent model families that are free/local, so a full gate run costs nothing and never
-leaves the quota.
+DEFAULT PAIR: see ``DEFAULT_BACKENDS`` and the family-validation note in gates/README.md. Two lanes count as two families only if
+``served_identity`` differs: ``g5.run`` refuses a pair that resolves to the same weights (hercules aliases every model id to the one
+checkpoint it serves, so ``qwen`` and ``nemotron`` were the same model on 2026-10-16).
 
 DEVIATION (D-R2-4, logged on t_0c601204): the Hermes ``vision_analyze`` path cannot be driven headless today. Its auxiliary vision
 route resolves to an OpenRouter endpoint that answers 400 "claude-sonnet-5-5 is not a valid model ID" (default home) or
@@ -81,7 +83,7 @@ def gemini_backend(png: Path, prompt: str, model: str = "gemini-3-flash-preview"
     return "".join(p.get("text", "") for p in parts)   # a blocked/empty reply is scored as invalid
 
 
-DEFAULT_BACKENDS = "qwen,glm"
+DEFAULT_BACKENDS = "nemotron,codex"
 BACKOFF_BASE = 2.0           # seconds; doubles per retry, plus up to BACKOFF_BASE of jitter
 RETRYABLE = {408, 425, 429, 500, 502, 503, 504}
 
@@ -150,6 +152,8 @@ def model_id(name: str) -> str:
         return os.environ.get("G5_QWEN_MODEL") or "qwen3.8-27b-heretic"
     if name == "glm":
         return os.environ.get("G5_GLM_MODEL") or "glm-4.6v-flash"
+    if name == "nemotron":
+        return os.environ.get("G5_NEMOTRON_MODEL") or "nemotron-3.5-super-vl"
     if name == "codex":
         return CODEX_MODEL or "codex-default"
     if name.startswith(("openrouter:", "gemini:")):
@@ -157,13 +161,21 @@ def model_id(name: str) -> str:
     return {"openrouter": OPENROUTER_MODEL}.get(name, name)
 
 
-_GLM_PACER, _QWEN_PACER = Pacer(), Pacer()
+_GLM_PACER, _QWEN_PACER, _NEMOTRON_PACER = Pacer(), Pacer(), Pacer()
 _GLM_GATE = threading.Semaphore(int(os.environ.get("G5_GLM_CONCURRENCY", "1")))   # 3 concurrent workers drew 429s (probe 2026-10-07)
 
 
+HERCULES_URL = "http://100.106.27.136:8000/v1/chat/completions"
+
+
 def qwen_config() -> OpenAICompat:
-    return OpenAICompat(url=os.environ.get("G5_QWEN_URL", "http://100.106.27.136:8000/v1/chat/completions"), key_name="HERCULES_API_KEY",
+    return OpenAICompat(url=os.environ.get("G5_QWEN_URL", HERCULES_URL), key_name="HERCULES_API_KEY",
                         model=model_id("qwen"), extra_body={"chat_template_kwargs": {"enable_thinking": False}}, pacer=_QWEN_PACER)
+
+
+def nemotron_config() -> OpenAICompat:
+    return OpenAICompat(url=os.environ.get("G5_NEMOTRON_URL", HERCULES_URL), key_name="HERCULES_API_KEY",
+                        model=model_id("nemotron"), extra_body={"chat_template_kwargs": {"enable_thinking": False}}, pacer=_NEMOTRON_PACER)
 
 
 def glm_thinking() -> bool:
@@ -188,34 +200,95 @@ def glm_backend(png: Path, prompt: str) -> str:
     return openai_compat_call(glm_config(), png, prompt)
 
 
+def nemotron_backend(png: Path, prompt: str) -> str:
+    return openai_compat_call(nemotron_config(), png, prompt)
+
+
 def cache_model(name: str) -> str:
     """The model plus the request settings that change its answers; part of the answer-cache key."""
-    cfg = {"qwen": qwen_config, "glm": glm_config}.get(name)
+    cfg = {"qwen": qwen_config, "glm": glm_config, "nemotron": nemotron_config}.get(name)
     if not cfg:
         return model_id(name)
     c = cfg()
     return f"{c.model}|{json.dumps(c.extra_body, sort_keys=True)}|max_tokens={c.max_tokens}"
 
 
-qwen_backend.retries_internal = glm_backend.retries_internal = True
+qwen_backend.retries_internal = glm_backend.retries_internal = nemotron_backend.retries_internal = True
 
 
-def codex_backend(png: Path, prompt: str) -> str:
-    with tempfile.TemporaryDirectory() as work:
-        out = Path(work) / "answer.txt"
-        cmd = ["codex", "exec", "--skip-git-repo-check", "--ephemeral", "--ignore-rules", "--ignore-user-config", "-s", "read-only",
-               "-i", str(png), "-o", str(out)] + (["-m", CODEX_MODEL] if CODEX_MODEL else []) + ["-"]
-        p = subprocess.run(cmd, input=prompt, cwd=work, capture_output=True, text=True, timeout=240)
+HERCULES_LANES = ("qwen", "nemotron")
+
+
+def _get_json(url: str, key: str) -> dict:
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {key}"})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        return json.load(r)
+
+
+def served_identity(name: str, fetch=None) -> str:
+    """The weights that actually answer for a lane, which is what "two independent families" has to mean.
+
+    A model id is not a family. On 2026-10-16 hercules answered to ``qwen3.8-27b-heretic``, ``superqwen3.8-27b``, ``local-llm`` and
+    ``nemotron-3.5-super-vl`` with ONE checkpoint (every ``/v1/models`` entry had ``root`` = Nemotron-3.5-Super-VL), so the
+    ``qwen`` lane silently ran nemotron and a "qwen,nemotron" pair was one model asked twice. For the hercules lanes this asks the
+    server (``/v1/models`` -> ``root``); an unserved model id is a TransportError. Every other lane is identified by its provider
+    and model id (no network)."""
+    if name in HERCULES_LANES:
+        cfg = qwen_config() if name == "qwen" else nemotron_config()
+        url = cfg.url.rsplit("/chat/completions", 1)[0] + "/models"
+        try:
+            data = (fetch or _get_json)(url, _env_key(cfg.key_name))
+        except Exception as e:  # noqa: BLE001: the identity of an instrument we cannot reach is unknown, never assumed
+            raise TransportError(f"{name}: cannot ask {url} which weights serve {cfg.model!r}: {e}") from e
+        for m in data.get("data", []):
+            if m.get("id") == cfg.model:
+                return "hercules:" + Path(str(m.get("root") or m["id"])).name
+        raise TransportError(f"{name}: {cfg.model!r} is not served at {url} (served: {[m.get('id') for m in data.get('data', [])]})")
+    if name == "codex":
+        return f"openai:codex:{CODEX_MODEL or 'default'}"
+    if name == "glm":
+        return f"zai:{model_id('glm')}"
+    return name
+
+
+CODEX_IMAGE_NAME = "image.png"
+
+
+def codex_cmd(image: Path, out: Path) -> list[str]:
+    """``-i`` is variadic in codex-cli, so it is always followed by another flag (``-o``), never by the ``-`` prompt marker."""
+    return (["codex", "exec", "--skip-git-repo-check", "--ephemeral", "--ignore-rules", "--ignore-user-config", "-s", "read-only",
+             "-i", str(image), "-o", str(out)] + (["-m", CODEX_MODEL] if CODEX_MODEL else []) + ["-"])
+
+
+def codex_backend(png: Path, prompt: str, run=subprocess.run) -> str:
+    """One blind codex call. Two failure modes found in the P1 G5 run (2026-10-15) are closed here:
+
+    * codex-cli does not fail on an unreadable ``-i`` path: it swaps the image for the text "Codex could not read the local image
+      at ..." and the model answers blind ("The image was unavailable"). The harness passed a path relative to the caller while
+      running codex with ``cwd`` = a fresh temp dir, so every image was unreadable. The image is now copied into the temp dir and
+      passed by absolute path, and a missing source is a TransportError before any call is made.
+    * codex-cli puts ``<image path="...">`` in the prompt, and item file names carry the truth (``legend-...-working-t000``,
+      ``identity-07-s13``). The copy has a neutral name, so the model never sees the item id.
+
+    The bubblewrap user-namespace warning on stderr is unrelated: it concerns shell tools, and none are needed for one image.
+    """
+    src = Path(png).resolve()
+    if not src.is_file():
+        raise TransportError(f"codex: image not found: {src}")
+    with tempfile.TemporaryDirectory(prefix="g5codex-") as work:
+        image, out = Path(work) / CODEX_IMAGE_NAME, Path(work) / "answer.txt"
+        image.write_bytes(src.read_bytes())
+        p = run(codex_cmd(image, out), input=prompt, cwd=work, capture_output=True, text=True, timeout=240)
         if p.returncode != 0 or not out.exists():
-            raise RuntimeError(f"codex exec failed rc={p.returncode}: {p.stderr.strip()[-300:]}")
+            raise TransportError(f"codex exec failed rc={p.returncode}: {(p.stderr or '').strip()[-300:]}")
         return out.read_text()
 
 
-BACKENDS = {"qwen": qwen_backend, "glm": glm_backend, "openrouter": openrouter_backend, "codex": codex_backend}
+BACKENDS = {"qwen": qwen_backend, "glm": glm_backend, "nemotron": nemotron_backend, "openrouter": openrouter_backend, "codex": codex_backend}
 
 
 def resolve(name: str):
-    """'qwen', 'glm', 'codex', 'gemini:<model>', 'openrouter' (default model) or 'openrouter:<vendor/model>' -> callable; None if unknown."""
+    """'qwen', 'glm', 'nemotron', 'codex', 'gemini:<model>', 'openrouter' (default model) or 'openrouter:<vendor/model>' -> callable; None if unknown."""
     if name in BACKENDS:
         return BACKENDS[name]
     if name.startswith("openrouter:") and len(name) > len("openrouter:"):
@@ -228,4 +301,4 @@ def resolve(name: str):
 def label(name: str) -> str:
     if name.startswith(("openrouter:", "gemini:")):
         return name.replace(":", " ", 1)
-    return {"qwen": f"qwen via hercules ({model_id('qwen')})", "glm": f"zai {model_id('glm')}", "openrouter": f"openrouter {OPENROUTER_MODEL}", "codex": f"openai via codex exec ({CODEX_MODEL or 'codex default model'})"}.get(name, name)
+    return {"qwen": f"qwen via hercules ({model_id('qwen')})", "glm": f"zai {model_id('glm')}", "nemotron": f"nemotron via hercules ({model_id('nemotron')})", "openrouter": f"openrouter {OPENROUTER_MODEL}", "codex": f"openai via codex exec ({CODEX_MODEL or 'codex default model'})"}.get(name, name)

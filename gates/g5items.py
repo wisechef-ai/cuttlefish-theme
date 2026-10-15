@@ -153,10 +153,15 @@ def aesthetic_items(man: gl.Manifest) -> list[Item]:
     items = [Item(id=f"aesthetic-{fam}-{Path(e.file).stem}", kind="aesthetic", family=fam, variant="plain", truth=None,
                   image=prep(_crop_img(man, e, None)), prompt_file="aesthetic_xl.txt" if fam == "XL" else "aesthetic_ms.txt",
                   task="score", source=e.file) for e, fam in picks]
-    for p in sorted(PHOTOS.glob("p*.jpg")):
-        items.append(Item(id=f"aesthetic-photo-{p.stem}", kind="aesthetic", family="photo", variant="plain", truth=None,
-                          image=prep(Image.open(p)), prompt_file="aesthetic_xl.txt", task="score", source=f"photos/{p.name}"))
-    return items
+    return items + anchor_items()
+
+
+def anchor_items() -> list[Item]:
+    """The real-animal anchor photos, scored with the XL aesthetic prompt. A sighted model rates them high (~9); a run that
+    cannot see its images rates them 0 ("image unavailable"), so their median is the harness's blindness probe."""
+    return [Item(id=f"aesthetic-photo-{p.stem}", kind="aesthetic", family="photo", variant="plain", truth=None,
+                 image=prep(Image.open(p)), prompt_file="aesthetic_xl.txt", task="score", source=f"photos/{p.name}")
+            for p in sorted(PHOTOS.glob("p*.jpg"))]
 
 
 # ---- identity -------------------------------------------------------------------------------
