@@ -1,0 +1,13 @@
+{"hook":"on_session_reset","ts":0.0,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":null,"completed":null}
+{"hook":"on_session_start","ts":5.36,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":null,"completed":null}
+{"hook":"pre_llm_call","ts":5.39,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t1","completed":null}
+{"hook":"post_llm_call","ts":22.51,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t1","completed":null}
+{"hook":"on_session_end","ts":22.53,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t1","completed":true}
+{"hook":"pre_llm_call","ts":24.42,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t2","completed":null}
+{"hook":"post_llm_call","ts":25.7,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t2","completed":null}
+{"hook":"on_session_end","ts":25.7,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t2","completed":true}
+{"hook":"pre_llm_call","ts":47.56,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t3","completed":null}
+{"hook":"post_llm_call","ts":48.38,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t3","completed":null}
+{"hook":"on_session_end","ts":48.38,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t3","completed":true}
+{"hook":"on_session_end","ts":51.53,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":null,"completed":false}
+{"hook":"on_session_finalize","ts":51.53,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":null,"completed":null}

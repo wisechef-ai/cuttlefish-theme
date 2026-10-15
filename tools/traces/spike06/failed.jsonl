@@ -1,0 +1,8 @@
+{"hook":"on_session_reset","ts":0.0,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":null,"completed":null}
+{"hook":"on_session_start","ts":3.46,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":null,"completed":null}
+{"hook":"pre_llm_call","ts":3.49,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t1","completed":null}
+{"hook":"api_request_error","ts":4.48,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t1","completed":null}
+{"hook":"pre_llm_call","ts":47.05,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t2","completed":null}
+{"hook":"api_request_error","ts":47.21,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t2","completed":null}
+{"hook":"on_session_end","ts":77.49,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":null,"completed":false}
+{"hook":"on_session_finalize","ts":77.49,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":null,"completed":null}

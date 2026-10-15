@@ -1,0 +1,17 @@
+{"hook":"on_session_reset","ts":0.0,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":null,"completed":null}
+{"hook":"on_session_start","ts":4.74,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":null,"completed":null}
+{"hook":"pre_llm_call","ts":4.79,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t1","completed":null}
+{"hook":"pre_tool_call","ts":10.24,"session_id":"S1","tool_name":"write_file","tool_call_id":"c1","turn_id":"S1:t1","completed":null}
+{"hook":"post_tool_call","ts":18.88,"session_id":"S1","tool_name":"write_file","tool_call_id":"c1","turn_id":"S1:t1","completed":null}
+{"hook":"pre_verify","ts":21.59,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":null,"completed":null}
+{"hook":"post_llm_call","ts":21.68,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t1","completed":null}
+{"hook":"on_session_end","ts":21.7,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t1","completed":true}
+{"hook":"pre_llm_call","ts":22.92,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t2","completed":null}
+{"hook":"pre_tool_call","ts":25.11,"session_id":"S1","tool_name":"terminal","tool_call_id":"c2","turn_id":"S1:t2","completed":null}
+{"hook":"pre_approval_request","ts":25.92,"session_id":"S1","tool_name":null,"tool_call_id":"c2","turn_id":"S1:t2","completed":null}
+{"hook":"post_approval_response","ts":32.22,"session_id":"S1","tool_name":null,"tool_call_id":"c2","turn_id":"S1:t2","completed":null}
+{"hook":"post_tool_call","ts":32.22,"session_id":"S1","tool_name":"terminal","tool_call_id":"c2","turn_id":"S1:t2","completed":null}
+{"hook":"post_llm_call","ts":33.91,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t2","completed":null}
+{"hook":"on_session_end","ts":33.91,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":"S1:t2","completed":true}
+{"hook":"on_session_end","ts":36.35,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":null,"completed":false}
+{"hook":"on_session_finalize","ts":36.36,"session_id":"S1","tool_name":null,"tool_call_id":null,"turn_id":null,"completed":null}
