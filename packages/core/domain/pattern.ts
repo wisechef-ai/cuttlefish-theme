@@ -25,8 +25,8 @@ export interface PaintArgs {
 }
 
 // Tokens that tokens.json documents only in prose (fault blanch, unknown grey) live here.
-const BLANCH = { L: 0.9, C: 0.035 };
-const GREY = { L: 0.6, C: 0 };
+export const BLANCH = { L: 0.9, C: 0.035 };
+export const GREY = { L: 0.6, C: 0 };
 const GROUND: RGB = [...T.ground.rgb] as RGB;
 const AMBER: RGB = [...T.alarm.amber.rgb] as RGB;
 const RED: RGB = [...T.alarm.red.rgb] as RGB;
