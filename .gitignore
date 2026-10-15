@@ -11,3 +11,4 @@ gate-*.txt
 tools/.venv/
 tools/node_modules/
 gates/.g5_cache/
+tools/traces/out/

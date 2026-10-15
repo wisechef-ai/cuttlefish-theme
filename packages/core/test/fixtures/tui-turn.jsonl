@@ -1,0 +1,11 @@
+{"v":1,"src":"meta","kind":"trace","name":"tui-turn","host":"tui","runtime":"upstream","runtime_sha":"f42f579cf8b","recorded_at":"2026-10-15T00:00:00Z","model":"custom:qwen38-local","profiles":["A"],"notes":"hand-written mini trace (not a recording)"}
+{"v":1,"t":0,"src":"hook","profile":"A","session":"S1","lineage_root":"R1","kind":"on_session_reset","payload":{}}
+{"v":1,"t":1,"src":"liveness","profile":"A","session":"S1","lineage_root":"R1","kind":"heartbeat","payload":{}}
+{"v":1,"t":2,"src":"hook","profile":"A","session":"S1","lineage_root":"R1","kind":"pre_llm_call","payload":{}}
+{"v":1,"t":4,"src":"hook","profile":"A","session":"S1","lineage_root":"R1","kind":"pre_tool_call","payload":{"tool_name":"clarify","tool_call_id":"c1"}}
+{"v":1,"t":6,"src":"hook","profile":"A","session":"S1","lineage_root":"R1","kind":"post_tool_call","payload":{"tool_name":"clarify","tool_call_id":"c1"}}
+{"v":1,"t":7,"src":"hook","profile":"A","session":"S1","lineage_root":"R1","kind":"pre_verify","payload":{}}
+{"v":1,"t":7.1,"src":"hook","profile":"A","session":"S1","lineage_root":"R1","kind":"on_session_end","payload":{"completed":true}}
+{"v":1,"t":8,"src":"hook","profile":"A","session":"S1","lineage_root":"R1","kind":"pre_llm_call","payload":{}}
+{"v":1,"t":9,"src":"hook","profile":"A","session":"S1","lineage_root":"R1","kind":"api_request_error","payload":{"status_code":401,"retryable":false}}
+{"v":1,"t":9.5,"src":"observe","profile":"A","session":"S1","lineage_root":"R1","kind":"screen","payload":{"status":"ready"}}
