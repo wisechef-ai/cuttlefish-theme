@@ -1,5 +1,4 @@
 """Shared fixtures: every test runs against a throwaway HERMES_HOME, never ~/.hermes."""
-import os
 import pytest
 
 

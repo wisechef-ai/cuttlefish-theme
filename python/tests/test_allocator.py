@@ -1,5 +1,4 @@
 """CONTRACT §1: hand-computed examples (integer arithmetic, no float)."""
-import itertools
 import random
 
 from cuttlefish_theme.python.domain import allocator as A

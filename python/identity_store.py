@@ -1,5 +1,4 @@
 """``identity.json`` (CONTRACT §1/§4): allocate on the first hook for an unknown lineage root, then never again."""
-import json
 import os
 import sqlite3
 import threading
