@@ -5,6 +5,7 @@
   "version": "0.0.0",
   "description": "cf2909 shared core: pure domain + ports + app (no I/O in domain).",
   "scripts": {
+    "build": "node build.mjs",
     "test": "node --test \"test/**/*.test.ts\""
   },
   "devDependencies": {

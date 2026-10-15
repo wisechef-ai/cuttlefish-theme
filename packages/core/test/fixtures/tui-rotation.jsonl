@@ -1,0 +1,7 @@
+{"v":1,"src":"meta","kind":"trace","name":"tui-rotation","host":"tui","runtime":"upstream","runtime_sha":"f42f579cf8b","recorded_at":"2026-10-15T00:00:00Z","model":"custom:qwen38-local","profiles":["A"],"notes":"hand-written mini trace (not a recording)"}
+{"v":1,"t":0,"src":"hook","profile":"A","session":"S1","lineage_root":"R1","kind":"pre_llm_call","payload":{}}
+{"v":1,"t":2,"src":"hook","profile":"A","session":"S1","lineage_root":"R1","kind":"on_session_end","payload":{"completed":true}}
+{"v":1,"t":3,"src":"hook","profile":"A","session":"Q1","lineage_root":"R2","kind":"pre_llm_call","payload":{}}
+{"v":1,"t":5,"src":"hook","profile":"A","session":"S2","lineage_root":"R1","kind":"pre_llm_call","payload":{}}
+{"v":1,"t":6,"src":"hook","profile":"A","session":"S2","lineage_root":"R1","kind":"pre_tool_call","payload":{"tool_name":"clarify","tool_call_id":"c9"}}
+{"v":1,"t":8,"src":"hook","profile":"A","session":"S3","lineage_root":"R1","kind":"on_session_end","payload":{"completed":true}}

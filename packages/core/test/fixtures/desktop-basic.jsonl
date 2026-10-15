@@ -1,0 +1,16 @@
+{"v":1,"src":"meta","kind":"trace","name":"desktop-basic","host":"desktop","runtime":"upstream","runtime_sha":"f42f579cf8b","recorded_at":"2026-10-15T00:00:00Z","model":"custom:qwen38-local","profiles":["A"],"notes":"hand-written mini trace (not a recording)"}
+{"v":1,"t":0,"src":"desktop.state","profile":"A","session":null,"lineage_root":null,"kind":"state","payload":{"gateway":"open"}}
+{"v":1,"t":1,"src":"desktop.event","profile":"A","session":"rt1","lineage_root":null,"kind":"session.info","payload":{"stored_session_id":"st1"}}
+{"v":1,"t":2,"src":"desktop.state","profile":"A","session":null,"lineage_root":null,"kind":"state","payload":{"gateway":"open","busyBySession":{"rt1":true}}}
+{"v":1,"t":2,"src":"desktop.dot","profile":"A","session":"st1","lineage_root":null,"kind":"dot","payload":{"label":"Session running"}}
+{"v":1,"t":4,"src":"desktop.dot","profile":"A","session":"st1","lineage_root":null,"kind":"dot","payload":{"label":"Needs your input"}}
+{"v":1,"t":6,"src":"desktop.dot","profile":"A","session":"st1","lineage_root":null,"kind":"dot","payload":{"label":"Session running"}}
+{"v":1,"t":8,"src":"desktop.event","profile":"A","session":"rt1","lineage_root":null,"kind":"message.complete","payload":{"status":"error"}}
+{"v":1,"t":8,"src":"desktop.state","profile":"A","session":null,"lineage_root":null,"kind":"state","payload":{"gateway":"open","busyBySession":{"rt1":false}}}
+{"v":1,"t":8,"src":"desktop.dot","profile":"A","session":"st1","lineage_root":null,"kind":"dot","payload":{"label":""}}
+{"v":1,"t":10,"src":"desktop.event","profile":"A","session":"rt1","lineage_root":null,"kind":"message.start","payload":{}}
+{"v":1,"t":10,"src":"desktop.state","profile":"A","session":null,"lineage_root":null,"kind":"state","payload":{"gateway":"open","busyBySession":{"rt1":true}}}
+{"v":1,"t":10,"src":"desktop.dot","profile":"A","session":"st1","lineage_root":null,"kind":"dot","payload":{"label":"Session running"}}
+{"v":1,"t":12,"src":"desktop.state","profile":"A","session":null,"lineage_root":null,"kind":"state","payload":{"gateway":"closed","busyBySession":{"rt1":true}}}
+{"v":1,"t":14,"src":"desktop.dot","profile":"A","session":"st1","lineage_root":null,"kind":"dot","payload":{"label":""}}
+{"v":1,"t":16,"src":"desktop.state","profile":"A","session":null,"lineage_root":null,"kind":"state","payload":{"gateway":"open","busyBySession":{"rt1":false}}}

@@ -102,12 +102,19 @@ export function resolve(model: DesktopModel, stored: string): State {
   return 'idle';
 }
 
+/** What core's dot means; null for a label we do not model (e.g. a background-task dot). */
+function coreState(label: string): State | null {
+  if (label === '') return 'idle';
+  if (label === CORE_DOT_LABELS.working) return 'working';
+  if (label === CORE_DOT_LABELS.needsYou) return 'needs-you';
+  return null;
+}
+
 export type Parity = 'match' | `allowed:${string}` | 'MISMATCH';
 
 /** Compare our resolved state with what core's dot shows (aria-label, or null/'' for the unlabelled idle dot). */
 export function classifyParity(ours: State, coreLabel: string | null | undefined): Parity {
-  const label = coreLabel ?? '';
-  const core: State | null = label === '' ? 'idle' : label === CORE_DOT_LABELS.working ? 'working' : label === CORE_DOT_LABELS.needsYou ? 'needs-you' : null;
+  const core = coreState(coreLabel ?? '');
   if (core !== null && ours === core) return 'match';
   if (ours === 'unknown') return 'allowed:gateway-not-open';          // core shows stale busy for up to ~26 s after a kill
   if (ours === 'fault' && core === 'idle') return 'allowed:fault-not-painted';   // core paints no fault dot

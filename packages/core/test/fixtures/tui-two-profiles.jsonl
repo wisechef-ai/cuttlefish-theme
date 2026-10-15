@@ -1,0 +1,7 @@
+{"v":1,"src":"meta","kind":"trace","name":"tui-two-profiles","host":"tui","runtime":"upstream","runtime_sha":"f42f579cf8b","recorded_at":"2026-10-15T00:00:00Z","model":"custom:qwen38-local","profiles":["A","B"],"notes":"hand-written mini trace (not a recording)"}
+{"v":1,"t":0,"src":"hook","profile":"A","session":"a1","lineage_root":"RA1","kind":"pre_llm_call","payload":{}}
+{"v":1,"t":1,"src":"hook","profile":"A","session":"a2","lineage_root":"RA2","kind":"pre_llm_call","payload":{}}
+{"v":1,"t":2,"src":"hook","profile":"B","session":"b1","lineage_root":"RB1","kind":"pre_llm_call","payload":{}}
+{"v":1,"t":3,"src":"hook","profile":"A","session":"a3","lineage_root":"RA3","kind":"pre_llm_call","payload":{}}
+{"v":1,"t":4,"src":"hook","profile":"A","session":"a1","lineage_root":"RA1","kind":"on_session_end","payload":{"completed":true}}
+{"v":1,"t":5,"src":"hook","profile":"A","session":"a1","lineage_root":"RA1","kind":"pre_llm_call","payload":{}}
