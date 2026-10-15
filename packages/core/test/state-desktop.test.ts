@@ -119,3 +119,50 @@ test('parity: every other pairing is a MISMATCH', () => {
   assert.equal(classifyParity('idle', 'Background task running'), 'MISMATCH');
   assert.equal(classifyParity('review', null), 'MISMATCH');
 });
+
+// ---- P2-PARITY: busy is tracked per runtime id; the live focused pair maps early; render lag is bounded -------------
+
+const focus = (gateway: string, busyBySession: Record<string, boolean>, rt: string, stored: string): DesktopInput =>
+  ({ kind: 'state', payload: { gateway, busyBySession, focused_session_id: rt, focused_stored_session_id: stored } });
+
+test('two runtimes -> one stored id: a stale idle runtime never masks the live busy one (desktop-kill t=43.5)', () => {
+  // 'z-dead' sorts after 'a-live', so last-writer-wins would end idle
+  const m = fold([info('z-dead', S), info('a-live', S), snap('open', { 'z-dead': false, 'a-live': true })]);
+  assert.equal(resolve(m, S), 'working');
+  assert.equal(resolve(fold([snap('open', { 'a-live': true, 'z-dead': false })], m), S), 'working');   // key order is irrelevant
+  assert.equal(resolve(fold([snap('open', { 'z-dead': false, 'a-live': false })], m), S), 'idle');
+});
+
+test('a runtime absent from the latest snapshot no longer counts as busy', () => {
+  const m = fold([info('a', S), info('b', S), snap('open', { a: true, b: true })]);
+  assert.equal(resolve(m, S), 'working');
+  assert.equal(resolve(fold([snap('open', { b: true })], m), S), 'working');
+  assert.equal(resolve(fold([snap('open', {})], m), S), 'idle');
+});
+
+test('per-runtime busy line form: a later false of the SAME runtime clears it, another runtime does not', () => {
+  const line = (rt: string, busy: boolean): DesktopInput => ({ kind: 'state', session: rt, payload: { gateway: 'open', busy } });
+  const m = fold([info('a', S), info('b', S), line('a', true), line('b', false)]);
+  assert.equal(resolve(m, S), 'working');
+  assert.equal(resolve(fold([line('a', false)], m), S), 'idle');
+});
+
+test('the focused pair on a state snapshot maps runtime -> stored BEFORE any session.info', () => {
+  const m = fold([focus('open', { rt1: true }, 'rt1', S)]);
+  assert.deepEqual(storedIds(m), [S]);
+  assert.equal(resolve(m, S), 'working');                       // no 3 s wait for session.info
+});
+
+test('a time-valid stored_session_id on a per-runtime state line maps too', () => {
+  const m = fold([{ kind: 'state', session: 'rt1', payload: { gateway: 'open', busy: true, stored_session_id: S } }]);
+  assert.equal(resolve(m, S), 'working');
+});
+
+test('parity render-lag: core repainting within 500 ms of our change is allowed, 600 ms is not, never converging is not', () => {
+  assert.equal(classifyParity('working', '', { since: 10, convergedAt: 10.15 }), 'allowed:render-lag');
+  assert.equal(classifyParity('working', '', { since: 10, convergedAt: 10.5 }), 'allowed:render-lag');
+  assert.equal(classifyParity('working', '', { since: 10, convergedAt: 10.6 }), 'MISMATCH');
+  assert.equal(classifyParity('working', '', { since: 10, convergedAt: null }), 'MISMATCH');
+  assert.equal(classifyParity('idle', 'Session running', { since: 10, convergedAt: 10.2 }), 'allowed:render-lag');
+  assert.equal(classifyParity('working', 'Session running', { since: 10, convergedAt: 99 }), 'match');   // agreement needs no lag
+});

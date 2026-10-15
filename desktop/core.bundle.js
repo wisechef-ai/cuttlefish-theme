@@ -595,14 +595,12 @@ function trackStep(tr, state, t) {
 
 // domain/state-desktop.ts
 function initial2() {
-  return { gateway: null, stored_of: {}, busy: {}, fault: {}, needs_input: {}, buffered: {} };
+  return { gateway: null, stored_of: {}, busy_rt: {}, fault: {}, needs_input: {}, buffered: {} };
 }
 var CORE_DOT_LABELS = { working: "Session running", needsYou: "Needs your input" };
 var set = (rec, k, v) => ({ ...rec, [k]: v });
 function applyStored(m, kind, stored, p) {
   switch (kind) {
-    case "busy":
-      return { ...m, busy: set(m.busy, stored, p.busy === true) };
     case "message.start":
       return { ...m, fault: set(m.fault, stored, false) };
     case "message.complete":
@@ -617,23 +615,27 @@ function applyRuntime(m, kind, rt, p) {
   const queue = m.buffered[rt] ?? [];
   return { ...m, buffered: set(m.buffered, rt, [...queue, { kind, session: rt, payload: p }]) };
 }
+function learn(model, rt, stored) {
+  const { [rt]: queue = [], ...rest } = model.buffered;
+  let m = { ...model, stored_of: model.stored_of[rt] === stored ? model.stored_of : set(model.stored_of, rt, stored), buffered: rest };
+  for (const q of queue) m = applyStored(m, q.kind, stored, q.payload ?? {});
+  return m;
+}
 function reduce2(model, input) {
   const p = input.payload ?? {};
   switch (input.kind) {
     case "state": {
       let m = typeof p.gateway === "string" ? { ...model, gateway: p.gateway } : model;
-      if (p.busyBySession) for (const rt of Object.keys(p.busyBySession).sort()) m = applyRuntime(m, "busy", rt, { busy: p.busyBySession[rt] });
-      else if (typeof p.busy === "boolean" && input.session) m = applyRuntime(m, "busy", input.session, { busy: p.busy });
+      if (p.focused_session_id && p.focused_stored_session_id) m = learn(m, p.focused_session_id, p.focused_stored_session_id);
+      if (input.session && p.stored_session_id) m = learn(m, input.session, p.stored_session_id);
+      if (p.busyBySession) m = { ...m, busy_rt: { ...p.busyBySession } };
+      else if (typeof p.busy === "boolean" && input.session) m = { ...m, busy_rt: set(m.busy_rt, input.session, p.busy) };
       return m;
     }
     case "session.info": {
       const stored = p.stored_session_id;
       const rt = input.session;
-      if (!rt || !stored) return model;
-      const { [rt]: queue = [], ...rest } = model.buffered;
-      let m = { ...model, stored_of: set(model.stored_of, rt, stored), buffered: rest };
-      for (const q of queue) m = applyStored(m, q.kind, stored, q.payload ?? {});
-      return m;
+      return rt && stored ? learn(model, rt, stored) : model;
     }
     case "message.start":
     case "message.complete":
@@ -654,7 +656,7 @@ function resolve2(model, stored) {
   if (model.gateway !== "open") return "unknown";
   if (model.needs_input[stored]) return "needs-you";
   if (model.fault[stored]) return "fault";
-  if (model.busy[stored]) return "working";
+  if (Object.entries(model.busy_rt).some(([rt, b]) => b && model.stored_of[rt] === stored)) return "working";
   return "idle";
 }
 function coreState(label) {
@@ -663,11 +665,13 @@ function coreState(label) {
   if (label === CORE_DOT_LABELS.needsYou) return "needs-you";
   return null;
 }
-function classifyParity(ours, coreLabel) {
+var RENDER_LAG_MAX_S = 0.5;
+function classifyParity(ours, coreLabel, lag) {
   const core = coreState(coreLabel ?? "");
   if (core !== null && ours === core) return "match";
   if (ours === "unknown") return "allowed:gateway-not-open";
   if (ours === "fault" && core === "idle") return "allowed:fault-not-painted";
+  if (lag && lag.convergedAt !== null && lag.convergedAt - lag.since <= RENDER_LAG_MAX_S + 1e-9) return "allowed:render-lag";
   return "MISMATCH";
 }
 
@@ -722,7 +726,7 @@ function replay(traceLines, opts = {}) {
     trackers[key] = trackInit();
   };
   const hookModels = {};
-  const desk = { m: initial2(), core: {} };
+  const desk = { m: initial2(), core: {}, dots: {} };
   const applyHook = (l) => {
     const relevant = l.src === "hook" || HOOK_KINDS_ANY_SRC.has(l.kind) && !l.src.startsWith("desktop.");
     if (!relevant) return [];
@@ -739,7 +743,11 @@ function replay(traceLines, opts = {}) {
     if (!l.src.startsWith("desktop.") || !DESKTOP_KINDS.has(l.kind)) return [];
     const input = l.kind === "dot" ? { kind: "dot", session: l.session ?? l.payload.stored_session_id ?? l.payload.stored_id ?? null, payload: l.payload } : { kind: l.kind, session: l.session, payload: l.payload };
     desk.m = reduce2(desk.m, input);
-    if (l.kind === "dot" && input.session) desk.core[input.session] = typeof l.payload.label === "string" ? l.payload.label : "";
+    if (l.kind === "dot" && input.session) {
+      const label = typeof l.payload.label === "string" ? l.payload.label : "";
+      desk.core[input.session] = label;
+      (desk.dots[input.session] ??= []).push({ t: l.t, label });
+    }
     for (const id of storedIds(desk.m)) ensureRoot(id, l.profile);
     return storedIds(desk.m);
   };
@@ -783,6 +791,21 @@ function replay(traceLines, opts = {}) {
     a = b;
   }
   tickTo(lastT + TAIL_S);
+  if (host === "desktop") {
+    for (const [key, r] of Object.entries(roots)) {
+      r.samples.forEach((sm, i) => {
+        if (sm.parity !== "MISMATCH") return;
+        const nextChange = r.samples.slice(i + 1).find((o) => o.since !== sm.since)?.since ?? Infinity;
+        const hit = (desk.dots[key] ?? []).find((d) => d.t >= sm.t && classifyParity(sm.state, d.label) !== "MISMATCH");
+        const convergedAt = hit && hit.t <= nextChange ? hit.t : null;
+        const parity = classifyParity(sm.state, sm.core, { since: sm.since, convergedAt });
+        if (parity === "allowed:render-lag" && convergedAt !== null) {
+          sm.parity = parity;
+          sm.lag_s = Math.round((convergedAt - sm.since) * 1e3) / 1e3;
+        }
+      });
+    }
+  }
   return { v: 1, name: String(head.name ?? ""), host, step_s: stepS, skipped, roots };
 }
 function replayJson(traceLines, opts = {}) {

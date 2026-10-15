@@ -6,7 +6,7 @@ Hand-written fixtures belong to the reducers' own tests, never here.
 
 Format = `packages/core/CONTRACT.md` section 4 (P23 shared contract): one JSON object per line, sorted by `t`, header first.
 The repo is public, so a payload carries **only** `tool_name, tool_call_id, session_key, pattern_key, completed, interrupted,
-failed, status_code, retryable, choice, status, error_surface{code}, stored_session_id, gateway, busy, label, bound`. Prompts, tool
+failed, status_code, retryable, choice, status, error_surface{code}, stored_session_id, focused_session_id, focused_stored_session_id, gateway, busy, label, bound`. Prompts, tool
 arguments, model output, cwd, paths, usernames, tokens and pids never reach a trace (`record/convert.py` is a whitelist
 and fails closed on the privacy pattern). Raw, unscrubbed recordings stay out of the repo, in the vault:
 `projects/cuttlefish-theme/p2/traces-raw/<name>/`.

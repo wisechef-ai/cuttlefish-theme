@@ -184,3 +184,24 @@ test('lines may be given as strings or as parsed objects', () => {
   const raw = lines('tui-turn');
   assert.equal(replayJson(raw), replayJson(raw.map(l => JSON.parse(l))));
 });
+
+// ---- desktop: core-dot parity with the render-lag allowance (CONTRACT §3) ------------------------------------------------
+
+const deskTrace = (dotAt: number) => [
+  header('desktop'),
+  { v: 1, t: 1, src: 'desktop.state', profile: 'A', session: null, kind: 'state', payload: { gateway: 'open', focused_session_id: 'rt1', focused_stored_session_id: 'S1' } },
+  { v: 1, t: 10, src: 'desktop.state', profile: 'A', session: 'rt1', kind: 'state', payload: { gateway: 'open', busy: true, focused_session_id: 'rt1', focused_stored_session_id: 'S1' } },
+  { v: 1, t: 1, src: 'desktop.dot', profile: 'A', session: 'S1', kind: 'dot', payload: { label: '' } },
+  { v: 1, t: dotAt, src: 'desktop.dot', profile: 'A', session: 'S1', kind: 'dot', payload: { label: 'Session running' } },
+];
+const parityAt10 = (dotAt: number) => replay(deskTrace(dotAt)).roots.S1.samples.filter(s => s.t === 10 && s.on === 'event').map(s => ({ parity: s.parity, lag_s: s.lag_s }));
+
+test('desktop replay: core repainting 200 ms after our busy flip is allowed:render-lag and the lag is reported', () => {
+  assert.deepEqual(parityAt10(10.2), [{ parity: 'allowed:render-lag', lag_s: 0.2 }]);
+});
+
+test('desktop replay: core repainting 600 ms late, or never, stays MISMATCH', () => {
+  assert.deepEqual(parityAt10(10.6), [{ parity: 'MISMATCH', lag_s: undefined }]);
+  const never = deskTrace(10.2).slice(0, 4);
+  assert.equal(replay(never).roots.S1.samples.find(s => s.t === 10 && s.on === 'event')?.parity, 'MISMATCH');
+});

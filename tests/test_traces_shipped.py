@@ -20,7 +20,7 @@ REQUIRED = ["turn", "clarify", "approval", "tool-error", "api-error-401", "api-e
             "compression-rotate", "review-verify", "twenty-sessions", "two-profiles",
             "desktop-main", "desktop-error", "desktop-kill"]
 WHITELIST = {"tool_name", "tool_call_id", "session_key", "pattern_key", "completed", "interrupted", "failed", "status_code",
-             "retryable", "choice", "status", "error_surface", "stored_session_id", "gateway", "busy", "label", "bound"}
+             "retryable", "choice", "status", "error_surface", "stored_session_id", "focused_session_id", "focused_stored_session_id", "gateway", "busy", "label", "bound"}
 
 
 def test_the_required_trace_set_is_shipped():

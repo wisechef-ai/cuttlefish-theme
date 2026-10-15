@@ -25,6 +25,8 @@ export interface ReplaySample {
   /** Desktop only, once a core dot has been observed for the session: its label and our parity with it. */
   core?: string;
   parity?: Parity;
+  /** Desktop, parity allowed:render-lag only: seconds from our last state change until core's dot agreed. */
+  lag_s?: number;
 }
 export interface ReplayIdentity { slot: number; hue_deg: number; crowded: boolean }
 export interface ReplayRoot { profile: string; identity: ReplayIdentity | null; samples: ReplaySample[] }
@@ -100,7 +102,7 @@ export function replay(traceLines: readonly (string | object)[], opts: ReplayOpt
 
   // ---- host engines: apply(line) returns the root keys the line touched, stateOf resolves one root ----
   const hookModels: Record<string, HookModel> = {};
-  const desk: { m: DesktopModel; core: Record<string, string> } = { m: deskInitial(), core: {} };
+  const desk: { m: DesktopModel; core: Record<string, string>; dots: Record<string, Array<{ t: number; label: string }>> } = { m: deskInitial(), core: {}, dots: {} };
 
   const applyHook = (l: Line): string[] => {
     const relevant = l.src === 'hook' || (HOOK_KINDS_ANY_SRC.has(l.kind) && !l.src.startsWith('desktop.'));
@@ -117,7 +119,11 @@ export function replay(traceLines: readonly (string | object)[], opts: ReplayOpt
       ? { kind: 'dot', session: l.session ?? l.payload.stored_session_id ?? l.payload.stored_id ?? null, payload: l.payload }
       : { kind: l.kind, session: l.session, payload: l.payload };
     desk.m = deskReduce(desk.m, input);
-    if (l.kind === 'dot' && input.session) desk.core[input.session] = typeof l.payload.label === 'string' ? l.payload.label : '';
+    if (l.kind === 'dot' && input.session) {
+      const label = typeof l.payload.label === 'string' ? l.payload.label : '';
+      desk.core[input.session] = label;
+      (desk.dots[input.session] ??= []).push({ t: l.t, label });
+    }
     for (const id of storedIds(desk.m)) ensureRoot(id, l.profile);
     return storedIds(desk.m);
   };
@@ -158,6 +164,21 @@ export function replay(traceLines: readonly (string | object)[], opts: ReplayOpt
     a = b;
   }
   tickTo(lastT + TAIL_S);
+
+  // Render lag (CONTRACT §3): a disagreement is allowed when core's dot agrees (match, or an allowed rule such as fault-not-painted) with our state within RENDER_LAG_MAX_S of OUR
+  // last change, before we change again. Needs look-ahead (core's next dot), so it is a post-pass over the finished samples.
+  if (host === 'desktop') {
+    for (const [key, r] of Object.entries(roots)) {
+      r.samples.forEach((sm, i) => {
+        if (sm.parity !== 'MISMATCH') return;
+        const nextChange = r.samples.slice(i + 1).find(o => o.since !== sm.since)?.since ?? Infinity;
+        const hit = (desk.dots[key] ?? []).find(d => d.t >= sm.t && classifyParity(sm.state, d.label) !== 'MISMATCH');
+        const convergedAt = hit && hit.t <= nextChange ? hit.t : null;
+        const parity = classifyParity(sm.state, sm.core, { since: sm.since, convergedAt });
+        if (parity === 'allowed:render-lag' && convergedAt !== null) { sm.parity = parity; sm.lag_s = Math.round((convergedAt - sm.since) * 1000) / 1000; }
+      });
+    }
+  }
 
   return { v: 1, name: String(head.name ?? ''), host, step_s: stepS, skipped, roots };
 }
