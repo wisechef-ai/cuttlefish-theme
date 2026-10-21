@@ -7,91 +7,145 @@ function freeze<T>(o: T): T {
 }
 
 export const TOKENS = freeze({
-  "schema": "cf2909.tokens/1",
-  "direction": "d-dots",
-  "status": "frozen at P1 (2026-10-15); P2/P3 consume, change only via a logged lead decision",
-  "source": "design/directions/d-dots/direction.mjs (TOKENS) + design/DIRECTION.md",
-  "ground": {
-    "rgb": [
-      14,
-      15,
-      19
-    ],
-    "hex": "#0e0f13",
-    "note": "the ONE plain background; nothing is painted under the dots"
-  },
+  "schema": "cf2909.tokens/2",
+  "direction": "d2-scatter",
+  "status": "D2 locked 2026-10-21 (Adam, CONTEXT-D2 section 0); the Python oracle python/domain/dots.py pins every number, change only via a logged lead decision",
+  "source": "python/domain/dots.py + sprint-2909/CONTEXT-D2.md (supersedes design/directions/d-dots, kept as history)",
+  "ground": null,
+  "ground_note": "there is NO ground: no skin background, no OSC 11, no forced bg on any surface; the user's own background shows through",
   "identity": {
     "space": "oklch",
     "hue_arc_deg": [
       110,
       340
     ],
-    "hue_order": "bit-reversal over the arc (tools/p1/make_stub_sessions.py)",
-    "dot_lightness": [
+    "slots": 20,
+    "tier_lightness": [
       0.58,
       0.66,
       0.74
     ],
-    "dot_chroma": 0.135,
+    "tier_weights_cumulative": [
+      0.45,
+      0.8
+    ],
+    "tier_hue_offset_deg": [
+      -7,
+      0,
+      7
+    ],
+    "tier_tonic_expansion": [
+      0.26,
+      0.32,
+      0.48
+    ],
+    "chroma": 0.135,
     "never": "amber/red hues (alarm arc) as identity"
+  },
+  "organs": {
+    "density": 0.1,
+    "density_S": 0.5,
+    "thinning": "no two of the 8 neighbours are both organs",
+    "expansion_steps": 10,
+    "glyph_ladder": " ·•●",
+    "glyph_thresholds": [
+      0.12,
+      0.42,
+      0.72
+    ],
+    "lightness_gain": [
+      0.8,
+      0.28
+    ],
+    "lightness_cap": 0.86,
+    "chroma_gain": [
+      0.45,
+      0.75
+    ],
+    "fg_only": true
+  },
+  "kinetics": {
+    "tau_open_s": 0.1,
+    "tau_close_s": 0.55
   },
   "states": {
     "idle": {
-      "pattern": "uniform stipple",
-      "dots": "all open, ~18% closed at random",
-      "animated": false
+      "drive": "tonic tone + rare twinkles (18% of organ windows)",
+      "animated": "twinkle only when the idle-twinkle setting allows",
+      "fps": 4
     },
-    "working": {
-      "pattern": "passing cloud",
-      "dots": "a band of closed dots drifts one dot per frame",
-      "animated": true
+    "thinking": {
+      "drive": "value-noise clouds advected left to right, ~6 s per crossing",
+      "animated": true,
+      "fps": 10
+    },
+    "tool": {
+      "drive": "sparkle bursts every 0.25 s, ripple 0.035 s per cell, iridophore glint above e 0.70",
+      "animated": true,
+      "fps": 10
     },
     "review": {
-      "pattern": "mottle",
-      "dots": "open/closed in soft blotches (value noise)",
-      "animated": false
+      "drive": "static value-noise mottle, e 0.2..0.7",
+      "animated": false,
+      "fps": 4
     },
     "needs-you": {
-      "pattern": "zebra + eyespots",
-      "dots": "alternating open/closed bands, two amber eyespots",
-      "text": "INPUT <age>",
-      "animated": false
+      "drive": "identity organs settle at 0.26; seeded organs (alarm<0.06) amber, pulse at 0.5 Hz",
+      "animated": true,
+      "fps": 8,
+      "text": "INPUT <age>"
     },
     "fault": {
-      "pattern": "deimatic blanch",
-      "dots": "all open, pale (L 0.90 C 0.035), red margin dots",
-      "text": "ERROR <age>",
-      "animated": false
+      "drive": "blanch, then after 0.6 s alarm<0.10 organs flush red and hold",
+      "animated": false,
+      "fps": 6,
+      "text": "ERROR <age>"
     },
     "unknown": {
-      "pattern": "sparse grey diagonal",
-      "dots": "grey (C 0), one in three on a diagonal",
-      "text": "?",
-      "animated": false
+      "drive": "sparse grey organs (C 0, L 0.55), static",
+      "animated": false,
+      "fps": 4,
+      "text": "?"
     },
     "degraded": {
-      "pattern": "as unknown",
+      "drive": "as unknown; no identity hue",
       "label": "unbound",
       "identity_hue": null
     }
   },
   "alarm": {
     "amber": {
+      "hue_deg": 72,
+      "lightness": 0.84,
+      "chroma": 0.165,
       "rgb": [
         255,
         176,
         0
       ],
-      "use": "needs-you eyespots + INPUT plate only"
+      "use": "needs-you organs + INPUT plate only"
     },
     "red": {
+      "hue_deg": 27,
+      "lightness": 0.71,
+      "chroma": 0.215,
       "rgb": [
         214,
         40,
         57
       ],
-      "use": "fault margin dots only"
+      "use": "fault organs only"
+    },
+    "glint": {
+      "lightness": 0.9,
+      "chroma": 0.05,
+      "hue_offset_deg": -25,
+      "use": "tool flash peak"
     }
+  },
+  "grey": {
+    "lightness": 0.55,
+    "chroma": 0
   },
   "text_pairs": [
     {
@@ -112,27 +166,36 @@ export const TOKENS = freeze({
   ],
   "scales": {
     "XL": {
-      "lattice": "hex",
-      "pitch_px": 7,
-      "dot_radius_ratio": 0.36,
-      "coverage_levels": 4,
-      "internal_max_px": 57600,
-      "upscale": "smooth"
+      "cols": 64,
+      "rows": 24,
+      "cell_px": [
+        12,
+        24
+      ],
+      "surface": "desktop field pane: anti-aliased discs, radius proportional to e, on a TRANSPARENT canvas (canvas 2D; no WebGL)"
     },
     "M": {
-      "dot": "one logical pixel per dot (half-block or bg cell)",
+      "cols": 120,
+      "rows": 2,
+      "surface": "TUI strip / classic-CLI strip, 1-2 rows of glyph cells",
       "text": "name left, alarm right; alarm wins when both do not fit"
     },
     "S": {
-      "swatch": "4x2, no text, working >= 3 distinct frames",
-      "pill": "name or alarm text"
+      "cols": 4,
+      "rows": 2,
+      "surface": "desktop 4x2 swatch / TUI pill",
+      "text": "pill: name or alarm text; the name never covers a pigment cell"
     }
   },
   "motion": {
-    "fps_max": 4,
-    "step": "one dot per 0.25 s",
-    "max_colours_working": 48,
-    "reduced_motion": "static",
-    "only_state": "working"
+    "fps_max": {
+      "thinking": 10,
+      "tool": 10,
+      "needs-you": 8,
+      "idle_twinkle": 4
+    },
+    "static_states_cost": "0 frames",
+    "idle_twinkle_setting": "auto = off under TMUX, Ghostty, cmux or when reduced-motion is requested",
+    "reduced_motion": "fully static (env HERMES_REDUCED_MOTION=1, desktop prefers-reduced-motion)"
   }
 } as const);

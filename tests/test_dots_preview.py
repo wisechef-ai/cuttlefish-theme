@@ -84,6 +84,8 @@ def test_every_state_paints_something_and_only_alarms_use_alarm_pigment(state):
         assert "amber" in pigments and "red" not in pigments
     elif state == "fault":
         assert pigments == {"red"}  # blanched: only the red margin is left open
+    elif state == "unknown":
+        assert pigments == {"grey"}  # no identity claim at all
     else:
         assert pigments <= {"id", "glint"}
 
