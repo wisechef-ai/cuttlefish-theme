@@ -9,8 +9,10 @@ launches ``hermes --tui`` on a pty, records every byte for N seconds, and counts
   * SET   = ESC ] 11 ; <colour> (BEL | ESC \\)   a real repaint of the terminal background. Must be 0.
   * QUERY = ESC ] 11 ; ?                           the TUI asking the terminal what its background is (read-only).
 
-``--control`` additionally runs a skin that DOES carry a ``background`` and requires >= 1 SET, which proves the
-capture can see a repaint at all (a probe that cannot fail proves nothing). Exit 0 iff every expectation holds.
+``--control`` is a positive control for the probe itself (a probe that cannot fail proves nothing): it runs a stub
+that writes a real OSC 11 SET through the same pty/regex path and requires >= 1 SET. (A TUI run with a skin that
+carries a ``background`` was tried first as the control: upstream's TUI emits only the read-only QUERY for it, never
+a SET, so it cannot serve.) Exit 0 iff every expectation holds.
 
 Also checks, with the loader of the Hermes that is importable in THIS interpreter (when there is one), that the
 cuttlefish skin's resolved ``background`` equals the stock default skin's. Stdlib only.
@@ -33,17 +35,18 @@ SET_RE = re.compile(rb"\x1b\]11;(?!\?)[^\x07\x1b]*(?:\x07|\x1b\\)")
 QUERY_RE = re.compile(rb"\x1b\]11;\?(?:\x07|\x1b\\)")
 ANY_RE = re.compile(rb"\x1b\]11;")
 
+OFFER_VERSION = os.environ.get("CF_OFFER_VERSION", "2")
 CONTROL_SKIN = 'name: osc11control\ncolors:\n  background: "#101418"\n  banner_title: "#1fbcea"\n'
 
 
-def capture(hermes, home, seconds):
+def capture(hermes, home, seconds, argv=None):
     """Bytes ``hermes --tui`` writes to its pty in ``seconds``. Answers terminal queries minimally (DA1, OSC 11)."""
     env = dict(os.environ, HERMES_HOME=str(home), TERM="xterm-256color", COLORTERM="truecolor", COLUMNS="120",
                LINES="30", NO_COLOR="")
     env.pop("NO_COLOR")
     pid, fd = pty.fork()
     if pid == 0:
-        os.execvpe(hermes, [hermes, "--tui"], env)
+        os.execvpe(hermes, argv or [hermes, "--tui"], env)
     try:
         import fcntl
         import struct
@@ -87,7 +90,8 @@ def make_home(skin_name, skin_text):
     home = Path(tempfile.mkdtemp(prefix="cf-osc11-"))
     (home / "skins").mkdir()
     (home / "skins" / (skin_name + ".yaml")).write_text(skin_text, encoding="utf-8")
-    (home / "config.yaml").write_text("display:\n  skin: %s\n" % skin_name, encoding="utf-8")
+    # answer the first-run shared-metrics offer ("No thanks", settled) so the capture sees the real chat UI, not that prompt
+    (home / "config.yaml").write_text("display:\n  skin: %s\ntelemetry:\n  shared_metrics:\n    enabled: false\n    send: false\n    offer_version: %s\n" % (skin_name, OFFER_VERSION), encoding="utf-8")
     return home
 
 
@@ -133,9 +137,10 @@ def main(argv=None):
     if args.control:
         home = make_home("osc11control", CONTROL_SKIN)
         try:
-            sets, _ = report("control", capture(args.hermes, home, args.seconds))
+            stub = [sys.executable, "-c", "import sys,time; sys.stdout.write('\\x1b]11;#101418\\x07'); sys.stdout.flush(); time.sleep(1)"]
+            sets, _ = report("control", capture(sys.executable, home, 3, argv=stub))
             ok &= sets >= 1
-            print("  expect SET>=1 (a skin WITH a background) -> %s" % ("PASS" if sets >= 1 else "FAIL"))
+            print("  expect SET>=1 (stub that paints OSC 11 through the same pty) -> %s" % ("PASS" if sets >= 1 else "FAIL"))
         finally:
             shutil.rmtree(home, ignore_errors=True)
     return 0 if ok else 1
