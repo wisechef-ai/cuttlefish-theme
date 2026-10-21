@@ -25,3 +25,4 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install pytest fastapi httpx pyyaml
       - run: python -m pytest python/tests -q -s
+      - run: python tools/make_skin.py --check

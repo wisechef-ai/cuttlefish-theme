@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import re
 import socket
 import tempfile
 import threading
@@ -18,13 +19,41 @@ JOURNAL_MAX = 32
 SWEEP_FILES = 64
 SWEEP_AGE_S = 24 * 3600
 
+# Atomic-write temp files are named ``.tmp-cuttlefish-<pid>-<8 random chars>.json`` (mkstemp adds the
+# random part). Uninstall removes a leftover only if its name matches this EXACT shape, so a user's
+# own ``.tmp-*`` file can never be mistaken for ours.
+TMP_PREFIX = ".tmp-cuttlefish-"
+_TMP_NAME = re.compile(r"\A\.tmp-cuttlefish-[0-9]+-[a-z0-9_]{8}\.json\Z")
+_ENTRY_KEYS = {"durable_id": str, "lineage_root": str, "state": str, "journal": list}
+
+
+def is_our_tmp_name(name):
+    return _TMP_NAME.match(name) is not None
+
+
+def is_bus_record(obj, filename=None):
+    """True only for a dict the BusWriter could have emitted: the schema id, the expected keys with
+    the expected types, and (when ``filename`` is given) the file name ``bus_file`` would derive."""
+    if not isinstance(obj, dict) or obj.get("schema") != SCHEMA:
+        return False
+    for k, t in _ENTRY_KEYS.items():
+        if not isinstance(obj.get(k), t):
+            return False
+    for k in ("seq", "heartbeat"):
+        v = obj.get(k)
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            return False
+    if filename is not None and filename != paths.safe_name(obj["lineage_root"]) + ".json":
+        return False
+    return True
+
 
 def atomic_write_json(path, obj):
     """tmp file in the same directory + os.replace: a reader sees the old or the new file, never half."""
     path = os.fspath(path)
     d = os.path.dirname(path)
     os.makedirs(d, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=".tmp-", suffix=".json", dir=d)
+    fd, tmp = tempfile.mkstemp(prefix="%s%d-" % (TMP_PREFIX, os.getpid()), suffix=".json", dir=d)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(obj, f, separators=(",", ":"), ensure_ascii=False)

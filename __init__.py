@@ -9,9 +9,10 @@ __version__ = "0.22.0"
 
 
 def register(ctx):
-    from .python.plugin_entry import detect_valid_hooks, register_hooks
+    from .python.plugin_entry import detect_valid_hooks, register_cli, register_hooks
 
     register_hooks(ctx, detect_valid_hooks())
+    register_cli(ctx)
 
 
 __all__ = ["register"]

@@ -38,3 +38,15 @@ def bus_dir(home):
 
 def bus_file(home, lineage_root):
     return bus_dir(home) / (safe_name(lineage_root) + ".json")
+
+
+def ledger_file(home):
+    return cuttlefish_dir(home) / "ledger.json"
+
+
+def prefs_file(home):
+    return cuttlefish_dir(home) / "state.json"
+
+
+def widget_heartbeat_file(home):
+    return cuttlefish_dir(home) / "widget-heartbeat.json"

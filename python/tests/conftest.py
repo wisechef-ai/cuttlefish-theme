@@ -75,3 +75,68 @@ def ts():
         return _json.loads(r.stdout)
 
     return run
+
+
+# ---- CLI fixtures -------------------------------------------------------------------------------
+class FakeCore:
+    """Stands in for hermes_api.Core: the config is a dict persisted nowhere; a file at config_path marks it 'existing'."""
+
+    def __init__(self, home, config=None):
+        self.home = home
+        self.config = config
+        self.writes = []
+        self.removed = 0
+
+    @property
+    def config_path(self):
+        return self.home / "config.yaml"
+
+    def read_config(self):
+        import copy
+        return copy.deepcopy(self.config or {})
+
+    def write_config(self, data):
+        import copy
+        self.config = copy.deepcopy(data)
+        self.writes.append(copy.deepcopy(data))
+        self.config_path.write_text("fake\n")
+
+    def remove_plugin(self):
+        self.removed += 1
+        return 0, "ok"
+
+
+@pytest.fixture
+def fakecore(home):
+    return FakeCore(home, {})
+
+
+@pytest.fixture
+def pkg(tmp_path):
+    """A package root shipping every artifact; tests delete files to model 'not in this build'."""
+    root = tmp_path / "pkg"
+    for rel, body in (("skins/cuttlefish.yaml", "name: cuttlefish\ncolors:\n  ui_accent: \"#00a1cb\"\n"),
+                      ("tui/cuttlefish.mjs", "export default {}\n"),
+                      ("desktop/plugin.js", "export default {}\n"),
+                      ("cli/cuttlefish_widget.py", "def create(api):\n    return None\n")):
+        p = root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(body)
+    return root
+
+
+def tree(root):
+    """{relative path: ('d',) | ('l', target) | ('f', bytes)} for every entry under root."""
+    import os
+    out = {}
+    for dp, dn, fn in os.walk(root):
+        for n in dn + fn:
+            p = os.path.join(dp, n)
+            rel = os.path.relpath(p, root)
+            if os.path.islink(p):
+                out[rel] = ("l", os.readlink(p))
+            elif os.path.isdir(p):
+                out[rel] = ("d",)
+            else:
+                out[rel] = ("f", open(p, "rb").read())
+    return out

@@ -41,3 +41,14 @@ def register_hooks(ctx, valid_hooks=None, runtime=None):
     except Exception as e:  # noqa: BLE001
         log.warning("cuttlefish-theme: could not record hook status: %r", e)
     return status
+
+
+def register_cli(ctx):
+    """``hermes cuttlefish ...``. Guarded on its own: an older core without register_cli_command loses only this."""
+    try:
+        from . import cli
+        cli.register(ctx)
+        return True
+    except Exception as e:  # noqa: BLE001
+        log.warning("cuttlefish-theme: CLI command not registered: %r", e)
+        return False

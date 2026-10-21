@@ -163,3 +163,14 @@ class IdentityStore:
             if len(doc["sessions"]) != before:
                 self._write(doc)
             self._cache = {r: e for r, e in self._cache.items() if r in doc["sessions"]}
+
+    def forget(self, root):
+        """Drop one lineage root's record (the demo's reserved lineage). Returns True if it existed."""
+        with self._mu, self._file_lock():
+            doc = self._read()
+            existed = doc["sessions"].pop(root, None) is not None
+            if existed:
+                self._write(doc)
+            self._cache.pop(root, None)
+            self._touched.pop(root, None)
+            return existed
