@@ -83,6 +83,13 @@ def test_api_request_error_is_sticky_fault_until_next_turn(home, clock):
     assert bus(home, "s")["state"] == "thinking"
 
 
+def test_retryable_api_request_error_does_not_fault(home, clock):
+    cb = rt(home, clock).callbacks()
+    cb["pre_llm_call"](session_id="s")
+    cb["api_request_error"](session_id="s", retryable=True)
+    assert bus(home, "s")["state"] == "thinking"
+
+
 def test_finalize_removes_the_bus_file_and_keeps_identity(home, clock):
     cb = rt(home, clock).callbacks()
     cb["pre_llm_call"](session_id="s")

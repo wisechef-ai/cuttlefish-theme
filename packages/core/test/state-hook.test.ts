@@ -114,6 +114,22 @@ test('api_request_error: fault, sticky across heartbeats with no turn-end hook (
   assert.equal(stateAfter([...evs, ev(70, 'pre_llm_call')]), 'thinking');   // cleared by the next turn
 });
 
+test('api_request_error{retryable:true} never faults; retryable:false / absent / non-bool does (CONTEXT-D2 §0)', () => {
+  const turn = [ev(0, 'pre_llm_call')];
+  const retry = [...turn, ev(1, 'api_request_error', { retryable: true }), ev(2, 'api_request_error', { retryable: true })];
+  assert.equal(stateAfter(retry), 'thinking');
+  assert.equal(fold(retry).fault, false);
+  const withTool = [...turn, ev(1, 'pre_tool_call', { tool_name: 'bash', tool_call_id: 't' }), ev(2, 'api_request_error', { retryable: true })];
+  assert.equal(stateAfter(withTool), 'tool');
+  assert.equal(stateAfter([ev(0, 'api_request_error', { retryable: true })]), 'idle');   // outside a turn: still not a fault
+  assert.equal(stateAfter([...turn, ev(1, 'api_request_error', { retryable: false })]), 'fault');
+  assert.equal(stateAfter([...turn, ev(1, 'api_request_error')]), 'fault');
+  assert.equal(stateAfter([...turn, ev(1, 'api_request_error', { retryable: 'true' })]), 'fault');   // only `=== true` counts
+  // a fatal error after retryable ones faults; a retryable one after a fatal does NOT clear it
+  assert.equal(stateAfter([...retry, ev(3, 'api_request_error', { retryable: false })]), 'fault');
+  assert.equal(stateAfter([...turn, ev(1, 'api_request_error', { retryable: false }), ev(2, 'api_request_error', { retryable: true })]), 'fault');
+});
+
 test('pre_verify: review for the 0.6 s minimum dwell, then idle', () => {
   assert.equal(REVIEW_DWELL_S, 0.6);
   const m = fold([ev(10, 'pre_llm_call'), ev(20, 'pre_verify'), ev(20.1, 'on_session_end', { completed: true })]);

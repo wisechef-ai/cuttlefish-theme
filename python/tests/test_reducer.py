@@ -50,6 +50,17 @@ def test_session_end_returns_to_idle_drops_pending_and_completed_clears_fault():
     assert state(ev("api_request_error"), ev("on_session_end", 2, completed="yes")) == "fault"  # only `is True`
 
 
+def test_retryable_api_error_never_faults_but_fatal_does():
+    assert state(ev("pre_llm_call"), ev("api_request_error", 2, retryable=True), ev("api_request_error", 3, retryable=True)) == "thinking"
+    assert state(ev("pre_llm_call"), ev("pre_tool_call", 2, tool_name="bash", tool_call_id="t"), ev("api_request_error", 3, retryable=True)) == "tool"
+    assert state(ev("api_request_error", retryable=True)) == "idle"
+    assert state(ev("pre_llm_call"), ev("api_request_error", 2, retryable=False)) == "fault"
+    assert state(ev("pre_llm_call"), ev("api_request_error", 2)) == "fault"                       # flag absent => fatal
+    assert state(ev("pre_llm_call"), ev("api_request_error", 2, retryable="true")) == "fault"     # only `is True` counts
+    assert state(ev("pre_llm_call"), ev("api_request_error", 2, retryable=True), ev("api_request_error", 3, retryable=False)) == "fault"
+    assert state(ev("pre_llm_call"), ev("api_request_error", 2, retryable=False), ev("api_request_error", 3, retryable=True)) == "fault"
+
+
 def test_session_reset_clears_everything_and_the_pid_latch():
     e = [ev("pre_llm_call"), ev("pre_tool_call", 2, tool_name="clarify", tool_call_id="c"), ev("api_request_error", 3),
          ev("pre_verify", 4), ev("pid_dead", 5)]

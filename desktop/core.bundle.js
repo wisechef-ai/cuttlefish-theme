@@ -571,7 +571,7 @@ function reduce(model, ev) {
     case "post_approval_response":
       return { ...m, pending: drop(m.pending, approvalKey(p)) };
     case "api_request_error":
-      return { ...m, fault: true };
+      return p.retryable === true ? m : { ...m, fault: true };
     case "pre_verify":
       return { ...m, review_until: ev.t + REVIEW_DWELL_S };
     case "heartbeat":

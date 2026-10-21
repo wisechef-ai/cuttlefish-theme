@@ -68,7 +68,9 @@ def reduce(model, ev):
     elif kind == "post_approval_response":
         m["pending"] = _drop(m["pending"], _approval_key(p))
     elif kind == "api_request_error":
-        m["fault"] = True
+        # only a NON-retryable error is sticky fault (CONTEXT-D2 §0); retryable is True => transient, proof of life only
+        if p.get("retryable") is not True:
+            m["fault"] = True
     elif kind == "pre_verify":
         m["review_until"] = ev["t"] + REVIEW_DWELL_S
     elif kind == "heartbeat":
@@ -89,6 +91,7 @@ def normalise(hook, kwargs, ts):
         return v if isinstance(v, str) else None
 
     payload = {k: s(k) for k in _PAYLOAD_KEYS if s(k) is not None}
-    if isinstance(kw.get("completed"), bool):
-        payload["completed"] = kw["completed"]
+    for flag in ("completed", "retryable"):      # booleans survive as booleans; api_request_error needs `retryable`
+        if isinstance(kw.get(flag), bool):
+            payload[flag] = kw[flag]
     return {"t": ts, "kind": hook, "session_id": s("session_id") or s("session_key") or "", "payload": payload}

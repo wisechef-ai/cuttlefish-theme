@@ -78,7 +78,9 @@ export function reduce(model: HookModel, ev: HookEvent): HookModel {
     case 'post_approval_response':
       return { ...m, pending: drop(m.pending, approvalKey(p)) };
     case 'api_request_error':
-      return { ...m, fault: true };
+      // Only a NON-retryable error is sticky fault (CONTEXT-D2 §0). retryable === true is a transient
+      // failure the provider is still retrying: proof of life only. Missing/malformed flag => fatal.
+      return p.retryable === true ? m : { ...m, fault: true };
     case 'pre_verify':
       return { ...m, review_until: ev.t + REVIEW_DWELL_S };
     case 'heartbeat':

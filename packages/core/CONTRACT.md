@@ -96,7 +96,7 @@ finalized: bool        last_seen: float          bound: bool        pid_alive: b
 | `post_tool_call` with any other tool | tools -= `tool:<tool_call_id>` |
 | `pre_approval_request` | pending += `approval:<tool_call_id or session_key+'/'+pattern_key>` |
 | `post_approval_response` | pending -= the same key |
-| `api_request_error` | fault T (sticky; no turn-end follows an error) |
+| `api_request_error` | if `payload.retryable is true`: no change (transient, provider is retrying; proof of life only). Otherwise (false/absent/non-bool): fault T (sticky; no turn-end follows an error) |
 | `pre_verify` | review_until := t + 0.6 (min dwell; pure observer, returns None) |
 | `heartbeat` | (bus/liveness) last_seen := t; pid_alive := T (a heartbeat is written only by a live owner) |
 | `pid_dead` | pid_alive F (stays F until a later `heartbeat` or `on_session_reset`; other hooks do NOT revive it) |
@@ -122,7 +122,8 @@ Every event from the session also sets `last_seen := t`.
 | `pre_tool_call` (tool ≠ clarify) | `tool` |
 | `post_tool_call` (last open tool closed) | `thinking` |
 | `pre_tool_call` clarify, `pre_approval_request` (`on_human_input_request` is not a core hook in this runtime) | `needs-you` |
-| `api_request_error` (any; the recorded retryable trace also faults) | `fault`, sticky until the next `pre_llm_call` |
+| `api_request_error{retryable:false}` (or flag absent) | `fault`, sticky until the next `pre_llm_call` |
+| `api_request_error{retryable:true}` | no change (stays `thinking`/`tool`; the recorded retryable trace never faults) |
 | `on_session_end{completed}` | `idle` |
 | `pre_verify` outside a turn | `review` (0.6 s dwell) |
 
