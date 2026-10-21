@@ -6,7 +6,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import hermes_api, ledger, paths, surfaces
+from . import bus, hermes_api, ledger, paths, surfaces
 
 SKIN_NAME = "cuttlefish"
 PLUGIN = hermes_api.REMOVE_NAME
@@ -250,18 +250,37 @@ class Uninstall:
             self.core.write_config(new)
 
     def _remove_owned_state(self):
-        """Remove only the state files Cuttlefish itself writes; anything else in the shared
-        data directory is the user's and stays. Directories go only if they end up empty."""
+        """Remove only what Cuttlefish provably wrote: its fixed-name state files, atomic-write
+        temp files with the exact Cuttlefish naming (``bus.is_our_tmp_name``) and bus records that
+        parse and validate as Cuttlefish's (``bus.is_bus_record``). Everything else in the shared
+        data directory is the user's: it stays and is reported. Directories go only if empty."""
         cf = paths.cuttlefish_dir(self.home)
         bd = paths.bus_dir(self.home)
         owned = [paths.identity_file(self.home), paths.identity_lock(self.home),
                  paths.hooks_file(self.home), paths.prefs_file(self.home),
                  paths.widget_heartbeat_file(self.home), paths.ledger_file(self.home)]
-        for d in (bd, cf):  # our atomic-write leftovers
-            if d.is_dir():
-                owned += [p for p in d.iterdir() if p.name.startswith(".tmp-") and p.is_file()]
-        if bd.is_dir():  # <lineage>.json bus entries
-            owned += [p for p in bd.iterdir() if p.suffix == ".json" and p.is_file() and not p.is_symlink()]
+        known = {p.name for p in owned}
+        owned = [p for p in owned if not p.is_symlink()]  # a symlink under a state name is not ours
+        foreign = []
+        for d in (bd, cf):
+            if not d.is_dir():
+                continue
+            for p in sorted(d.iterdir()):
+                if p.is_symlink() or not p.is_file():
+                    if not p.is_dir():  # a symlink or special file is never ours
+                        foreign.append(p)
+                    continue
+                if bus.is_our_tmp_name(p.name):
+                    owned.append(p)
+                elif d == bd and p.suffix == ".json":
+                    if bus.is_bus_record(bus.read_json(p), p.name):
+                        owned.append(p)
+                    else:
+                        foreign.append(p)
+                elif d == cf and p.name in known:
+                    pass  # fixed-name state file, already in `owned`
+                else:
+                    foreign.append(p)
         removed = 0
         for p in owned:
             try:
@@ -273,6 +292,8 @@ class Uninstall:
                 self._say("state", "left %s: %s" % (p, exc))
         if removed:
             self._say("state", "removed %d Cuttlefish state file(s) under %s" % (removed, cf))
+        for p in foreign:
+            self._say("state", "left %s untouched (not ours)" % p)
         for d in (bd, cf):
             try:
                 d.rmdir()

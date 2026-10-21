@@ -112,26 +112,103 @@ def test_legend_covers_seven_states_plus_degraded_and_never_paints_a_background(
     assert "\x1b[48" not in text and "\x1b]11" not in text
 
 
-def test_uninstall_preserves_unledgered_files_and_cleans_owned_state(home):
+def _uninstall(home):
+    out = []
+    setup_cmd.Uninstall(home, out=out.append, poke=lambda *a, **k: None).run(keep_plugin=True)
+    return out
+
+
+def _real_bus_record(home, root="root-a"):
+    """A bus record exactly as the BusWriter emits it."""
+    from cuttlefish_theme.python import bus
+    from cuttlefish_theme.python.domain import reducer
+    ev = reducer.normalise("pre_llm_call", {"session_id": "s"}, 1000.0)
+    w = bus.BusWriter(home, clock=lambda: 1000.0, pid=1, host="h")
+    w.record("sid-" + root, root, ev)
+    return bus.paths.bus_file(home, root)
+
+
+def _real_tmp_leftover(home, monkeypatch, d):
+    """A temp file left behind by the REAL atomic writer (its replace fails mid-write)."""
+    from cuttlefish_theme.python import bus
+    monkeypatch.setattr(bus.os, "replace", lambda *a: (_ for _ in ()).throw(OSError("boom")))
+    monkeypatch.setattr(bus.os, "unlink", lambda *a: None)
+    try:
+        bus.atomic_write_json(d / "x.json", {"a": 1})
+    except OSError:
+        pass
+    monkeypatch.undo()
+    left = [p for p in d.iterdir() if p.name.startswith(".tmp-")]
+    assert len(left) == 1
+    return left[0]
+
+
+def test_uninstall_preserves_unledgered_files_and_cleans_owned_state(home, monkeypatch):
     cf = home / "cuttlefish"
     (cf / "bus").mkdir(parents=True)
     for rel in ("identity.json", "identity.lock", "hooks.json", "state.json",
-                "widget-heartbeat.json", "ledger.json", "bus/root-a.json", "bus/.tmp-x"):
+                "widget-heartbeat.json", "ledger.json"):
         (cf / rel).write_text("{}")
+    rec = _real_bus_record(home)
+    tmp_cf = _real_tmp_leftover(home, monkeypatch, cf)
+    tmp_bus = _real_tmp_leftover(home, monkeypatch, cf / "bus")
     sentinel = cf / "user-notes.txt"
     sentinel.write_text("mine")
     nested = cf / "bus" / "keep.txt"
     nested.write_text("also mine")
-    setup_cmd.Uninstall(home, out=lambda *_: None, poke=lambda *a, **k: None).run(keep_plugin=True)
+    _uninstall(home)
     assert sentinel.read_text() == "mine" and nested.read_text() == "also mine"
+    assert not rec.exists() and not tmp_cf.exists() and not tmp_bus.exists()
     assert sorted(p.relative_to(cf).as_posix() for p in cf.rglob("*") if p.is_file()) == [
         "bus/keep.txt", "user-notes.txt"]
 
 
-def test_uninstall_removes_the_data_dir_when_only_owned_state_was_in_it(home):
+def test_uninstall_preserves_files_that_only_match_our_name_patterns(home):
+    """Review round 2: a name pattern is not proof of ownership."""
+    cf = home / "cuttlefish"
+    (cf / "bus").mkdir(parents=True)
+    mine = {
+        "cuttlefish/.tmp-personal-notes": "my notes",
+        "cuttlefish/bus/.tmp-personal.json": '{"hello": "world"}',
+        "cuttlefish/bus/unrecognized.json": '{"schema": "someone.else/1", "lineage_root": "unrecognized"}',
+        "cuttlefish/bus/not-json.json": "not json at all",
+        "cuttlefish/bus/looks-ours.json": '{"schema": "cf2909.bus/1"}',  # right schema, missing keys
+    }
+    for rel, body in mine.items():
+        (home / rel).write_text(body)
+    out = _uninstall(home)
+    for rel, body in mine.items():
+        assert (home / rel).read_text() == body, rel
+        assert any(rel.split("/", 1)[1] in line and "untouched (not ours)" in line for line in out), rel
+    assert (cf / "bus").is_dir() and cf.is_dir()  # dirs only go when empty
+
+
+def test_uninstall_preserves_a_bus_record_filed_under_the_wrong_name(home):
+    """Valid schema but not the file name our writer would give it -> not provably ours."""
+    cf = home / "cuttlefish"
+    rec = _real_bus_record(home, "root-a")
+    other = rec.with_name("someone-elses-name.json")
+    other.write_text(rec.read_text())
+    _uninstall(home)
+    assert other.exists() and not rec.exists()
+
+
+def test_uninstall_removes_the_data_dir_when_only_owned_state_was_in_it(home, monkeypatch):
     cf = home / "cuttlefish"
     (cf / "bus").mkdir(parents=True)
     (cf / "ledger.json").write_text("{}")
-    (cf / "bus" / "r.json").write_text("{}")
-    setup_cmd.Uninstall(home, out=lambda *_: None, poke=lambda *a, **k: None).run(keep_plugin=True)
+    _real_bus_record(home, "r")
+    _real_tmp_leftover(home, monkeypatch, cf / "bus")
+    _real_tmp_leftover(home, monkeypatch, cf)
+    _uninstall(home)
     assert not cf.exists()
+
+
+def test_atomic_writer_temp_names_are_specific_and_match_the_uninstall_pattern(home, monkeypatch):
+    from cuttlefish_theme.python import bus
+    tmp = _real_tmp_leftover(home, monkeypatch, home)
+    assert tmp.name.startswith(".tmp-cuttlefish-%d-" % os.getpid()) and tmp.name.endswith(".json")
+    assert bus.is_our_tmp_name(tmp.name)
+    for n in (".tmp-personal-notes", ".tmp-personal.json", ".tmp-cuttlefish-notes.json",
+              ".tmp-cuttlefish-12-abc.json", "x.tmp-cuttlefish-12-abcdefgh.json"):
+        assert not bus.is_our_tmp_name(n), n
