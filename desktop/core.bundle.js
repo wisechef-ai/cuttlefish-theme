@@ -676,7 +676,6 @@ function resolve2(model, stored) {
   const busy = Object.entries(model.busy_rt).filter(([rt, b]) => b && model.stored_of[rt] === stored).map(([rt]) => rt);
   if (busy.length === 0) return "idle";
   return busy.some((rt) => (model.tools_rt[rt] ?? []).length > 0) ? "tool" : "thinking";
-  return "idle";
 }
 function coreState(label) {
   if (label === "") return "idle";

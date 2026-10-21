@@ -128,7 +128,6 @@ export function resolve(model: DesktopModel, stored: string): State {
   const busy = Object.entries(model.busy_rt).filter(([rt, b]) => b && model.stored_of[rt] === stored).map(([rt]) => rt);
   if (busy.length === 0) return 'idle';
   return busy.some(rt => (model.tools_rt[rt] ?? []).length > 0) ? 'tool' : 'thinking';
-  return 'idle';
 }
 
 /** What core's dot means; null for a label we do not model (e.g. a background-task dot). */

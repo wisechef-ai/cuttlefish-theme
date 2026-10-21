@@ -2,6 +2,7 @@
 import logging
 
 from . import bus, hooks, paths
+from .domain import resolve
 
 log = logging.getLogger("cuttlefish")
 _runtime = None
@@ -34,7 +35,8 @@ def register_hooks(ctx, valid_hooks=None, runtime=None):
             continue
         ctx.register_hook(name, cbs[name])
         registered.append(name)
-    status = {"schema": "cf2909.hooks/1", "registered": sorted(registered), "unavailable": sorted(unavailable)}
+    status = {"schema": "cf2909.hooks/2", "registered": sorted(registered), "unavailable": sorted(unavailable),
+              "tool_signal": dict(resolve.TOOL_SIGNAL)}   # CONTRACT §2: a surface with False maps busy -> thinking
     try:  # for `hermes cuttlefish doctor`; written by the Python half only
         if bus.read_json(paths.hooks_file(rt.home)) != status:
             bus.atomic_write_json(paths.hooks_file(rt.home), status)

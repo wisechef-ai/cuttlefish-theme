@@ -155,6 +155,13 @@ def test_register_hooks_skips_unavailable_hooks_and_records_them(home, clock):
     assert on_disk["registered"] == sorted(valid)
 
 
+def test_hooks_status_exposes_the_tool_signal_capability_for_doctor(home, clock):
+    E.register_hooks(FakeCtx(), valid_hooks=set(H.SUBSCRIBED), runtime=rt(home, clock))
+    on_disk = json.loads((P.cuttlefish_dir(home) / "hooks.json").read_text())
+    assert on_disk["schema"] == "cf2909.hooks/2"
+    assert on_disk["tool_signal"] == {"tui": True, "desktop": True}   # CONTRACT §2: a False host maps busy -> thinking
+
+
 def test_register_hooks_with_a_full_core_registers_all_twelve(home, clock):
     ctx = FakeCtx()
     status = E.register_hooks(ctx, valid_hooks=set(H.SUBSCRIBED) | {"on_stream_delta"}, runtime=rt(home, clock))

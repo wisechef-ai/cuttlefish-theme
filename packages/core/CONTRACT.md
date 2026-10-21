@@ -9,6 +9,9 @@ binds: [P2 core (TS), P3 python half, P4 desktop, P5 TUI]
 
 # P2/P3 shared contract — identity allocator, state reducer, trace format
 
+> **Revision cf2909.contract/3 (D2-CORE-STATE, 2026-10-21):** `working` is split into `thinking | tool` (7 states). §2/§3 below are
+> amended in place; the hook→state table is §2.1. Bus entries are `cf2909.bus/2`; a `/1` entry saying `working` reads as `thinking`.
+
 P2 (TS core) and P3 (Python half) run in parallel. These are the decisions both must implement
 **identically**; the P23 reviewer checks parity over 10k random cases and every recorded trace.
 Decided by the P2 lead so the two halves never decide the same question twice. Precedence: plan §0/§8/§13 >
@@ -71,24 +74,26 @@ Case shape: `{"lineage_root": str, "peers": [int], "slot": int, "hue_deg": float
 ## 2. State reducer (hook vocabulary — TUI bus; spike 06)
 
 Pure: `reduce(model, event) -> model`, `resolve(model, now) -> state`. No clock reads; `now` is passed.
-States: `idle working review needs-you fault unknown` (+ `degraded` is a *rendering* of unknown with no binding,
+States: `idle thinking tool review needs-you fault unknown` (7; `working` is retired — D2-CORE-STATE; + `degraded` is a *rendering* of unknown with no binding,
 not a reducer state). Model per lineage root:
 
 ```
-in_turn: bool          pending: set[str]        fault: bool        review_until: float|None
+in_turn: bool          tools: set[str]          pending: set[str]  fault: bool        review_until: float|None
 finalized: bool        last_seen: float          bound: bool        pid_alive: bool|None
 ```
 
 | event (`kind`) | effect |
 |---|---|
-| `on_session_reset` | model := fresh (in_turn F, pending ∅, fault F, review None, finalized F) |
+| `on_session_reset` | model := fresh (in_turn F, tools ∅, pending ∅, fault F, review None, finalized F) |
 | `on_session_start` | no state effect (late: first turn only) |
-| `pre_llm_call` | in_turn T; fault F; finalized F |
-| `post_llm_call` | fault F |
-| `on_session_end` (any `completed`) | in_turn F; pending ∅; if `completed is True`: fault F |
-| `on_session_finalize` | finalized T; in_turn F; pending ∅ |
+| `pre_llm_call` | in_turn T; tools ∅; fault F; finalized F |
+| `post_llm_call` | tools ∅; fault F |
+| `on_session_end` (any `completed`) | in_turn F; tools ∅; pending ∅; if `completed is True`: fault F |
+| `on_session_finalize` | finalized T; in_turn F; tools ∅; pending ∅ |
 | `pre_tool_call` with `tool_name=='clarify'` | pending += `clarify:<tool_call_id>` |
 | `post_tool_call` with `tool_name=='clarify'` | pending -= `clarify:<tool_call_id>` |
+| `pre_tool_call` with any other tool | tools += `tool:<tool_call_id>` |
+| `post_tool_call` with any other tool | tools -= `tool:<tool_call_id>` |
 | `pre_approval_request` | pending += `approval:<tool_call_id or session_key+'/'+pattern_key>` |
 | `post_approval_response` | pending -= the same key |
 | `api_request_error` | fault T (sticky; no turn-end follows an error) |
@@ -103,11 +108,31 @@ Every event from the session also sets `last_seen := t`.
 1. `unknown` if `finalized` or `pid_alive is False` or `bound is False` or `now - last_seen > STALE_S` (STALE_S = 20.0; the bus heartbeats every 5 s while the owner lives)
 2. `needs-you` if pending non-empty
 3. `fault` if fault
-4. `working` if in_turn
+4. `tool` if in_turn and tools non-empty; else `thinking` if in_turn
 5. `review` if review_until is not None and now < review_until
 6. `idle`
 
-("turn ended" is never needs-you; stale is never the last known state.) Python `bus.py` writes the resolved
+("turn ended" is never needs-you; stale is never the last known state; `tool` never outlives the `post_tool_call` of its last open call, and every turn boundary closes open tools.)
+
+### 2.1 Hook → state table (cf2909.contract/3)
+
+| hook | resulting state (if nothing higher in the precedence holds) |
+|---|---|
+| `pre_llm_call` (`on_stream_*` is not subscribed: it is only proof of life) | `thinking` |
+| `pre_tool_call` (tool ≠ clarify) | `tool` |
+| `post_tool_call` (last open tool closed) | `thinking` |
+| `pre_tool_call` clarify, `pre_approval_request` (`on_human_input_request` is not a core hook in this runtime) | `needs-you` |
+| `api_request_error` (any; the recorded retryable trace also faults) | `fault`, sticky until the next `pre_llm_call` |
+| `on_session_end{completed}` | `idle` |
+| `pre_verify` outside a turn | `review` (0.6 s dwell) |
+
+### 2.2 Capability flag `tool_signal`
+
+Each host declares whether its event stream tells a tool from the model thinking: `TOOL_SIGNAL = {tui: true, desktop: true}`
+(`packages/core/domain/state-hook.ts`, `python/domain/resolve.py`). A host with `false` maps busy → `thinking` only. Python writes it to
+`<HERMES_HOME>/cuttlefish/hooks.json` (`cf2909.hooks/2`) and `hermes cuttlefish doctor` prints it. Verified, not assumed: TUI from the hook
+vocabulary (spike 06); desktop from the spike-07 receipt (`tool.start` / `tool.complete` reach `host.onEvent('*')` with the runtime id)
+and from the three recorded desktop traces, which carry them (desktop-main 3, desktop-kill 5). Python `bus.py` writes the resolved
 state + `since` (time of the last change of the resolved value); TS replays the same events.
 
 ## 3. State reducer (desktop vocabulary — spike 07)
@@ -116,20 +141,21 @@ Keyed by **stored** id. The host speaks **runtime** ids; the runtime → stored 
 (b) the host's live focused pair on a state snapshot (`focused_session_id` + `focused_stored_session_id` = `host.state.focusedSessionId` /
 `focusedStoredSessionId`, same instant as the busy flip), and (c) a `stored_session_id` on a state line that was KNOWN at that snapshot (the converter
 never looks ahead). Other events (`message.*`) for a runtime id with no known mapping are buffered/applied once mapped.
-Model: `busy_rt` (**per runtime id**), `gateway`, `fault`, `needs_input`.
+Model: `busy_rt` (**per runtime id**), `tools_rt` (**per runtime id**: open non-clarify `tool_id`s), `gateway`, `fault`, `needs_input`.
 
 | input | effect |
 |---|---|
 | `desktop.state` snapshot `{gateway, busyBySession{rt:bool}}` | gateway := value; busy_rt := the snapshot (REPLACES: a runtime absent from the latest snapshot no longer counts) |
 | `desktop.state` line `{gateway, busy, session: rt}` | gateway := value; busy_rt[rt] := busy |
-| event `message.start` | fault F |
+| event `tool.start` / `tool.complete` (not clarify) | `tools_rt[rt]` += / -= `tool_call_id` |
+| event `message.start` | fault F; `tools_rt[rt]` := ∅ (a turn boundary closes tools — a killed backend sends no `tool.complete`) |
 | event `message.complete` `status=='error'` | fault T (sticky until next message.start) |
 | `desktop.dot` `{stored_id, label}` | needs_input := (label == 'Needs your input') |
 
 busy(stored) = OR over the runtime ids mapped to `stored` that are busy in busy_rt. Last-writer-wins across runtime ids is a bug: after a kill the app
 resumes the same stored session in a NEW runtime id while the dead runtime still reports `busy:false` (desktop-kill t=43.5; we showed idle ~25 s while working).
-resolve: `unknown` if gateway != 'open' → `needs-you` if needs_input → `fault` → `working` if busy(stored) → `idle`.
-No `review` on desktop (spike 07: no signal). Parity vs core's `SessionStatusDot`: ours `working`/`needs-you`
+resolve: `unknown` if gateway != 'open' → `needs-you` if needs_input → `fault` → if busy(stored): `tool` when any busy runtime of that stored id has an open tool, else `thinking` → `idle`. (`tool` never outlives `busy`.) Core's single busy dot (`Session running`) matches either of ours.
+No `review` on desktop (spike 07: no signal). Parity vs core's `SessionStatusDot`: ours `thinking`|`tool`/`needs-you`
 must equal core `Session running`/`Needs your input`; the only allowed divergences are
 `allowed:gateway-not-open` (ours=`unknown` while gateway != 'open'; core shows stale busy up to ~26 s after a kill),
 `allowed:fault-not-painted` (ours=`fault` where core shows idle) and

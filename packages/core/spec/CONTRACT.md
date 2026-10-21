@@ -1,6 +1,6 @@
 # Shared contract: identity allocator, state reducer, bus and file layout
 
-`cf2909.contract/2`. Decided by the P3 lead on 2026-10-15 (card t_e4178545); revised 2026-10-16 (P3-ALIGN, ruling by the P2
+`cf2909.contract/3`. Decided by the P3 lead on 2026-10-15 (card t_e4178545); revised 2026-10-16 (P3-ALIGN, ruling by the P2
 lead) so that §1–§3 are no longer restated here: the P23 contract in `packages/core/CONTRACT.md` is the single
 algorithm. This file keeps the P3-owned parts: files (§4), bus entry (§5), HTTP (§6). A change to anything
 below is a logged lead decision and bumps the schema suffix.

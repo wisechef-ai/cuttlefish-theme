@@ -319,6 +319,19 @@ def run_doctor() -> int:
     print(f"    colour output       {'enabled' if color else 'disabled'}")
     print(f"    HERMES_HOME         {os.environ.get('HERMES_HOME', '(default ~/.hermes)')}")
     print(f"    live sessions       {len(sessions)}")
+    # CONTRACT §2: does the host's event stream tell a tool from thinking? (written by the Python half's hook registration)
+    try:
+        import json
+        from pathlib import Path
+        home = Path(os.environ.get("HERMES_HOME") or Path.home() / ".hermes")
+        sig = json.loads((home / "cuttlefish" / "hooks.json").read_text()).get("tool_signal")
+    except Exception:  # noqa: BLE001
+        sig = None
+    if isinstance(sig, dict):
+        for host in sorted(sig):
+            print(f"    tool_signal {host:<7} {'true' if sig[host] else 'false (busy shows as thinking)'}")
+    else:
+        print("    tool_signal         unknown (hooks not registered yet)")
 
     if sessions:
         idents: list = []
