@@ -43,10 +43,10 @@ Sweep (bounded): identity entries with `last_seen` older than 30 days are droppe
 are kept (oldest `last_seen` first). Bus files are deleted on `on_session_finalize` once resolved, or when
 their heartbeat is older than 24 h. A sweep touches at most 64 files per call.
 
-## 5. Bus entry — `cf2909.bus/1`
+## 5. Bus entry — `cf2909.bus/2`
 
 ```
-{"schema":"cf2909.bus/1", "profile_home": str, "durable_id": str (current stored session_id),
+{"schema":"cf2909.bus/2", "profile_home": str, "durable_id": str (current stored session_id),
  "lineage_root": str, "owner_pid": int, "owner_host": str, "seq": int (monotonic per file),
  "state": str (core CONTRACT §2 resolve at the last event), "since": num (time of the last change of `state`),
  "source": str (the hook that produced it), "review_until": num|null (the 600 ms review pulse deadline),

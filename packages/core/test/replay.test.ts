@@ -27,25 +27,26 @@ test('a TUI trace is replayed to the resolved state at every event and at every 
   assert.equal(r.name, 'tui-turn');
   const at = (t: number, on: 'event' | 'tick') => sampleAt(r, 'R1', t, on).state;
   assert.equal(at(0, 'event'), 'idle');
-  assert.equal(at(3, 'tick'), 'working');
+  assert.equal(at(3, 'tick'), 'tool');                  // terminal t1 open 2.5 -> 3.5
   assert.equal(at(5, 'tick'), 'needs-you');             // clarify c1 open 4 -> 6
-  assert.equal(at(6, 'event'), 'working');
+  assert.equal(at(6, 'event'), 'thinking');
   assert.equal(at(7.1, 'event'), 'review');             // pre_verify 7, turn ends 7.1: dwell holds review
   assert.equal(at(8, 'tick'), 'idle');                  // sampled before the pre_llm_call at 8: dwell over
-  assert.equal(at(8, 'event'), 'working');
+  assert.equal(at(8, 'event'), 'thinking');
   assert.equal(at(9, 'event'), 'fault');
   assert.equal(at(29, 'tick'), 'fault');                // 20.0 s of silence is not yet stale
   assert.equal(at(30, 'tick'), 'unknown');              // stale -> unknown observed at a synthetic tick, no event needed
 });
 
-test('every one of the six states is reachable from the turn trace', () => {
+test('every one of the seven states is reachable from the turn trace', () => {
   const r = replay(lines('tui-turn'));
-  assert.deepEqual([...new Set(r.roots.R1.samples.map(s => s.state))].sort(), ['fault', 'idle', 'needs-you', 'review', 'unknown', 'working']);
+  assert.deepEqual([...new Set(r.roots.R1.samples.map(s => s.state))].sort(), ['fault', 'idle', 'needs-you', 'review', 'thinking', 'tool', 'unknown']);
 });
 
 test('since is the time of the last change of the resolved state', () => {
   const r = replay(lines('tui-turn'));
-  assert.equal(sampleAt(r, 'R1', 3, 'tick').since, 2);
+  assert.equal(sampleAt(r, 'R1', 3, 'tick').since, 2.5);   // thinking from 2, tool from 2.5
+  assert.equal(sampleAt(r, 'R1', 3.5, 'event').since, 3.5);
   assert.equal(sampleAt(r, 'R1', 29, 'tick').since, 9);
   assert.equal(sampleAt(r, 'R1', 30, 'tick').since, 30);
   assert.equal(sampleAt(r, 'R1', 31, 'tick').since, 30);
@@ -78,7 +79,7 @@ test('unsorted input is replayed in time order', () => {
   const a = replay([header('tui'), hook(2, 'R', 'on_session_end', { completed: true }), hook(1, 'R', 'pre_llm_call')]);
   const b = replay([header('tui'), hook(1, 'R', 'pre_llm_call'), hook(2, 'R', 'on_session_end', { completed: true })]);
   assert.equal(canonicalJson(a), canonicalJson(b));
-  assert.equal(sampleAt(a, 'R', 1, 'event').state, 'working');
+  assert.equal(sampleAt(a, 'R', 1, 'event').state, 'thinking');
 });
 
 test('liveness lines drive pid_dead and heartbeat; a dead pid is unknown until a heartbeat', () => {
@@ -86,7 +87,7 @@ test('liveness lines drive pid_dead and heartbeat; a dead pid is unknown until a
   const r = replay([header('tui'), hook(0, 'R', 'pre_llm_call'), live(2, 'pid_dead'), hook(3, 'R', 'pre_llm_call'), live(4, 'heartbeat')]);
   assert.equal(sampleAt(r, 'R', 2, 'event').state, 'unknown');
   assert.equal(sampleAt(r, 'R', 3, 'event').state, 'unknown');
-  assert.equal(sampleAt(r, 'R', 4, 'event').state, 'working');
+  assert.equal(sampleAt(r, 'R', 4, 'event').state, 'thinking');
 });
 
 test('lines with no lineage root and no session are skipped and counted, never guessed', () => {
@@ -154,11 +155,14 @@ test('a desktop trace resolves per STORED id through runtime -> stored mapping, 
   const s = (t: number, on: 'event' | 'tick' = 'event') => sampleAt(r, 'st1', t, on);
   assert.equal(s(1).state, 'idle');
   assert.equal(s(1).parity, undefined);                              // no dot observed yet: nothing to compare
-  assert.deepEqual([s(2).state, s(2).core, s(2).parity], ['working', 'Session running', 'match']);
+  assert.deepEqual([s(2).state, s(2).core, s(2).parity], ['thinking', 'Session running', 'match']);
+  assert.equal(sampleAt(r, 'st1', 3, 'tick').state, 'tool');
+  assert.deepEqual([s(2.5).state, s(2.5).parity], ['tool', 'match']);                    // core's one busy dot covers tool; tool.start on the runtime id, mapped to st1
+  assert.deepEqual([s(3.5).state], ['thinking']);                                       // tool.complete
   assert.deepEqual([s(4).state, s(4).parity], ['needs-you', 'match']);
-  assert.deepEqual([s(6).state, s(6).parity], ['working', 'match']);
+  assert.deepEqual([s(6).state, s(6).parity], ['thinking', 'match']);
   assert.deepEqual([s(8).state, s(8).parity], ['fault', 'allowed:fault-not-painted']);   // error + dot clear land at one instant
-  assert.deepEqual([s(10).state, s(10).parity], ['working', 'match']);
+  assert.deepEqual([s(10).state, s(10).parity], ['thinking', 'match']);
   assert.deepEqual([s(12).state, s(12).parity], ['unknown', 'allowed:gateway-not-open']);   // gateway closed, core still shows stale busy
   assert.deepEqual([s(16).state, s(16).parity], ['idle', 'match']);
   assert.equal(sampleAt(r, 'st1', 5, 'tick').state, 'needs-you');

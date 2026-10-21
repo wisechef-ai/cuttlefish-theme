@@ -489,7 +489,8 @@ function paint(a) {
 }
 
 // app/resolve.ts
-var LOOKS = ["idle", "working", "review", "needs-you", "fault", "unknown"];
+var LOOKS = ["idle", "thinking", "tool", "working", "review", "needs-you", "fault", "unknown"];
+var paintLook = (s) => s === "thinking" || s === "tool" ? "working" : s;
 function resolveHue(s) {
   if (!s) return null;
   if (typeof s.hue_deg === "number" && Number.isFinite(s.hue_deg)) return s.hue_deg;
@@ -499,7 +500,8 @@ function resolveHue(s) {
 function renderModel(i) {
   const hueDeg = resolveHue(i.session);
   const degraded = hueDeg === null;
-  const look = degraded || !LOOKS.includes(i.state) ? "unknown" : i.state;
+  const state = degraded || !LOOKS.includes(i.state) ? "unknown" : i.state;
+  const look = paintLook(state);
   const animate = !degraded && shouldAnimate({ state: look, focused: i.focused, visible: i.visible, reducedMotion: i.reducedMotion });
   const step = animate ? frameStep(i.now) : 0;
   const alarmText = look === "needs-you" || look === "fault" ? i.session?.alarm_text ?? null : null;
@@ -515,6 +517,7 @@ function renderModel(i) {
     reducedMotion: i.reducedMotion || !animate
   });
   return {
+    state,
     look,
     name: degraded ? "unbound" : i.session.name,
     hueDeg,
@@ -527,14 +530,18 @@ function renderModel(i) {
 }
 
 // domain/state-hook.ts
-var STATES = ["idle", "working", "review", "needs-you", "fault", "unknown"];
+var STATES = ["idle", "thinking", "tool", "review", "needs-you", "fault", "unknown"];
+var TOOL_SIGNAL = { tui: true, desktop: true };
 var STALE_S = 20;
 var REVIEW_DWELL_S = 0.6;
 function initial() {
-  return { in_turn: false, pending: [], fault: false, review_until: null, finalized: false, last_seen: null, bound: true, pid_alive: null };
+  return { in_turn: false, tools: [], pending: [], fault: false, review_until: null, finalized: false, last_seen: null, bound: true, pid_alive: null };
 }
 var add = (xs, k) => xs.includes(k) ? xs : [...xs, k].sort();
 var drop = (xs, k) => xs.filter((x) => x !== k);
+function toolKey(p) {
+  return `tool:${p.tool_call_id ?? ""}`;
+}
 function clarifyKey(p) {
   return `clarify:${p.tool_call_id ?? ""}`;
 }
@@ -546,19 +553,19 @@ function reduce(model, ev) {
   const m = { ...model, last_seen: ev.t };
   switch (ev.kind) {
     case "on_session_reset":
-      return { ...m, in_turn: false, pending: [], fault: false, review_until: null, finalized: false, pid_alive: null };
+      return { ...m, in_turn: false, tools: [], pending: [], fault: false, review_until: null, finalized: false, pid_alive: null };
     case "pre_llm_call":
-      return { ...m, in_turn: true, fault: false, finalized: false };
+      return { ...m, in_turn: true, tools: [], fault: false, finalized: false };
     case "post_llm_call":
-      return { ...m, fault: false };
+      return { ...m, tools: [], fault: false };
     case "on_session_end":
-      return { ...m, in_turn: false, pending: [], fault: p.completed === true ? false : m.fault };
+      return { ...m, in_turn: false, tools: [], pending: [], fault: p.completed === true ? false : m.fault };
     case "on_session_finalize":
-      return { ...m, finalized: true, in_turn: false, pending: [] };
+      return { ...m, finalized: true, in_turn: false, tools: [], pending: [] };
     case "pre_tool_call":
-      return p.tool_name === "clarify" ? { ...m, pending: add(m.pending, clarifyKey(p)) } : m;
+      return p.tool_name === "clarify" ? { ...m, pending: add(m.pending, clarifyKey(p)) } : { ...m, tools: add(m.tools, toolKey(p)) };
     case "post_tool_call":
-      return p.tool_name === "clarify" ? { ...m, pending: drop(m.pending, clarifyKey(p)) } : m;
+      return p.tool_name === "clarify" ? { ...m, pending: drop(m.pending, clarifyKey(p)) } : { ...m, tools: drop(m.tools, toolKey(p)) };
     case "pre_approval_request":
       return { ...m, pending: add(m.pending, approvalKey(p)) };
     case "post_approval_response":
@@ -581,7 +588,7 @@ function resolve(model, now) {
   if (model.last_seen === null || model.finalized || model.pid_alive === false || model.bound === false || now - model.last_seen > STALE_S) return "unknown";
   if (model.pending.length > 0) return "needs-you";
   if (model.fault) return "fault";
-  if (model.in_turn) return "working";
+  if (model.in_turn) return model.tools.length > 0 ? "tool" : "thinking";
   if (model.review_until !== null && now < model.review_until) return "review";
   return "idle";
 }
@@ -595,7 +602,7 @@ function trackStep(tr, state, t) {
 
 // domain/state-desktop.ts
 function initial2() {
-  return { gateway: null, stored_of: {}, busy_rt: {}, fault: {}, needs_input: {}, buffered: {} };
+  return { gateway: null, stored_of: {}, busy_rt: {}, tools_rt: {}, fault: {}, needs_input: {}, buffered: {} };
 }
 var CORE_DOT_LABELS = { working: "Session running", needsYou: "Needs your input" };
 var set = (rec, k, v) => ({ ...rec, [k]: v });
@@ -637,9 +644,19 @@ function reduce2(model, input) {
       const rt = input.session;
       return rt && stored ? learn(model, rt, stored) : model;
     }
+    case "tool.start":
+    case "tool.complete": {
+      if (!input.session || p.tool_name === "clarify") return model;
+      const id = p.tool_call_id ?? "";
+      const open = model.tools_rt[input.session] ?? [];
+      const next = input.kind === "tool.start" ? open.includes(id) ? open : [...open, id].sort() : open.filter((x) => x !== id);
+      return { ...model, tools_rt: set(model.tools_rt, input.session, next) };
+    }
     case "message.start":
-    case "message.complete":
-      return input.session ? applyRuntime(model, input.kind, input.session, p) : model;
+    case "message.complete": {
+      const m = input.session && model.tools_rt[input.session]?.length ? { ...model, tools_rt: set(model.tools_rt, input.session, []) } : model;
+      return input.session ? applyRuntime(m, input.kind, input.session, p) : m;
+    }
     case "dot": {
       const stored = input.session ?? p.stored_session_id ?? p.stored_id;
       if (!stored) return model;
@@ -656,7 +673,9 @@ function resolve2(model, stored) {
   if (model.gateway !== "open") return "unknown";
   if (model.needs_input[stored]) return "needs-you";
   if (model.fault[stored]) return "fault";
-  if (Object.entries(model.busy_rt).some(([rt, b]) => b && model.stored_of[rt] === stored)) return "working";
+  const busy = Object.entries(model.busy_rt).filter(([rt, b]) => b && model.stored_of[rt] === stored).map(([rt]) => rt);
+  if (busy.length === 0) return "idle";
+  return busy.some((rt) => (model.tools_rt[rt] ?? []).length > 0) ? "tool" : "thinking";
   return "idle";
 }
 function coreState(label) {
@@ -668,7 +687,7 @@ function coreState(label) {
 var RENDER_LAG_MAX_S = 0.5;
 function classifyParity(ours, coreLabel, lag) {
   const core = coreState(coreLabel ?? "");
-  if (core !== null && ours === core) return "match";
+  if (core !== null && (ours === core || core === "working" && (ours === "thinking" || ours === "tool"))) return "match";
   if (ours === "unknown") return "allowed:gateway-not-open";
   if (ours === "fault" && core === "idle") return "allowed:fault-not-painted";
   if (lag && lag.convergedAt !== null && lag.convergedAt - lag.since <= RENDER_LAG_MAX_S + 1e-9) return "allowed:render-lag";
@@ -678,7 +697,7 @@ function classifyParity(ours, coreLabel, lag) {
 // app/replay.ts
 var TAIL_S = STALE_S + 5;
 var HOOK_KINDS_ANY_SRC = /* @__PURE__ */ new Set(["heartbeat", "pid_dead", "binding"]);
-var DESKTOP_KINDS = /* @__PURE__ */ new Set(["state", "session.info", "message.start", "message.complete", "dot"]);
+var DESKTOP_KINDS = /* @__PURE__ */ new Set(["state", "session.info", "message.start", "message.complete", "tool.start", "tool.complete", "dot"]);
 var nonBlank = (s) => typeof s === "string" && s.trim() !== "";
 function rootKeyOf(l) {
   if (nonBlank(l.lineage_root)) return l.lineage_root;
@@ -980,6 +999,7 @@ export {
   STEP,
   TAIL_S,
   TOKENS,
+  TOOL_SIGNAL,
   allocate,
   blake2b,
   canonicalJson,

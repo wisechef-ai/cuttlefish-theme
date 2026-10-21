@@ -44,7 +44,7 @@ export interface ReplayResult {
 type Line = { t: number; src: string; kind: string; profile: string; session: string | null; lineage_root: string | null; payload: Record<string, any> };
 
 const HOOK_KINDS_ANY_SRC = new Set(['heartbeat', 'pid_dead', 'binding']);
-const DESKTOP_KINDS = new Set(['state', 'session.info', 'message.start', 'message.complete', 'dot']);
+const DESKTOP_KINDS = new Set(['state', 'session.info', 'message.start', 'message.complete', 'tool.start', 'tool.complete', 'dot']);
 const nonBlank = (s: unknown): s is string => typeof s === 'string' && s.trim() !== '';
 
 /** The lineage root of a hook line; the session id stands in only when the trace carries no root. */

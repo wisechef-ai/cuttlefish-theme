@@ -20,7 +20,7 @@ def state(*events, now=None):
 
 def test_initial_model_has_the_contract_fields_and_is_unknown_until_first_event():
     m = R.initial()
-    assert m == {"in_turn": False, "pending": [], "fault": False, "review_until": None, "finalized": False,
+    assert m == {"in_turn": False, "tools": [], "pending": [], "fault": False, "review_until": None, "finalized": False,
                  "last_seen": None, "bound": True, "pid_alive": None}
     assert V.resolve(m, 5.0) == "unknown"
 
@@ -31,10 +31,10 @@ def test_reduce_is_pure():
     assert m == R.initial() and m2["pending"] == ["clarify:c"]
 
 
-def test_pre_llm_call_starts_working_and_clears_fault_and_finalized():
-    assert state(ev("pre_llm_call")) == "working"
-    assert state(ev("on_session_finalize"), ev("pre_llm_call", 2)) == "working"
-    assert state(ev("api_request_error"), ev("pre_llm_call", 2)) == "working"
+def test_pre_llm_call_starts_thinking_and_clears_fault_and_finalized():
+    assert state(ev("pre_llm_call")) == "thinking"
+    assert state(ev("on_session_finalize"), ev("pre_llm_call", 2)) == "thinking"
+    assert state(ev("api_request_error"), ev("pre_llm_call", 2)) == "thinking"
 
 
 def test_session_start_is_proof_of_life_only():
@@ -60,12 +60,12 @@ def test_session_reset_clears_everything_and_the_pid_latch():
 def test_clarify_pending_until_the_matching_post_tool_call():
     seq = [ev("pre_llm_call"), ev("pre_tool_call", 2, tool_name="clarify", tool_call_id="c1")]
     assert state(*seq) == "needs-you"
-    assert state(*seq, ev("post_tool_call", 3, tool_name="clarify", tool_call_id="c1")) == "working"
+    assert state(*seq, ev("post_tool_call", 3, tool_name="clarify", tool_call_id="c1")) == "thinking"
     assert state(*seq, ev("post_tool_call", 3, tool_name="clarify", tool_call_id="zz")) == "needs-you"
 
 
 def test_other_tools_never_raise_needs_you():
-    assert state(ev("pre_llm_call"), ev("pre_tool_call", 2, tool_name="terminal", tool_call_id="t")) == "working"
+    assert state(ev("pre_llm_call"), ev("pre_tool_call", 2, tool_name="terminal", tool_call_id="t")) == "tool"
 
 
 def test_cancelled_then_reasked_clarify_does_not_stick():
@@ -73,7 +73,7 @@ def test_cancelled_then_reasked_clarify_does_not_stick():
            ev("post_tool_call", 3, tool_name="clarify", tool_call_id="c1"),
            ev("pre_tool_call", 4, tool_name="clarify", tool_call_id="c2")]
     assert state(*seq) == "needs-you"
-    assert state(*seq, ev("post_tool_call", 5, tool_name="clarify", tool_call_id="c2")) == "working"
+    assert state(*seq, ev("post_tool_call", 5, tool_name="clarify", tool_call_id="c2")) == "thinking"
 
 
 def test_approval_key_is_tool_call_id_else_session_key_slash_pattern_key():
@@ -97,14 +97,14 @@ def test_clarify_and_approval_keys_do_not_collide_and_pending_is_sorted_and_dedu
 def test_api_request_error_is_sticky_fault_and_post_llm_call_clears_it():
     seq = [ev("pre_llm_call"), ev("api_request_error", 2), ev("api_request_error", 3)]
     assert state(*seq) == "fault"
-    assert state(*seq, ev("post_llm_call", 4)) == "working"
+    assert state(*seq, ev("post_llm_call", 4)) == "thinking"
 
 
-def test_pre_verify_sets_a_600ms_review_pulse_under_working():
+def test_pre_verify_sets_a_600ms_review_pulse_under_thinking():
     m, s = run(ev("pre_verify", 10.0))
     assert m["review_until"] == 10.6 and s == "review"
     assert V.resolve(m, 10.59) == "review" and V.resolve(m, 10.6) == "idle"
-    assert state(ev("pre_llm_call", 9), ev("pre_verify", 10.0)) == "working"  # working > review
+    assert state(ev("pre_llm_call", 9), ev("pre_verify", 10.0)) == "thinking"  # working > review
 
 
 def test_precedence_needs_you_over_fault_over_working_over_review_over_idle():
@@ -121,7 +121,7 @@ def test_finalize_is_unknown_and_wins_over_everything():
 def test_stale_is_unknown_strictly_after_20s():
     assert V.STALE_S == 20.0
     m = R.reduce(R.initial(), ev("pre_llm_call", 100.0))
-    assert V.resolve(m, 120.0) == "working" and V.resolve(m, 120.001) == "unknown"
+    assert V.resolve(m, 120.0) == "thinking" and V.resolve(m, 120.001) == "unknown"
 
 
 def test_heartbeat_marks_alive_and_pid_dead_latches_until_heartbeat_or_reset():

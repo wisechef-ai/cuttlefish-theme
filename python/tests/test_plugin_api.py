@@ -71,7 +71,7 @@ def test_stale_heartbeat_resolves_to_unknown_but_keeps_raw_state(api, home, cloc
     runtime(home, clock).callbacks()["pre_llm_call"](session_id="s1")
     clock.advance(31)
     s = api.state()["sessions"]["s1"]
-    assert s["state"] == "unknown" and s["raw_state"] == "working"
+    assert s["state"] == "unknown" and s["raw_state"] == "thinking"
 
 
 def test_dead_owner_pid_on_this_host_is_unknown(api, home, clock, monkeypatch):
@@ -84,7 +84,7 @@ def test_remote_owner_is_not_pid_probed(api, home, clock, monkeypatch):
     runtime(home, clock).callbacks()["pre_llm_call"](session_id="s1")
     monkeypatch.setattr(api, "_host", lambda: "elsewhere")
     monkeypatch.setattr(api, "_pid_alive", lambda pid: pytest.fail("must not probe a remote pid"))
-    assert api.state()["sessions"]["s1"]["state"] == "working"
+    assert api.state()["sessions"]["s1"]["state"] == "thinking"
 
 
 def test_rev_is_stable_when_nothing_changed_and_moves_when_it_does(api, home, clock):
@@ -122,4 +122,4 @@ def test_over_http_with_the_fastapi_test_client(api, home, clock):
     ident = c.get("/api/plugins/cuttlefish-theme/identity")
     st = c.get("/api/plugins/cuttlefish-theme/state")
     assert ident.status_code == 200 and "s1" in ident.json()["sessions"]
-    assert st.status_code == 200 and st.json()["sessions"]["s1"]["state"] == "working"
+    assert st.status_code == 200 and st.json()["sessions"]["s1"]["state"] == "thinking"

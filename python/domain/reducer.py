@@ -10,12 +10,16 @@ _PAYLOAD_KEYS = ("tool_name", "tool_call_id", "session_key", "pattern_key")
 
 
 def initial():
-    return {"in_turn": False, "pending": [], "fault": False, "review_until": None, "finalized": False,
+    return {"in_turn": False, "tools": [], "pending": [], "fault": False, "review_until": None, "finalized": False,
             "last_seen": None, "bound": True, "pid_alive": None}
 
 
 def _s(v):
     return "" if v is None else str(v)
+
+
+def _tool_key(p):
+    return "tool:" + _s(p.get("tool_call_id"))
 
 
 def _clarify_key(p):
@@ -40,19 +44,25 @@ def reduce(model, ev):
     kind = ev.get("kind")
     m = dict(model, last_seen=ev["t"])           # every event from the session is proof of life
     if kind == "on_session_reset":
-        m.update(in_turn=False, pending=[], fault=False, review_until=None, finalized=False, pid_alive=None)
+        m.update(in_turn=False, tools=[], pending=[], fault=False, review_until=None, finalized=False, pid_alive=None)
     elif kind == "pre_llm_call":
-        m.update(in_turn=True, fault=False, finalized=False)
+        m.update(in_turn=True, tools=[], fault=False, finalized=False)
     elif kind == "post_llm_call":
-        m["fault"] = False
+        m.update(tools=[], fault=False)
     elif kind == "on_session_end":
-        m.update(in_turn=False, pending=[], fault=False if p.get("completed") is True else m["fault"])
+        m.update(in_turn=False, tools=[], pending=[], fault=False if p.get("completed") is True else m["fault"])
     elif kind == "on_session_finalize":
-        m.update(finalized=True, in_turn=False, pending=[])
-    elif kind == "pre_tool_call" and p.get("tool_name") == "clarify":
-        m["pending"] = _add(m["pending"], _clarify_key(p))
-    elif kind == "post_tool_call" and p.get("tool_name") == "clarify":
-        m["pending"] = _drop(m["pending"], _clarify_key(p))
+        m.update(finalized=True, in_turn=False, tools=[], pending=[])
+    elif kind == "pre_tool_call":
+        if p.get("tool_name") == "clarify":
+            m["pending"] = _add(m["pending"], _clarify_key(p))
+        else:
+            m["tools"] = _add(m["tools"], _tool_key(p))
+    elif kind == "post_tool_call":
+        if p.get("tool_name") == "clarify":
+            m["pending"] = _drop(m["pending"], _clarify_key(p))
+        else:
+            m["tools"] = _drop(m["tools"], _tool_key(p))
     elif kind == "pre_approval_request":
         m["pending"] = _add(m["pending"], _approval_key(p))
     elif kind == "post_approval_response":

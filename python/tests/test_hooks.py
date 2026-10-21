@@ -24,7 +24,7 @@ def test_a_turn_drives_the_bus_file(home, clock):
     cb["on_session_reset"](session_id="s1")
     assert bus(home, "s1")["state"] == "idle"
     cb["pre_llm_call"](session_id="s1", turn_id=TURN, user_message="hi", conversation_history=[1, 2])
-    assert bus(home, "s1")["state"] == "working"
+    assert bus(home, "s1")["state"] == "thinking"
     cb["on_session_end"](session_id="s1", completed=True, failed=False)
     assert bus(home, "s1")["state"] == "idle"
     ident = json.loads(P.identity_file(home).read_text())
@@ -46,7 +46,7 @@ def test_clarify_cancel_and_reask_through_callbacks(home, clock):
     cb["pre_tool_call"](session_id="s", tool_name="clarify", tool_call_id="c2")
     assert bus(home, "s")["state"] == "needs-you"
     cb["post_tool_call"](session_id="s", tool_name="clarify", tool_call_id="c2")
-    assert bus(home, "s")["state"] == "working"
+    assert bus(home, "s")["state"] == "thinking"
 
 
 def test_ordinary_tool_calls_do_not_write(home, clock):
@@ -80,7 +80,7 @@ def test_api_request_error_is_sticky_fault_until_next_turn(home, clock):
     cb["api_request_error"](session_id="s", status_code=401, retryable=False)
     assert bus(home, "s")["state"] == "fault"
     cb["pre_llm_call"](session_id="s")
-    assert bus(home, "s")["state"] == "working"
+    assert bus(home, "s")["state"] == "thinking"
 
 
 def test_finalize_removes_the_bus_file_and_keeps_identity(home, clock):
@@ -120,7 +120,7 @@ def test_pre_verify_returns_none_in_every_case(home, clock):
     cb["pre_llm_call"](session_id="s")
     assert cb["pre_verify"](session_id="s", coding=True, attempt=0, final_response="x", changed_paths=["a"]) is None
     e = bus(home, "s")
-    assert e["state"] == "working" and e["review_until"] == clock() + 0.6   # working > review: the pulse is held
+    assert e["state"] == "thinking" and e["review_until"] == clock() + 0.6   # working > review: the pulse is held
     cb["on_session_end"](session_id="s", completed=True)
     assert cb["pre_verify"](session_id="s") is None and bus(home, "s")["state"] == "review"
     assert cb["pre_verify"]() is None

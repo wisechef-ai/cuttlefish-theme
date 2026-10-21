@@ -8,7 +8,7 @@ export * from './domain/pattern.ts';
 export * from './domain/tokens.ts';
 export * from './ports/index.ts';
 export * from './app/resolve.ts';
-export { initial as hookInitial, reduce as hookReduce, resolve as hookResolve, reduceKeyed as hookReduceKeyed, trackInit, trackStep, STATES, STALE_S, REVIEW_DWELL_S } from './domain/state-hook.ts';
+export { initial as hookInitial, reduce as hookReduce, resolve as hookResolve, reduceKeyed as hookReduceKeyed, trackInit, trackStep, STATES, TOOL_SIGNAL, STALE_S, REVIEW_DWELL_S } from './domain/state-hook.ts';
 export type { State, HookEvent, HookModel, HookModels, HookPayload, Tracker } from './domain/state-hook.ts';
 export { initial as desktopInitial, reduce as desktopReduce, resolve as desktopResolve, storedIds as desktopStoredIds, classifyParity, CORE_DOT_LABELS } from './domain/state-desktop.ts';
 export type { DesktopInput, DesktopModel, Parity } from './domain/state-desktop.ts';

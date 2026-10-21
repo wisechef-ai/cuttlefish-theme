@@ -40,7 +40,7 @@ def test_replay_reaches_every_hook_state_across_the_tui_traces():
     for p in TUI:
         for r in RP.replay(p.read_text(encoding="utf-8").splitlines())["roots"].values():
             seen |= {s["state"] for s in r["samples"]}
-    assert seen == {"idle", "working", "review", "needs-you", "fault", "unknown"}
+    assert seen == {"idle", "thinking", "tool", "review", "needs-you", "fault", "unknown"}
 
 
 def test_replay_rejects_a_trace_without_a_header_and_a_line_without_t():

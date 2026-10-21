@@ -13,7 +13,7 @@ from .domain import reducer, resolve
 
 log = logging.getLogger("cuttlefish")
 
-SCHEMA = "cf2909.bus/1"
+SCHEMA = "cf2909.bus/2"
 JOURNAL_MAX = 32
 SWEEP_FILES = 64
 SWEEP_AGE_S = 24 * 3600
@@ -155,7 +155,8 @@ class BusWriter:
                     model = reducer.reduce(model, j)
                 slot.model, slot.seq, slot.journal = model, e["seq"], e["journal"][-JOURNAL_MAX:]
                 last = e["journal"][-1]["t"] if e["journal"] else 0
-                slot.state = e.get("state") or resolve.resolve(model, last)
+                old = e.get("state")                    # a cf2909.bus/1 file says `working`: re-resolve it (thinking | tool)
+                slot.state = old if old and old != "working" else resolve.resolve(model, last)
                 slot.since = e.get("since")
             except Exception:
                 slot = _Slot()

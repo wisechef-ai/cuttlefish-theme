@@ -16,6 +16,8 @@ export interface DesktopInput {
     busyBySession?: Readonly<Record<string, boolean>> | null;
     busy?: boolean | null;
     stored_session_id?: string | null;
+    tool_name?: string | null;
+    tool_call_id?: string | null;
     focused_session_id?: string | null;
     focused_stored_session_id?: string | null;
     stored_id?: string | null;
@@ -31,6 +33,8 @@ export interface DesktopModel {
   readonly stored_of: Readonly<Record<string, string>>;
   /** Runtime-id keyed: the busy flag of every runtime in the latest snapshot. */
   readonly busy_rt: Readonly<Record<string, boolean>>;
+  /** Runtime-id keyed: open non-clarify tool calls (`tool.start` .. `tool.complete`), sorted ids. */
+  readonly tools_rt: Readonly<Record<string, readonly string[]>>;
   readonly fault: Readonly<Record<string, boolean>>;
   readonly needs_input: Readonly<Record<string, boolean>>;
   /** Runtime-id keyed inputs waiting for a mapping, in arrival order. */
@@ -38,7 +42,7 @@ export interface DesktopModel {
 }
 
 export function initial(): DesktopModel {
-  return { gateway: null, stored_of: {}, busy_rt: {}, fault: {}, needs_input: {}, buffered: {} };
+  return { gateway: null, stored_of: {}, busy_rt: {}, tools_rt: {}, fault: {}, needs_input: {}, buffered: {} };
 }
 
 /** i18n strings core's SessionStatusDot puts in span[role=status] aria-label (spike 07; idle dots have no label). */
@@ -86,9 +90,21 @@ export function reduce(model: DesktopModel, input: DesktopInput): DesktopModel {
       const rt = input.session;
       return rt && stored ? learn(model, rt, stored) : model;
     }
+    case 'tool.start':
+    case 'tool.complete': {
+      // The host's tool signal (spike 07: tool.start/complete reach host.onEvent with the RUNTIME id). clarify is an ask, not a tool.
+      if (!input.session || p.tool_name === 'clarify') return model;
+      const id = p.tool_call_id ?? '';
+      const open = model.tools_rt[input.session] ?? [];
+      const next = input.kind === 'tool.start' ? (open.includes(id) ? open : [...open, id].sort()) : open.filter(x => x !== id);
+      return { ...model, tools_rt: set(model.tools_rt, input.session, next) };
+    }
     case 'message.start':
-    case 'message.complete':
-      return input.session ? applyRuntime(model, input.kind, input.session, p) : model;
+    case 'message.complete': {
+      // a turn boundary closes every tool of that runtime (a killed backend sends no tool.complete)
+      const m = input.session && model.tools_rt[input.session]?.length ? { ...model, tools_rt: set(model.tools_rt, input.session, []) } : model;
+      return input.session ? applyRuntime(m, input.kind, input.session, p) : m;
+    }
     case 'dot': {
       const stored = input.session ?? p.stored_session_id ?? p.stored_id;
       if (!stored) return model;
@@ -104,19 +120,21 @@ export function storedIds(model: DesktopModel): string[] {
   return [...new Set([...Object.values(model.stored_of), ...Object.keys(model.needs_input)])].sort();
 }
 
-/** unknown if the gateway is not open, then needs-you, fault, working, idle. No review on desktop. */
+/** unknown if the gateway is not open, then needs-you, fault, tool (busy + an open tool) , thinking (busy), idle. No review on desktop. */
 export function resolve(model: DesktopModel, stored: string): State {
   if (model.gateway !== 'open') return 'unknown';
   if (model.needs_input[stored]) return 'needs-you';
   if (model.fault[stored]) return 'fault';
-  if (Object.entries(model.busy_rt).some(([rt, b]) => b && model.stored_of[rt] === stored)) return 'working';
+  const busy = Object.entries(model.busy_rt).filter(([rt, b]) => b && model.stored_of[rt] === stored).map(([rt]) => rt);
+  if (busy.length === 0) return 'idle';
+  return busy.some(rt => (model.tools_rt[rt] ?? []).length > 0) ? 'tool' : 'thinking';
   return 'idle';
 }
 
 /** What core's dot means; null for a label we do not model (e.g. a background-task dot). */
-function coreState(label: string): State | null {
+function coreState(label: string): State | 'working' | null {
   if (label === '') return 'idle';
-  if (label === CORE_DOT_LABELS.working) return 'working';
+  if (label === CORE_DOT_LABELS.working) return 'working';   // core has one busy dot: ours is `thinking` or `tool`
   if (label === CORE_DOT_LABELS.needsYou) return 'needs-you';
   return null;
 }
@@ -132,7 +150,7 @@ export interface LagWindow { since: number; convergedAt: number | null }
 /** Compare our resolved state with what core's dot shows (aria-label, or null/'' for the unlabelled idle dot). */
 export function classifyParity(ours: State, coreLabel: string | null | undefined, lag?: LagWindow): Parity {
   const core = coreState(coreLabel ?? '');
-  if (core !== null && ours === core) return 'match';
+  if (core !== null && (ours === core || (core === 'working' && (ours === 'thinking' || ours === 'tool')))) return 'match';
   if (ours === 'unknown') return 'allowed:gateway-not-open';          // core shows stale busy for up to ~26 s after a kill
   if (ours === 'fault' && core === 'idle') return 'allowed:fault-not-painted';   // core paints no fault dot
   if (lag && lag.convergedAt !== null && lag.convergedAt - lag.since <= RENDER_LAG_MAX_S + 1e-9) return 'allowed:render-lag';
