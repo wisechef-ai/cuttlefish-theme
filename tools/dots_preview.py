@@ -284,26 +284,36 @@ FAKE = [
 ]
 
 
+def _interrupt(*_: object) -> None:
+    raise KeyboardInterrupt
+
+
 def run_terminal(args: argparse.Namespace) -> None:
     out = sys.stdout
     cols, rows_total = shutil.get_terminal_size((100, 30))
-    hue = session_hue(args.session)
     if args.field:
         top, rows = 0, rows_total - 1
     else:
         rows = args.rows
         top = rows_total - rows - 3
-    organs = constellation(args.session, cols, rows, args.density)
-    prev: dict[tuple[int, int], tuple[str, object]] = {}
 
-    def bye(*_: object) -> None:
+    # The handler only RAISES; the terminal is restored in one `finally`. Writing from
+    # the handler re-enters stdout's buffer when the signal lands mid-frame.
+    signal.signal(signal.SIGTERM, _interrupt)
+    out.write("\x1b[?1049h\x1b[?25l\x1b[2J")  # alt screen; NO background is ever set
+    try:
+        _loop(args, out, cols, rows_total, rows, top)
+    except KeyboardInterrupt:
+        pass
+    finally:
         out.write("\x1b[0m\x1b[?25h\x1b[?1049l")
         out.flush()
-        sys.exit(0)
 
-    signal.signal(signal.SIGINT, bye)
-    signal.signal(signal.SIGTERM, bye)
-    out.write("\x1b[?1049h\x1b[?25l\x1b[2J")  # alt screen; NO background is ever set
+
+def _loop(args: argparse.Namespace, out, cols: int, rows_total: int, rows: int, top: int) -> None:
+    hue = session_hue(args.session)
+    organs = constellation(args.session, cols, rows, args.density)
+    prev: dict[tuple[int, int], tuple[str, object]] = {}
     if not args.field:
         for i, line in enumerate(FAKE):
             out.write(f"\x1b[{max(1, top - len(FAKE) + i)};1H{line}")
