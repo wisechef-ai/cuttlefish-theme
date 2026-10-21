@@ -110,3 +110,28 @@ def test_legend_covers_seven_states_plus_degraded_and_never_paints_a_background(
     for st in ("idle", "thinking", "tool", "review", "needs-you", "fault", "unknown", "degraded"):
         assert st in text
     assert "\x1b[48" not in text and "\x1b]11" not in text
+
+
+def test_uninstall_preserves_unledgered_files_and_cleans_owned_state(home):
+    cf = home / "cuttlefish"
+    (cf / "bus").mkdir(parents=True)
+    for rel in ("identity.json", "identity.lock", "hooks.json", "state.json",
+                "widget-heartbeat.json", "ledger.json", "bus/root-a.json", "bus/.tmp-x"):
+        (cf / rel).write_text("{}")
+    sentinel = cf / "user-notes.txt"
+    sentinel.write_text("mine")
+    nested = cf / "bus" / "keep.txt"
+    nested.write_text("also mine")
+    setup_cmd.Uninstall(home, out=lambda *_: None, poke=lambda *a, **k: None).run(keep_plugin=True)
+    assert sentinel.read_text() == "mine" and nested.read_text() == "also mine"
+    assert sorted(p.relative_to(cf).as_posix() for p in cf.rglob("*") if p.is_file()) == [
+        "bus/keep.txt", "user-notes.txt"]
+
+
+def test_uninstall_removes_the_data_dir_when_only_owned_state_was_in_it(home):
+    cf = home / "cuttlefish"
+    (cf / "bus").mkdir(parents=True)
+    (cf / "ledger.json").write_text("{}")
+    (cf / "bus" / "r.json").write_text("{}")
+    setup_cmd.Uninstall(home, out=lambda *_: None, poke=lambda *a, **k: None).run(keep_plugin=True)
+    assert not cf.exists()

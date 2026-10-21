@@ -249,6 +249,38 @@ class Uninstall:
         else:
             self.core.write_config(new)
 
+    def _remove_owned_state(self):
+        """Remove only the state files Cuttlefish itself writes; anything else in the shared
+        data directory is the user's and stays. Directories go only if they end up empty."""
+        cf = paths.cuttlefish_dir(self.home)
+        bd = paths.bus_dir(self.home)
+        owned = [paths.identity_file(self.home), paths.identity_lock(self.home),
+                 paths.hooks_file(self.home), paths.prefs_file(self.home),
+                 paths.widget_heartbeat_file(self.home), paths.ledger_file(self.home)]
+        for d in (bd, cf):  # our atomic-write leftovers
+            if d.is_dir():
+                owned += [p for p in d.iterdir() if p.name.startswith(".tmp-") and p.is_file()]
+        if bd.is_dir():  # <lineage>.json bus entries
+            owned += [p for p in bd.iterdir() if p.suffix == ".json" and p.is_file() and not p.is_symlink()]
+        removed = 0
+        for p in owned:
+            try:
+                p.unlink()
+                removed += 1
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                self._say("state", "left %s: %s" % (p, exc))
+        if removed:
+            self._say("state", "removed %d Cuttlefish state file(s) under %s" % (removed, cf))
+        for d in (bd, cf):
+            try:
+                d.rmdir()
+                self._say("dir", "removed %s" % d)
+            except OSError:
+                if d.exists():
+                    self._say("dir", "left %s: holds files that are not ours" % d)
+
     def run(self, *, keep_plugin=False):
         self.out("cuttlefish uninstall  (HERMES_HOME=%s)" % self.home)
         doc = ledger.load(self.home)
@@ -282,10 +314,7 @@ class Uninstall:
                 except OSError:
                     if p.exists():
                         self._say("dir", "left %s: not empty" % p)
-        cf = paths.cuttlefish_dir(self.home)
-        if cf.is_dir():
-            shutil.rmtree(cf)
-            self._say("state", "removed %s (identity, bus, state, ledger)" % cf)
+        self._remove_owned_state()
         self.poke(self.home)
         if keep_plugin:
             self._say("plugin", "kept (--keep-plugin)")
