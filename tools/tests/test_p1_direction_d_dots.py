@@ -157,17 +157,17 @@ def test_states_differ_in_pattern_not_only_colour():
     assert len({round(f, 2) for f in fills}) >= 5, fills
 
 
-def test_authored_pairs_meet_contrast_and_tokens_match_the_module():
+def test_authored_pairs_meet_contrast_of_the_history_module_and_tokens_are_d2():
+    # d-dots is kept as history (D2 locked 2026-10-21): its own contrast contract still holds, but packages/core/tokens.json
+    # now belongs to D2 and is pinned by python/domain/dots.py + fixtures/dots-vectors.json, not by this module.
     res = paint_many([])
     for p in res["pairs"]:
         a, b = sorted((lum(p["fg"]), lum(p["bg"])), reverse=True)
         assert (a + 0.05) / (b + 0.05) >= 4.5, p
     tok = json.loads(TOKENS.read_text())
-    assert tok["direction"] == res["meta"]["id"]
-    assert tok["motion"]["fps_max"] >= res["meta"]["fps"]
-    pairs = {(p["fg"].lower(), p["bg"].lower()) for p in res["pairs"]}
-    for p in tok["text_pairs"]:
-        assert (p["fg"].lower(), p["bg"].lower()) in pairs
+    assert tok["direction"] == "d2-scatter" and tok["ground"] is None
+    assert set(tok["states"]) == {"idle", "thinking", "tool", "review", "needs-you", "fault", "unknown", "degraded"}
+    assert tok["identity"]["hue_arc_deg"] == [110, 340]
 
 
 def test_working_cloud_is_visible_beside_the_pill_label():

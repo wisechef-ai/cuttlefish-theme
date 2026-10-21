@@ -15,10 +15,10 @@ export interface IdentityStore {
   peerSlots(excludeLineageRoot: string): readonly number[];
 }
 
-/** Somewhere pixels and text overlays go (a canvas, a half-block terminal grid, a test buffer). */
+/** Somewhere organs and text plates go (a transparent canvas, a terminal strip, a test buffer). Foreground colour only. */
 export interface Surface {
   readonly scale: 'XL' | 'M' | 'S';
   readonly w: number;
   readonly h: number;
-  draw(frame: { pixels: Uint8ClampedArray; text: ReadonlyArray<{ x: number; y: number; str: string; fg: string; bg: string }> }): void;
+  draw(frame: { cols: number; rows: number; cells: ReadonlyArray<{ x: number; y: number; glyph: string; rgb: readonly [number, number, number]; e: number }>; text: ReadonlyArray<{ x: number; y: number; str: string; fg: string; bg: string }> }): void;
 }

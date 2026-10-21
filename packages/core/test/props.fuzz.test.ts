@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import fc from 'fast-check';
 import {
   hookInitial, hookReduce, hookResolve, STALE_S,
-  allocate, hueOfSlot, paint, frameStep,
+  allocate, hueOfSlot, renderModel,
   replayJson as sourceReplayJson,
 } from '../index.ts';
 import type { HookEvent, HookModel } from '../index.ts';
@@ -77,18 +77,6 @@ function shuffle<T>(xs: readonly T[], rnd: () => number): T[] {
   }
   return out;
 }
-
-const pixelSig = (px: Uint8ClampedArray): string => {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < px.length; i++) h = Math.imul(h ^ px[i], 0x01000193) >>> 0;
-  return `${px.length}:${h}`;
-};
-
-const samePixels = (a: Uint8ClampedArray, b: Uint8ClampedArray): boolean => {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
-  return true;
-};
 
 // ---- 1. bundle parity: byte-identical replay() canonical output on random sequences ----------------------
 
@@ -257,53 +245,52 @@ test('P6 (1000 runs): allocate() never returns a peer-held slot while a free one
   ));
 });
 
-// ---- 7. pattern: non-working looks are static; working is static under reducedMotion and moves otherwise -----
+// ---- 7. pattern: static looks are static; thinking/tool/needs-you move unless motion is off ------------------------
 
-const STATIC_LOOKS = ['idle', 'review', 'needs-you', 'fault', 'unknown'] as const;
+const STATIC_LOOKS = ['review', 'fault', 'unknown'] as const;           // idle is static unless the twinkle setting allows it
 const SCALES = [
-  { scale: 'XL', w: 96, h: 32 },
-  { scale: 'M', w: 28, h: 3 },
-  { scale: 'S', w: 4, h: 2 },      // the desktop swatch
+  { scale: 'XL', w: 960, h: 480 },   // px; the grid is w/12 x h/24
+  { scale: 'M', w: 120, h: 2 },
+  { scale: 'S', w: 4, h: 2 },        // the desktop swatch
   { scale: 'S', w: 14, h: 2 },
 ] as const;
-const T_STATIC = 37.25;            // seconds; the card's probe instant (frameStep = 149)
+const T_STATIC = 37.25;
+const sig = (cells: readonly { x: number; y: number; glyph: string; rgb: readonly number[] }[]): string => cells.map(c => `${c.x},${c.y},${c.glyph},${c.rgb.join('.')}`).join(';');
+const sess = (hue: number | null, name: string, alarm: string | null) => (hue === null ? null : { name, hue_deg: hue, alarm_text: alarm });
 
-test('P7 (1000 runs): every non-working look (and working under reducedMotion) is byte-identical at t=0 and t=37.25 [red: the paint seed drifts with the frame step — every look flickers]', async () => {
+test('P7 (1000 runs): review/fault/unknown, idle with twinkle off, and every look under reducedMotion are byte-identical at t=0 and t=37.25 [red: the draw time leaks into a static state]', async () => {
   const surfArb = fc.record({
     hue: fc.float({ min: 110, max: 340, noNaN: true }),
-    look: fc.constantFrom(...STATIC_LOOKS),
+    look: fc.constantFrom(...STATIC_LOOKS, 'idle', 'thinking', 'tool', 'needs-you'),
     degraded: fc.boolean(),
-    reduced: fc.boolean(),
     surface: fc.constantFrom(...SCALES),
     name: fc.constantFrom('', 's1', 'a longer session name'),
     alarm: fc.constantFrom(null, 'clarify?', 'API 401'),
   });
   await prop('P7-static', 290918, fc.property(surfArb, s => {
-    const base = {
-      scale: s.surface.scale, w: s.surface.w, h: s.surface.h,
-      hueDeg: s.degraded ? null : s.hue, name: s.name, alarmText: s.alarm, reducedMotion: s.reduced,
-    };
-    const at = (t: number) => paint({ ...base, look: s.look, step: frameStep(t) });
+    const quiet = s.look === 'idle' || s.look === 'thinking' || s.look === 'tool' || s.look === 'needs-you';
+    const at = (t: number) => renderModel({
+      session: sess(s.degraded ? null : s.hue, s.name, s.alarm), state: s.look, scale: s.surface.scale, w: s.surface.w, h: s.surface.h,
+      now: t, focused: true, visible: true, reducedMotion: quiet, idleTwinkle: 'off',
+    });
     const a = at(0), b = at(T_STATIC);
-    assert.ok(samePixels(a.pixels, b.pixels), `${s.look} at ${s.surface.scale} ${s.surface.w}x${s.surface.h} must be static (pixels differ between t=0 and t=${T_STATIC})`);
+    assert.equal(sig(a.cells), sig(b.cells), `${s.look} at ${s.surface.scale} must be static (cells differ between t=0 and t=${T_STATIC})`);
     assert.deepEqual(a.text, b.text, 'text must be static too');
-    // working + reducedMotion is static as well
-    const wa = paint({ ...base, look: 'working', step: 0 });
-    const wb = paint({ ...base, look: 'working', step: frameStep(T_STATIC), reducedMotion: true });
-    assert.ok(samePixels(wa.pixels, wb.pixels), 'working under reducedMotion must be static');
+    assert.equal(a.nextFrameDelayMs, null, 'no timer at rest');
   }));
 });
 
-test('P7b (1000 runs): working moves at every scale incl. the S 4x2 swatch — ≥ 3 distinct frames in 12 steps [red: the cloud band stops drifting (− step removed)]', async () => {
+test('P7b (1000 runs): thinking and tool move at every scale incl. the S 4x2 swatch - >= 3 distinct frames in 3 s [red: the drive ignores t]', async () => {
   await prop('P7-move', 290919, fc.property(
     fc.float({ min: 110, max: 340, noNaN: true }),
     fc.constantFrom(...SCALES),
-    (hue, surface) => {
+    fc.constantFrom('thinking', 'tool'),
+    (hue, surface, look) => {
       const frames = new Set<string>();
-      for (let step = 0; step < 12; step++) {
-        frames.add(pixelSig(paint({ scale: surface.scale, w: surface.w, h: surface.h, look: 'working', hueDeg: hue, name: 's', alarmText: null, step, reducedMotion: false }).pixels));
+      for (let step = 0; step < 30; step++) {
+        frames.add(sig(renderModel({ session: { name: 's', hue_deg: hue }, state: look, scale: surface.scale, w: surface.w, h: surface.h, now: step / 10 + 20, focused: true, visible: true, reducedMotion: false }).cells));
       }
-      assert.ok(frames.size >= 3, `working at ${surface.scale} ${surface.w}x${surface.h} must animate (got ${frames.size} distinct frames of 12)`);
+      assert.ok(frames.size >= 3, `${look} at ${surface.scale} ${surface.w}x${surface.h} must animate (got ${frames.size} distinct frames of 30)`);
     },
   ));
 });

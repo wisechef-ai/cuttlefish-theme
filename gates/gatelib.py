@@ -120,6 +120,19 @@ def non_background_mask(tile_rgb: np.ndarray, exclude: np.ndarray | None = None)
     return m & ~exclude if exclude is not None else m
 
 
+def organ_oklab(tile_rgb: np.ndarray, exclude: np.ndarray | None = None) -> np.ndarray:
+    """G2 identity metric (D2): per-channel median OKLab over ORGAN pixels only.
+
+    Organs are the pixels that are not the tile's own ground (the user's background shows through in D2, so the
+    ground is whatever colour dominates the tile) and not text. A tile with no organ pixel falls back to the plain
+    tile median so an empty tile still yields a number (and then fails the floor against its neighbours).
+    """
+    m = non_background_mask(tile_rgb, exclude)
+    if not m.any():
+        return median_oklab(tile_rgb, exclude)
+    return np.median(rgb_to_oklab(tile_rgb[m]), axis=0)
+
+
 def identity_check(labs, threshold: float = FROZEN["identity_delta_e_min"]) -> dict:
     labs = np.asarray(labs, dtype=np.float64)
     worst, pair, mat = nearest_pair(labs)

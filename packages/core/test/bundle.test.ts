@@ -17,5 +17,6 @@ test('the bundled core renders (blake2b + identity + pattern run with no host AP
   const mod: any = await import('data:text/javascript;base64,' + Buffer.from(r.outputFiles[0].text).toString('base64'));
   const hue = mod.allocate('20260930_104729_led', []).hue_deg;
   const m = mod.renderModel({ session: { name: 'ledger', hue_deg: hue }, state: 'idle', scale: 'S', w: 4, h: 2, now: 0, focused: true, visible: true, reducedMotion: false });
-  assert.equal(m.pixels.length, 4 * 2 * 4);
+  assert.ok(m.cells.length >= 1 && m.cells.every((c: any) => c.rgb.length === 3), 'the bundled core scatters organs with no host APIs');
+  assert.equal(m.pixels, undefined, 'no pixel buffer: D2 has no ground to paint');
 });

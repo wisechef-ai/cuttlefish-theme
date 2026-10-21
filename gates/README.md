@@ -25,9 +25,7 @@ How the rendered numbers are taken (so a reviewer can reproduce them):
 
 - Rendered text contrast: the direction's `paint().text` gives each string's cell box (11 x 23 px cells); the cell's most common colour is
   the background, the mean of the ~4 % of pixels farthest from it is the glyph colour. Half-truecolor and 256 rungs only.
-- Identity: per tile of the 16/20-session grids, the per-channel median OKLab with the text cells masked out; nearest pair dE_OK >= 0.020.
-  The report also carries a non-gating `informational_pigment_only` figure (median of non-background pixels) because a sparse-pigment
-  pattern on a pale ground has a tile median that is just the ground.
+- Identity (D2 re-spec): per tile of the 16/20-session grids, the per-channel median OKLab over ORGAN pixels only (pixels that are neither the tile's dominant ground colour nor text); nearest pair dE_OK >= 0.020, no identity hue in the alarm arc. The old whole-tile median is kept as a non-gating `informational_tile_median` (on a sparse scatter it is just the ground).
 - Static proof: single-session frame groups; the desktop sidebar mixes all six states, so it is not judged.
 - G5 blindness: one image per call, fixed prompts, a throwaway cwd for `codex exec`; text policy (D-R2-5): identity masks all text; the plain legend keeps the alarm words
   (alarms carry literal text by contract) with session names masked; the three CVD legends mask all text (the state must be named from pattern).

@@ -266,3 +266,43 @@ def test_sample_per_cell_caps_each_cell_and_keeps_every_label():
     assert len(c1) == 3 and {i[1] for i in c1} == {"a", "b", "c"}
     assert [i for i in got if i[0] == "c2"] == [("c2", "a", 99)]
     assert got == [i for i in items if i in got]            # order preserved
+
+
+# ---- G2 identity metric, D2 re-spec: median OKLab over ORGAN pixels only --------------------
+def _scatter_tile(rgb, ground=(14, 15, 19), n=6, size=40):
+    t = np.zeros((size, size, 3), np.uint8); t[:] = ground
+    for k in range(n):
+        t[3 + k * 6, 3 + k * 5] = rgb
+    return t
+
+
+def _identity(tiles):
+    return gl.identity_check(np.array([gl.organ_oklab(t) for t in tiles]), 0.020)
+
+
+def test_organ_metric_reads_the_pigment_not_the_ground():
+    t = _scatter_tile((60, 140, 200))
+    assert np.allclose(gl.organ_oklab(t), gl.rgb_to_oklab(np.array([[60, 140, 200]], np.uint8))[0], atol=1e-9)
+    assert not np.allclose(gl.median_oklab(t), gl.organ_oklab(t), atol=0.05)   # the old tile median is just the ground
+
+
+def test_g2_identity_red_proof_two_near_identical_hues_must_fail():
+    a, b = _scatter_tile((60, 140, 200)), _scatter_tile((60, 141, 200))   # ~ the same hue
+    # the superseded whole-tile median cannot tell them apart from anything: it sees only the ground
+    old = gl.identity_check(np.array([gl.median_oklab(a), gl.median_oklab(b)]), 0.020)
+    assert old["worst_pair"] < 0.020
+    r = _identity([a, b])
+    assert not r["ok_delta"] and r["worst_pair"] < 0.020
+
+
+def test_g2_identity_organ_metric_passes_distinct_hues_and_flags_alarm_arc():
+    ok = _identity([_scatter_tile((60, 140, 200)), _scatter_tile((160, 110, 220)), _scatter_tile((120, 190, 80))])
+    assert ok["ok_delta"] and ok["worst_pair"] >= 0.020 and ok["alarm_arc_violations"] == []
+    red = _identity([_scatter_tile((60, 140, 200)), _scatter_tile((220, 40, 40))])
+    assert red["alarm_arc_violations"] == [1]
+
+
+def test_organ_metric_excludes_text_pixels():
+    t = _scatter_tile((60, 140, 200)); ex = np.zeros(t.shape[:2], bool)
+    t[20:24, 20:30] = (250, 250, 250); ex[20:24, 20:30] = True
+    assert np.allclose(gl.organ_oklab(t, ex), gl.organ_oklab(_scatter_tile((60, 140, 200))), atol=1e-9)
