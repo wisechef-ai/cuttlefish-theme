@@ -2,6 +2,8 @@
 {"v":1,"t":0,"src":"hook","profile":"A","session":"S1","lineage_root":"R1","kind":"on_session_reset","payload":{}}
 {"v":1,"t":1,"src":"liveness","profile":"A","session":"S1","lineage_root":"R1","kind":"heartbeat","payload":{}}
 {"v":1,"t":2,"src":"hook","profile":"A","session":"S1","lineage_root":"R1","kind":"pre_llm_call","payload":{}}
+{"v":1,"t":2.5,"src":"hook","profile":"A","session":"S1","lineage_root":"R1","kind":"pre_tool_call","payload":{"tool_name":"terminal","tool_call_id":"t1"}}
+{"v":1,"t":3.5,"src":"hook","profile":"A","session":"S1","lineage_root":"R1","kind":"post_tool_call","payload":{"tool_name":"terminal","tool_call_id":"t1"}}
 {"v":1,"t":4,"src":"hook","profile":"A","session":"S1","lineage_root":"R1","kind":"pre_tool_call","payload":{"tool_name":"clarify","tool_call_id":"c1"}}
 {"v":1,"t":6,"src":"hook","profile":"A","session":"S1","lineage_root":"R1","kind":"post_tool_call","payload":{"tool_name":"clarify","tool_call_id":"c1"}}
 {"v":1,"t":7,"src":"hook","profile":"A","session":"S1","lineage_root":"R1","kind":"pre_verify","payload":{}}

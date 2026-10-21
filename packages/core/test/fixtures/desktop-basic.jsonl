@@ -3,6 +3,8 @@
 {"v":1,"t":1,"src":"desktop.event","profile":"A","session":"rt1","lineage_root":null,"kind":"session.info","payload":{"stored_session_id":"st1"}}
 {"v":1,"t":2,"src":"desktop.state","profile":"A","session":null,"lineage_root":null,"kind":"state","payload":{"gateway":"open","busyBySession":{"rt1":true}}}
 {"v":1,"t":2,"src":"desktop.dot","profile":"A","session":"st1","lineage_root":null,"kind":"dot","payload":{"label":"Session running"}}
+{"v":1,"t":2.5,"src":"desktop.event","profile":"A","session":"rt1","lineage_root":null,"kind":"tool.start","payload":{"tool_name":"terminal","tool_call_id":"x1"}}
+{"v":1,"t":3.5,"src":"desktop.event","profile":"A","session":"rt1","lineage_root":null,"kind":"tool.complete","payload":{"tool_name":"terminal","tool_call_id":"x1"}}
 {"v":1,"t":4,"src":"desktop.dot","profile":"A","session":"st1","lineage_root":null,"kind":"dot","payload":{"label":"Needs your input"}}
 {"v":1,"t":6,"src":"desktop.dot","profile":"A","session":"st1","lineage_root":null,"kind":"dot","payload":{"label":"Session running"}}
 {"v":1,"t":8,"src":"desktop.event","profile":"A","session":"rt1","lineage_root":null,"kind":"message.complete","payload":{"status":"error"}}

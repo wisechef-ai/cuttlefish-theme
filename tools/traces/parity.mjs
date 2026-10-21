@@ -14,7 +14,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, '../..');
-const STATES = ['idle', 'working', 'review', 'needs-you', 'fault', 'unknown'];
+const STATES = ['idle', 'thinking', 'tool', 'review', 'needs-you', 'fault', 'unknown'];
 
 const args = process.argv.slice(2);
 const flag = n => args.includes(n);

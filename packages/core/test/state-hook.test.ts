@@ -17,18 +17,18 @@ test('on_session_reset: a fresh window is idle, and it wipes turn, pending appro
 
 test('on_session_start: no state effect (it only fires late, at the first turn)', () => {
   assert.equal(stateAfter([ev(0, 'on_session_reset'), ev(1, 'on_session_start')]), 'idle');
-  assert.equal(stateAfter([ev(0, 'pre_llm_call'), ev(1, 'on_session_start')]), 'working');
+  assert.equal(stateAfter([ev(0, 'pre_llm_call'), ev(1, 'on_session_start')]), 'thinking');
   assert.equal(stateAfter([ev(0, 'api_request_error'), ev(1, 'on_session_start')]), 'fault');
 });
 
-test('pre_llm_call: working, and a new turn clears the sticky fault and finalized', () => {
-  assert.equal(stateAfter([ev(0, 'pre_llm_call')]), 'working');
-  assert.equal(stateAfter([ev(0, 'api_request_error'), ev(1, 'pre_llm_call')]), 'working');
-  assert.equal(resolve(fold([ev(0, 'on_session_finalize'), ev(1, 'pre_llm_call')]), 1), 'working');
+test('pre_llm_call: thinking, and a new turn clears the sticky fault and finalized', () => {
+  assert.equal(stateAfter([ev(0, 'pre_llm_call')]), 'thinking');
+  assert.equal(stateAfter([ev(0, 'api_request_error'), ev(1, 'pre_llm_call')]), 'thinking');
+  assert.equal(resolve(fold([ev(0, 'on_session_finalize'), ev(1, 'pre_llm_call')]), 1), 'thinking');
 });
 
 test('post_llm_call: clears fault but the turn is still open (on_session_end closes it)', () => {
-  assert.equal(stateAfter([ev(0, 'pre_llm_call'), ev(1, 'api_request_error'), ev(2, 'post_llm_call')]), 'working');
+  assert.equal(stateAfter([ev(0, 'pre_llm_call'), ev(1, 'api_request_error'), ev(2, 'post_llm_call')]), 'thinking');
   assert.equal(stateAfter([ev(0, 'api_request_error'), ev(1, 'post_llm_call')]), 'idle');
 });
 
@@ -51,33 +51,83 @@ test('on_session_finalize: the session is over, unknown (never the last known st
 test('pre_tool_call / post_tool_call on clarify: needs-you from ask until the matching post', () => {
   const ask = [ev(0, 'pre_llm_call'), ev(1, 'pre_tool_call', { tool_name: 'clarify', tool_call_id: 'c1' })];
   assert.equal(stateAfter(ask), 'needs-you');
-  assert.equal(stateAfter([...ask, ev(2, 'post_tool_call', { tool_name: 'clarify', tool_call_id: 'c1' })]), 'working');
+  assert.equal(stateAfter([...ask, ev(2, 'post_tool_call', { tool_name: 'clarify', tool_call_id: 'c1' })]), 'thinking');
 });
 
 test('other tools never raise needs-you', () => {
-  assert.equal(stateAfter([ev(0, 'pre_llm_call'), ev(1, 'pre_tool_call', { tool_name: 'terminal', tool_call_id: 'c1' })]), 'working');
+  assert.equal(stateAfter([ev(0, 'pre_llm_call'), ev(1, 'pre_tool_call', { tool_name: 'terminal', tool_call_id: 'c1' })]), 'tool');
+});
+
+test('hook -> state table (CONTRACT §2): pre_llm_call thinking, pre_tool_call tool, post_tool_call thinking, clarify needs-you', () => {
+  const T = (id: string, name = 'terminal') => ({ tool_name: name, tool_call_id: id });
+  assert.equal(stateAfter([ev(0, 'pre_llm_call')]), 'thinking');
+  assert.equal(stateAfter([ev(0, 'pre_llm_call'), ev(1, 'pre_tool_call', T('a'))]), 'tool');
+  assert.equal(stateAfter([ev(0, 'pre_llm_call'), ev(1, 'pre_tool_call', T('a')), ev(2, 'post_tool_call', T('a'))]), 'thinking');
+  assert.equal(stateAfter([ev(0, 'pre_llm_call'), ev(1, 'pre_tool_call', T('c', 'clarify'))]), 'needs-you');
+  assert.equal(stateAfter([ev(0, 'pre_llm_call'), ev(1, 'pre_tool_call', T('c', 'clarify')), ev(2, 'post_tool_call', T('c', 'clarify'))]), 'thinking');
+});
+
+test('parallel tools: tool until the LAST open call is posted; a tool never outlives its post_tool_call', () => {
+  const T = (id: string) => ({ tool_name: 'terminal', tool_call_id: id });
+  const two = [ev(0, 'pre_llm_call'), ev(1, 'pre_tool_call', T('a')), ev(2, 'pre_tool_call', T('b'))];
+  assert.equal(stateAfter([...two, ev(3, 'post_tool_call', T('a'))]), 'tool');
+  assert.equal(stateAfter([...two, ev(3, 'post_tool_call', T('a')), ev(4, 'post_tool_call', T('b'))]), 'thinking');
+});
+
+test('a tool outside a turn is not tool, and every turn boundary closes open tools (a cancelled tool posts nothing)', () => {
+  const T = { tool_name: 'terminal', tool_call_id: 'a' };
+  assert.equal(stateAfter([ev(0, 'pre_tool_call', T)]), 'idle');
+  const open = [ev(0, 'pre_llm_call'), ev(1, 'pre_tool_call', T)];
+  assert.equal(stateAfter([...open, ev(2, 'post_llm_call')]), 'thinking');
+  assert.equal(stateAfter([...open, ev(2, 'on_session_end', { completed: true })]), 'idle');
+  assert.equal(stateAfter([...open, ev(2, 'pre_llm_call')]), 'thinking');
+  assert.equal(stateAfter([...open, ev(2, 'on_session_reset')]), 'idle');
+});
+
+test('tool is below needs-you and fault in precedence, above review', () => {
+  const T = { tool_name: 'terminal', tool_call_id: 'a' };
+  const run = [ev(0, 'pre_llm_call'), ev(1, 'pre_tool_call', T)];
+  assert.equal(stateAfter([...run, ev(2, 'pre_approval_request', { tool_call_id: 'a' })]), 'needs-you');
+  assert.equal(stateAfter([...run, ev(2, 'api_request_error')]), 'fault');
+  assert.equal(stateAfter([...run, ev(2, 'pre_verify')], 2.1), 'tool');
 });
 
 test('pre_approval_request / post_approval_response: needs-you keyed on tool_call_id', () => {
   const open = [ev(0, 'pre_llm_call'), ev(1, 'pre_approval_request', { tool_call_id: 'a1', session_key: 'k', pattern_key: 'p' })];
   assert.equal(stateAfter(open), 'needs-you');
-  assert.equal(stateAfter([...open, ev(2, 'post_approval_response', { tool_call_id: 'a1', choice: 'deny' })]), 'working');
+  assert.equal(stateAfter([...open, ev(2, 'post_approval_response', { tool_call_id: 'a1', choice: 'deny' })]), 'thinking');
 });
 
 test('approval without a tool_call_id is keyed on session_key/pattern_key', () => {
   const open = [ev(0, 'pre_llm_call'), ev(1, 'pre_approval_request', { session_key: 'k', pattern_key: 'rm' })];
   assert.equal(stateAfter(open), 'needs-you');
   assert.equal(stateAfter([...open, ev(2, 'post_approval_response', { session_key: 'other', pattern_key: 'rm' })]), 'needs-you');   // a different key does not clear it
-  assert.equal(stateAfter([...open, ev(2, 'post_approval_response', { session_key: 'k', pattern_key: 'rm' })]), 'working');
+  assert.equal(stateAfter([...open, ev(2, 'post_approval_response', { session_key: 'k', pattern_key: 'rm' })]), 'thinking');
 });
 
 test('api_request_error: fault, sticky across heartbeats with no turn-end hook (HTTP 401)', () => {
   const evs = [ev(0, 'pre_llm_call'), ev(1, 'api_request_error', { status_code: 401, retryable: false })];
-  // working turn is still open, but fault outranks working
+  // thinking turn is still open, but fault outranks thinking
   assert.equal(stateAfter(evs), 'fault');
   const hb = Array.from({ length: 12 }, (_, i) => ev(5 * (i + 1), 'heartbeat'));
   assert.equal(resolve(fold([...evs, ...hb]), 60), 'fault');
-  assert.equal(stateAfter([...evs, ev(70, 'pre_llm_call')]), 'working');   // cleared by the next turn
+  assert.equal(stateAfter([...evs, ev(70, 'pre_llm_call')]), 'thinking');   // cleared by the next turn
+});
+
+test('api_request_error{retryable:true} never faults; retryable:false / absent / non-bool does (CONTEXT-D2 §0)', () => {
+  const turn = [ev(0, 'pre_llm_call')];
+  const retry = [...turn, ev(1, 'api_request_error', { retryable: true }), ev(2, 'api_request_error', { retryable: true })];
+  assert.equal(stateAfter(retry), 'thinking');
+  assert.equal(fold(retry).fault, false);
+  const withTool = [...turn, ev(1, 'pre_tool_call', { tool_name: 'bash', tool_call_id: 't' }), ev(2, 'api_request_error', { retryable: true })];
+  assert.equal(stateAfter(withTool), 'tool');
+  assert.equal(stateAfter([ev(0, 'api_request_error', { retryable: true })]), 'idle');   // outside a turn: still not a fault
+  assert.equal(stateAfter([...turn, ev(1, 'api_request_error', { retryable: false })]), 'fault');
+  assert.equal(stateAfter([...turn, ev(1, 'api_request_error')]), 'fault');
+  assert.equal(stateAfter([...turn, ev(1, 'api_request_error', { retryable: 'true' })]), 'fault');   // only `=== true` counts
+  // a fatal error after retryable ones faults; a retryable one after a fatal does NOT clear it
+  assert.equal(stateAfter([...retry, ev(3, 'api_request_error', { retryable: false })]), 'fault');
+  assert.equal(stateAfter([...turn, ev(1, 'api_request_error', { retryable: false }), ev(2, 'api_request_error', { retryable: true })]), 'fault');
 });
 
 test('pre_verify: review for the 0.6 s minimum dwell, then idle', () => {
@@ -88,13 +138,13 @@ test('pre_verify: review for the 0.6 s minimum dwell, then idle', () => {
   assert.equal(resolve(m, 20.6), 'idle');   // now < review_until is strict
 });
 
-test('pre_verify while the turn is open stays working (review is below working)', () => {
-  assert.equal(stateAfter([ev(0, 'pre_llm_call'), ev(1, 'pre_verify')], 1.1), 'working');
+test('pre_verify while the turn is open stays thinking (review is below thinking)', () => {
+  assert.equal(stateAfter([ev(0, 'pre_llm_call'), ev(1, 'pre_verify')], 1.1), 'thinking');
 });
 
 test('heartbeat keeps the session alive and revives pid_dead', () => {
   const m = fold([ev(0, 'pre_llm_call'), ev(5, 'heartbeat'), ev(10, 'heartbeat')]);
-  assert.equal(resolve(m, 29.9), 'working');
+  assert.equal(resolve(m, 29.9), 'thinking');
 });
 
 test('pid_dead is unknown, hooks do NOT revive it, a heartbeat does, and so does on_session_reset', () => {
@@ -102,13 +152,13 @@ test('pid_dead is unknown, hooks do NOT revive it, a heartbeat does, and so does
   assert.equal(stateAfter(dead), 'unknown');
   assert.equal(stateAfter([...dead, ev(2, 'pre_llm_call')]), 'unknown');
   assert.equal(stateAfter([...dead, ev(2, 'on_session_end', { completed: true })]), 'unknown');
-  assert.equal(stateAfter([...dead, ev(3, 'heartbeat')]), 'working');
+  assert.equal(stateAfter([...dead, ev(3, 'heartbeat')]), 'thinking');
   assert.equal(stateAfter([...dead, ev(3, 'on_session_reset')]), 'idle');
 });
 
 test('binding{bound:false} is unknown, binding{bound:true} restores', () => {
   assert.equal(stateAfter([ev(0, 'pre_llm_call'), ev(1, 'binding', { bound: false })]), 'unknown');
-  assert.equal(stateAfter([ev(0, 'pre_llm_call'), ev(1, 'binding', { bound: false }), ev(2, 'binding', { bound: true })]), 'working');
+  assert.equal(stateAfter([ev(0, 'pre_llm_call'), ev(1, 'binding', { bound: false }), ev(2, 'binding', { bound: true })]), 'thinking');
 });
 
 // ---- resolve: staleness, precedence ------------------------------------------------------------------
@@ -117,22 +167,22 @@ test('a model that has seen nothing resolves to unknown', () => {
   assert.equal(resolve(initial(), 0), 'unknown');
 });
 
-test('stale is unknown, never the last known state: working goes unknown strictly after 20 s of silence', () => {
+test('stale is unknown, never the last known state: thinking goes unknown strictly after 20 s of silence', () => {
   assert.equal(STALE_S, 20);
   const m = fold([ev(100, 'pre_llm_call')]);
-  assert.equal(resolve(m, 120), 'working');
+  assert.equal(resolve(m, 120), 'thinking');
   assert.equal(resolve(m, 120.001), 'unknown');
   const needs = fold([ev(100, 'pre_tool_call', { tool_name: 'clarify', tool_call_id: 'c1' })]);
   assert.equal(resolve(needs, 121), 'unknown');   // even needs-you does not outlive a dead owner
 });
 
-test('precedence: unknown > needs-you > fault > working > review > idle', () => {
+test('precedence: unknown > needs-you > fault > thinking > review > idle', () => {
   const base = [ev(0, 'pre_llm_call'), ev(1, 'pre_verify'), ev(1, 'api_request_error')];
-  assert.equal(resolve(fold(base), 1.1), 'fault');                          // fault > working > review
+  assert.equal(resolve(fold(base), 1.1), 'fault');                          // fault > thinking > review
   const pend = [...base, ev(1.05, 'pre_approval_request', { tool_call_id: 'a' })];
   assert.equal(resolve(fold(pend), 1.1), 'needs-you');                      // needs-you > fault
   assert.equal(resolve(fold([...pend, ev(1.06, 'binding', { bound: false })]), 1.1), 'unknown');   // unknown > needs-you
-  assert.equal(resolve(fold([ev(0, 'pre_llm_call'), ev(1, 'pre_verify')]), 1.1), 'working');       // working > review
+  assert.equal(resolve(fold([ev(0, 'pre_llm_call'), ev(1, 'pre_verify')]), 1.1), 'thinking');       // thinking > review
   assert.equal(resolve(fold([ev(0, 'pre_llm_call'), ev(1, 'pre_verify'), ev(1.01, 'on_session_end', { completed: true })]), 1.1), 'review');
 });
 
@@ -147,7 +197,7 @@ test('clarify cancelled then re-asked is keyed on tool_call_id: the old post can
   ];
   assert.equal(stateAfter(asks), 'needs-you');
   assert.equal(stateAfter([...asks, ev(4, 'post_tool_call', { tool_name: 'clarify', tool_call_id: 'c1' })]), 'needs-you');   // late duplicate of the OLD id
-  assert.equal(stateAfter([...asks, ev(4, 'post_tool_call', { tool_name: 'clarify', tool_call_id: 'c2' })]), 'working');
+  assert.equal(stateAfter([...asks, ev(4, 'post_tool_call', { tool_name: 'clarify', tool_call_id: 'c2' })]), 'thinking');
   // overlap: the re-ask is observed before the cancel's post
   const overlap = [ev(0, 'pre_llm_call'), ev(1, 'pre_tool_call', { tool_name: 'clarify', tool_call_id: 'c1' }), ev(2, 'pre_tool_call', { tool_name: 'clarify', tool_call_id: 'c2' }), ev(3, 'post_tool_call', { tool_name: 'clarify', tool_call_id: 'c1' })];
   assert.equal(stateAfter(overlap), 'needs-you');
@@ -171,12 +221,12 @@ test('since is the time of the last change of the RESOLVED state, not of the las
   };
   step(0, ev(0, 'on_session_reset'));
   step(1, ev(1, 'pre_llm_call'));
-  step(2, ev(2, 'post_llm_call'));       // still working: since stays 1
+  step(2, ev(2, 'post_llm_call'));       // still thinking: since stays 1
   step(10);
-  step(21.5);                            // 19.5 s of silence: still working
+  step(21.5);                            // 19.5 s of silence: still thinking
   step(22.5);                            // 20.5 s of silence: stale -> unknown, observed at the tick
   step(23);
-  assert.deepEqual(seen, [[0, 'idle', 0], [1, 'working', 1], [2, 'working', 1], [10, 'working', 1], [21.5, 'working', 1], [22.5, 'unknown', 22.5], [23, 'unknown', 22.5]]);
+  assert.deepEqual(seen, [[0, 'idle', 0], [1, 'thinking', 1], [2, 'thinking', 1], [10, 'thinking', 1], [21.5, 'thinking', 1], [22.5, 'unknown', 22.5], [23, 'unknown', 22.5]]);
 });
 
 test('reduce and resolve are pure: the input model is never mutated', () => {
@@ -193,5 +243,5 @@ test('reduce and resolve are pure: the input model is never mutated', () => {
 
 test('unrecognised hooks still count as proof of life (every event sets last_seen) but change nothing else', () => {
   const m = fold([ev(0, 'pre_llm_call'), ev(15, 'on_stream_delta'), ev(30, 'something_new')]);
-  assert.equal(resolve(m, 45), 'working');
+  assert.equal(resolve(m, 45), 'thinking');
 });

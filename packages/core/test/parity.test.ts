@@ -28,13 +28,13 @@ test('parity.mjs replays every trace through BOTH bundles, writes out/<name>.<bu
 
 test('parity.mjs prints per-trace states reached and a reachability table', () => {
   const r = run(['--dir', dirWith('tui-turn', 'desktop-basic')]);
-  assert.match(r.stdout, /tui-turn\s+tui\s+1\s+idle working review needs-you fault unknown/);
-  assert.match(r.stdout, /desktop-basic\s+desktop\s+1\s+idle working needs-you fault unknown/);
+  assert.match(r.stdout, /tui-turn\s+tui\s+1\s+idle thinking tool review needs-you fault unknown/);
+  assert.match(r.stdout, /desktop-basic\s+desktop\s+1\s+idle thinking tool needs-you fault unknown/);
   assert.match(r.stdout, /review\s+tui-turn\s*$/m);                 // only the tui trace reaches review
   assert.match(r.stdout, /idle\s+desktop-basic, tui-turn/);
 });
 
-test('--require-all exits 2 unless every one of the six states is reached by some trace', () => {
+test('--require-all exits 2 unless every one of the seven states is reached by some trace', () => {
   const some = run(['--dir', dirWith('tui-rotation'), '--require-all']);
   assert.equal(some.status, 2, some.stdout);
   assert.match(some.stdout, /NOT REACHED: .*fault/);

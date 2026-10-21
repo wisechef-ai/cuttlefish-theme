@@ -1,6 +1,6 @@
 # Shared contract: identity allocator, state reducer, bus and file layout
 
-`cf2909.contract/2`. Decided by the P3 lead on 2026-10-15 (card t_e4178545); revised 2026-10-16 (P3-ALIGN, ruling by the P2
+`cf2909.contract/3`. Decided by the P3 lead on 2026-10-15 (card t_e4178545); revised 2026-10-16 (P3-ALIGN, ruling by the P2
 lead) so that §1–§3 are no longer restated here: the P23 contract in `packages/core/CONTRACT.md` is the single
 algorithm. This file keeps the P3-owned parts: files (§4), bus entry (§5), HTTP (§6). A change to anything
 below is a logged lead decision and bumps the schema suffix.
@@ -43,10 +43,10 @@ Sweep (bounded): identity entries with `last_seen` older than 30 days are droppe
 are kept (oldest `last_seen` first). Bus files are deleted on `on_session_finalize` once resolved, or when
 their heartbeat is older than 24 h. A sweep touches at most 64 files per call.
 
-## 5. Bus entry — `cf2909.bus/1`
+## 5. Bus entry — `cf2909.bus/2`
 
 ```
-{"schema":"cf2909.bus/1", "profile_home": str, "durable_id": str (current stored session_id),
+{"schema":"cf2909.bus/2", "profile_home": str, "durable_id": str (current stored session_id),
  "lineage_root": str, "owner_pid": int, "owner_host": str, "seq": int (monotonic per file),
  "state": str (core CONTRACT §2 resolve at the last event), "since": num (time of the last change of `state`),
  "source": str (the hook that produced it), "review_until": num|null (the 600 ms review pulse deadline),

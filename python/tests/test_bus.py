@@ -45,14 +45,14 @@ def test_atomic_write_reader_never_sees_a_partial_file(tmp_path):
     assert sorted(p.name for p in tmp_path.iterdir()) == ["x.json"]  # no tmp litter
 
 
-def test_entry_has_the_cf2909_bus_1_shape(home, clock):
+def test_entry_has_the_cf2909_bus_2_shape(home, clock):
     w = writer(home, clock)
     w.record("durable-1", "root-1", ev("pre_llm_call", clock()))
     e = read(home, "root-1")
-    assert e["schema"] == "cf2909.bus/1"
+    assert e["schema"] == "cf2909.bus/2"
     assert e["profile_home"] == str(home) and e["durable_id"] == "durable-1" and e["lineage_root"] == "root-1"
     assert (e["owner_pid"], e["owner_host"]) == (4242, "box")
-    assert e["state"] == "working" and e["since"] == clock() and e["source"] == "pre_llm_call"
+    assert e["state"] == "thinking" and e["since"] == clock() and e["source"] == "pre_llm_call"
     assert e["heartbeat"] == clock() and e["seq"] == 1 and len(e["journal"]) == 1
 
 
@@ -78,7 +78,7 @@ def test_new_process_continues_seq_and_reducer_state_from_the_file(home, clock):
     w.record("d", "r", ev("pre_tool_call", clock(), tool_name="clarify", tool_call_id="c1"))
     w2 = writer(home, clock)  # fresh process, same lineage
     e = w2.record("d", "r", ev("post_tool_call", clock(), tool_name="clarify", tool_call_id="c1"))
-    assert e["seq"] == 3 and e["state"] == "working"
+    assert e["seq"] == 3 and e["state"] == "thinking"
 
 
 def test_rotation_updates_durable_id_in_the_same_file(home, clock):
@@ -102,7 +102,7 @@ def test_heartbeat_thread_refreshes_without_new_events_and_is_single(home, clock
         time.sleep(0.02)
     e = read(home, "r")
     w.stop()
-    assert e["heartbeat"] == clock() and e["seq"] == 1 and e["state"] == "working"
+    assert e["heartbeat"] == clock() and e["seq"] == 1 and e["state"] == "thinking"
 
 
 def test_starting_the_heartbeat_never_blocks_a_hook(home, clock):
@@ -128,7 +128,7 @@ def test_bus_resumes_with_a_fresh_file_after_finalize_then_new_turn(home, clock)
     w.record("d", "r", ev("pre_llm_call", clock()))
     w.record("d", "r", ev("on_session_finalize", clock()))
     e = w.record("d", "r", ev("pre_llm_call", clock()))
-    assert e["state"] == "working" and e["seq"] == 3
+    assert e["state"] == "thinking" and e["seq"] == 3
 
 
 def test_sweep_removes_day_old_heartbeats_and_touches_at_most_64(home, clock):

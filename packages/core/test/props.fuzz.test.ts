@@ -307,3 +307,31 @@ test('P7b (1000 runs): working moves at every scale incl. the S 4x2 swatch — �
     },
   ));
 });
+
+// ---- 8. D2: `tool` never outlives its post_tool_call, and never appears without an open tool ----------------
+
+test('P8 (1000 runs): resolve is `tool` ⇔ (live, no ask/fault, in a turn and ≥ 1 non-clarify pre_tool_call is still open); a post_tool_call that closes the last open tool never leaves `tool` [red: post_tool_call stops dropping the tool key]', async () => {
+  const { desktop, tui } = await bundles();
+  await prop('P8', 290918, fc.property(hookSeqArb, seq => {
+    const impls = [
+      { n: 'source', init: hookInitial, red: hookReduce, res: hookResolve },
+      { n: 'tui', init: tui.hookInitial, red: tui.hookReduce, res: tui.hookResolve },
+      { n: 'desktop', init: desktop.hookInitial, red: desktop.hookReduce, res: desktop.hookResolve },
+    ];
+    for (const I of impls) {
+      let model: any = I.init();
+      const open = new Set<string>();      // an independent model of the contract, not a copy of the reducer
+      for (const ev of seq) {
+        const p = ev.payload as any;
+        if (['pre_llm_call', 'post_llm_call', 'on_session_end', 'on_session_finalize', 'on_session_reset'].includes(ev.kind)) open.clear();
+        if (ev.kind === 'pre_tool_call' && p.tool_name !== 'clarify') open.add(p.tool_call_id);
+        if (ev.kind === 'post_tool_call' && p.tool_name !== 'clarify') open.delete(p.tool_call_id);
+        model = I.red(model, ev);
+        const s = I.res(model, ev.t);
+        if (s === 'tool') assert.ok(open.size > 0 && model.in_turn, `${I.n}: tool with no open tool call after ${ev.kind} at t=${ev.t}`);
+        if (ev.kind === 'post_tool_call' && p.tool_name !== 'clarify' && open.size === 0) assert.notEqual(s, 'tool', `${I.n}: tool outlived its post_tool_call at t=${ev.t}`);
+        if (s === 'thinking') assert.ok(model.in_turn && open.size === 0, `${I.n}: thinking while a tool is open / outside a turn`);
+      }
+    }
+  }));
+});

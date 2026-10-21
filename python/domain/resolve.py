@@ -4,7 +4,10 @@
 (§5 entry), where the owner pid is probed instead of replaying liveness events."""
 
 STALE_S = 20.0   # the bus heartbeats every 5 s while the owner lives
-STATES = ("idle", "working", "review", "needs-you", "fault", "unknown")
+STATES = ("idle", "thinking", "tool", "review", "needs-you", "fault", "unknown")
+# Does the host's event stream tell a tool from the model thinking? (CONTRACT §2/§3.) A surface without the
+# signal maps busy -> thinking; `hermes cuttlefish doctor` prints this table.
+TOOL_SIGNAL = {"tui": True, "desktop": True}
 
 
 def resolve(model, now):
@@ -17,7 +20,7 @@ def resolve(model, now):
     if model["fault"]:
         return "fault"
     if model["in_turn"]:
-        return "working"
+        return "tool" if model.get("tools") else "thinking"
     if model["review_until"] is not None and now < model["review_until"]:
         return "review"
     return "idle"
@@ -28,6 +31,8 @@ def resolve_entry(entry, *, now, this_host, pid_alive):
     if not isinstance(entry, dict):
         return "unknown"
     state = entry.get("state")
+    if state == "working":                   # a cf2909.bus/1 entry: busy, no tool signal -> thinking
+        state = "thinking"
     if state not in STATES or state == "unknown":  # finalized entries carry state unknown
         return "unknown"
     hb = entry.get("heartbeat")

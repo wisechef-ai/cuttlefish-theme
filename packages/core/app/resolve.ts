@@ -5,7 +5,13 @@ import { allocate } from '../domain/identity.ts';
 import { frameStep, nextFrameDelayMs, shouldAnimate } from '../domain/motion.ts';
 import { paint, type Look, type Scale, type TextRun } from '../domain/pattern.ts';
 
-const LOOKS: readonly string[] = ['idle', 'working', 'review', 'needs-you', 'fault', 'unknown'];
+import type { State } from '../domain/state-hook.ts';
+
+// The 7 reducer states (CONTRACT §2). `working` is still ACCEPTED as the legacy name of thinking: pattern/motion
+// (D2-CORE-PATTERN's files) still know a single busy look, so until they land thinking and tool both paint it.
+// D2-INTEGRATE deletes this shim together with the legacy alias.
+const LOOKS: readonly string[] = ['idle', 'thinking', 'tool', 'working', 'review', 'needs-you', 'fault', 'unknown'];
+const paintLook = (s: string): Look => (s === 'thinking' || s === 'tool' ? 'working' : s) as Look;
 
 export interface SessionView {
   name: string;
@@ -30,6 +36,8 @@ export interface RenderInput {
 }
 
 export interface RenderModel {
+  /** The reducer state this view shows (thinking and tool stay distinct here even while they share one paint). */
+  state: State | 'working';
   look: Look;
   name: string;
   hueDeg: number | null;
@@ -51,7 +59,8 @@ export function renderModel(i: RenderInput): RenderModel {
   const hueDeg = resolveHue(i.session);
   const degraded = hueDeg === null;
   // Never the last known state: no binding, or a state we do not know, is `unknown`.
-  const look = (degraded || !LOOKS.includes(i.state) ? 'unknown' : i.state) as Look;
+  const state = (degraded || !LOOKS.includes(i.state) ? 'unknown' : i.state) as State | 'working';
+  const look = paintLook(state);
   const animate = !degraded && shouldAnimate({ state: look, focused: i.focused, visible: i.visible, reducedMotion: i.reducedMotion });
   const step = animate ? frameStep(i.now) : 0;
   const alarmText = look === 'needs-you' || look === 'fault' ? i.session?.alarm_text ?? null : null;
@@ -60,6 +69,7 @@ export function renderModel(i: RenderInput): RenderModel {
     reducedMotion: i.reducedMotion || !animate,
   });
   return {
+    state,
     look,
     name: degraded ? 'unbound' : (i.session as SessionView).name,
     hueDeg,
