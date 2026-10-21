@@ -164,133 +164,151 @@ function allocate(lineageRoot, peers) {
   return { slot: best, hue_deg: hueOfSlot(best), crowded: false };
 }
 
-// domain/motion.ts
-var FPS = 4;
-var FRAME_MS = 1e3 / FPS;
-function shouldAnimate(g) {
-  return g.state === "working" && g.focused && g.visible && !g.reducedMotion;
-}
-function frameStep(tSeconds) {
-  return Math.floor(tSeconds * FPS);
-}
-function nextFrameDelayMs(g) {
-  if (!shouldAnimate(g)) return null;
-  const step = frameStep(g.tSeconds);
-  let d = Math.max(1, Math.ceil(((step + 1) / FPS - g.tSeconds) * 1e3));
-  while (frameStep(g.tSeconds + d / 1e3) === step) d++;
-  return d;
-}
-
-// domain/oklch.ts
-var clamp01 = (v) => Math.min(1, Math.max(0, v));
-function oklch(L, C, hDeg) {
-  const h = hDeg * Math.PI / 180;
-  const a = C * Math.cos(h), b = C * Math.sin(h);
-  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
-  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
-  const s_ = L - 0.0894841775 * a - 1.291485548 * b;
-  const l = l_ ** 3, m = m_ ** 3, s = s_ ** 3;
-  return [
-    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
-    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
-    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s
-  ].map((c) => {
-    const v = clamp01(c);
-    return Math.round(255 * (v <= 31308e-7 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055));
-  });
-}
-
 // domain/tokens.ts
 function freeze(o) {
   if (o && typeof o === "object") for (const v of Object.values(o)) freeze(v);
   return Object.freeze(o);
 }
 var TOKENS = freeze({
-  "schema": "cf2909.tokens/1",
-  "direction": "d-dots",
-  "status": "frozen at P1 (2026-10-15); P2/P3 consume, change only via a logged lead decision",
-  "source": "design/directions/d-dots/direction.mjs (TOKENS) + design/DIRECTION.md",
-  "ground": {
-    "rgb": [
-      14,
-      15,
-      19
-    ],
-    "hex": "#0e0f13",
-    "note": "the ONE plain background; nothing is painted under the dots"
-  },
+  "schema": "cf2909.tokens/2",
+  "direction": "d2-scatter",
+  "status": "D2 locked 2026-10-21 (Adam, CONTEXT-D2 section 0); the Python oracle python/domain/dots.py pins every number, change only via a logged lead decision",
+  "source": "python/domain/dots.py + sprint-2909/CONTEXT-D2.md (supersedes design/directions/d-dots, kept as history)",
+  "ground": null,
+  "ground_note": "there is NO ground: no skin background, no OSC 11, no forced bg on any surface; the user's own background shows through",
   "identity": {
     "space": "oklch",
     "hue_arc_deg": [
       110,
       340
     ],
-    "hue_order": "bit-reversal over the arc (tools/p1/make_stub_sessions.py)",
-    "dot_lightness": [
+    "slots": 20,
+    "tier_lightness": [
       0.58,
       0.66,
       0.74
     ],
-    "dot_chroma": 0.135,
+    "tier_weights_cumulative": [
+      0.45,
+      0.8
+    ],
+    "tier_hue_offset_deg": [
+      -7,
+      0,
+      7
+    ],
+    "tier_tonic_expansion": [
+      0.26,
+      0.32,
+      0.48
+    ],
+    "chroma": 0.135,
     "never": "amber/red hues (alarm arc) as identity"
+  },
+  "organs": {
+    "density": 0.1,
+    "density_S": 0.5,
+    "thinning": "no two of the 8 neighbours are both organs",
+    "expansion_steps": 10,
+    "glyph_ladder": " ·•●",
+    "glyph_thresholds": [
+      0.12,
+      0.42,
+      0.72
+    ],
+    "lightness_gain": [
+      0.8,
+      0.28
+    ],
+    "lightness_cap": 0.86,
+    "chroma_gain": [
+      0.45,
+      0.75
+    ],
+    "fg_only": true
+  },
+  "kinetics": {
+    "tau_open_s": 0.1,
+    "tau_close_s": 0.55
   },
   "states": {
     "idle": {
-      "pattern": "uniform stipple",
-      "dots": "all open, ~18% closed at random",
-      "animated": false
+      "drive": "tonic tone + rare twinkles (18% of organ windows)",
+      "animated": "twinkle only when the idle-twinkle setting allows",
+      "fps": 4
     },
-    "working": {
-      "pattern": "passing cloud",
-      "dots": "a band of closed dots drifts one dot per frame",
-      "animated": true
+    "thinking": {
+      "drive": "value-noise clouds advected left to right, ~6 s per crossing",
+      "animated": true,
+      "fps": 10
+    },
+    "tool": {
+      "drive": "sparkle bursts every 0.25 s, ripple 0.035 s per cell, iridophore glint above e 0.70",
+      "animated": true,
+      "fps": 10
     },
     "review": {
-      "pattern": "mottle",
-      "dots": "open/closed in soft blotches (value noise)",
-      "animated": false
+      "drive": "static value-noise mottle, e 0.2..0.7",
+      "animated": false,
+      "fps": 4
     },
     "needs-you": {
-      "pattern": "zebra + eyespots",
-      "dots": "alternating open/closed bands, two amber eyespots",
-      "text": "INPUT <age>",
-      "animated": false
+      "drive": "identity organs settle at 0.26; seeded organs (alarm<0.06) amber, pulse at 0.5 Hz",
+      "animated": true,
+      "fps": 8,
+      "text": "INPUT <age>"
     },
     "fault": {
-      "pattern": "deimatic blanch",
-      "dots": "all open, pale (L 0.90 C 0.035), red margin dots",
-      "text": "ERROR <age>",
-      "animated": false
+      "drive": "blanch, then after 0.6 s alarm<0.10 organs flush red and hold",
+      "animated": false,
+      "fps": 6,
+      "text": "ERROR <age>"
     },
     "unknown": {
-      "pattern": "sparse grey diagonal",
-      "dots": "grey (C 0), one in three on a diagonal",
-      "text": "?",
-      "animated": false
+      "drive": "sparse grey organs (C 0, L 0.55), static",
+      "animated": false,
+      "fps": 4,
+      "text": "?"
     },
     "degraded": {
-      "pattern": "as unknown",
+      "drive": "as unknown; no identity hue",
       "label": "unbound",
       "identity_hue": null
     }
   },
   "alarm": {
     "amber": {
+      "hue_deg": 72,
+      "lightness": 0.84,
+      "chroma": 0.165,
       "rgb": [
         255,
         176,
         0
       ],
-      "use": "needs-you eyespots + INPUT plate only"
+      "use": "needs-you organs + INPUT plate only"
     },
     "red": {
+      "hue_deg": 27,
+      "lightness": 0.71,
+      "chroma": 0.215,
       "rgb": [
         214,
         40,
         57
       ],
-      "use": "fault margin dots only"
+      "use": "fault organs only"
+    },
+    "glint": {
+      "lightness": 0.9,
+      "chroma": 0.05,
+      "hue_offset_deg": -25,
+      "use": "tool flash peak"
     }
+  },
+  "grey": {
+    "lightness": 0.55,
+    "chroma": 0
   },
   "text_pairs": [
     {
@@ -311,171 +329,303 @@ var TOKENS = freeze({
   ],
   "scales": {
     "XL": {
-      "lattice": "hex",
-      "pitch_px": 7,
-      "dot_radius_ratio": 0.36,
-      "coverage_levels": 4,
-      "internal_max_px": 57600,
-      "upscale": "smooth"
+      "cols": 64,
+      "rows": 24,
+      "cell_px": [
+        12,
+        24
+      ],
+      "surface": "desktop field pane: anti-aliased discs, radius proportional to e, on a TRANSPARENT canvas (canvas 2D; no WebGL)"
     },
     "M": {
-      "dot": "one logical pixel per dot (half-block or bg cell)",
+      "cols": 120,
+      "rows": 2,
+      "surface": "TUI strip / classic-CLI strip, 1-2 rows of glyph cells",
       "text": "name left, alarm right; alarm wins when both do not fit"
     },
     "S": {
-      "swatch": "4x2, no text, working >= 3 distinct frames",
-      "pill": "name or alarm text"
+      "cols": 4,
+      "rows": 2,
+      "surface": "desktop 4x2 swatch / TUI pill",
+      "text": "pill: name or alarm text; the name never covers a pigment cell"
     }
   },
   "motion": {
-    "fps_max": 4,
-    "step": "one dot per 0.25 s",
-    "max_colours_working": 48,
-    "reduced_motion": "static",
-    "only_state": "working"
+    "fps_max": {
+      "thinking": 10,
+      "tool": 10,
+      "needs-you": 8,
+      "idle_twinkle": 4
+    },
+    "static_states_cost": "0 frames",
+    "idle_twinkle_setting": "auto = off under TMUX, Ghostty, cmux or when reduced-motion is requested",
+    "reduced_motion": "fully static (env HERMES_REDUCED_MOTION=1, desktop prefers-reduced-motion)"
   }
 });
 
+// domain/motion.ts
+var TAU_OPEN = TOKENS.kinetics.tau_open_s;
+var TAU_CLOSE = TOKENS.kinetics.tau_close_s;
+function stepKinetics(e, target, dt) {
+  const tau = target > e ? TAU_OPEN : TAU_CLOSE;
+  return e + (target - e) * (1 - Math.exp(-dt / tau));
+}
+var FPS = Object.freeze({
+  idle: TOKENS.states.idle.fps,
+  thinking: TOKENS.states.thinking.fps,
+  tool: TOKENS.states.tool.fps,
+  review: TOKENS.states.review.fps,
+  "needs-you": TOKENS.states["needs-you"].fps,
+  fault: TOKENS.states.fault.fps,
+  unknown: TOKENS.states.unknown.fps
+});
+var ANIMATED = /* @__PURE__ */ new Set(["thinking", "tool", "needs-you"]);
+function twinkleAllowed(setting, host, reducedMotion) {
+  if (reducedMotion) return false;
+  const s = setting ?? "auto";
+  if (s === "off") return false;
+  if (s === "on") return true;
+  return !(host?.tmux || host?.ghostty || host?.cmux);
+}
+function shouldAnimate(g) {
+  if (!g.focused || !g.visible || g.reducedMotion) return false;
+  if (ANIMATED.has(g.state)) return true;
+  return g.state === "idle" && twinkleAllowed(g.idleTwinkle, g.host, g.reducedMotion);
+}
+function fpsOf(state) {
+  return FPS[state] ?? 0;
+}
+function frameStep(tSeconds, state) {
+  return Math.floor(tSeconds * fpsOf(state));
+}
+function nextFrameDelayMs(g) {
+  if (!shouldAnimate(g)) return null;
+  const fps = fpsOf(g.state);
+  const step = frameStep(g.tSeconds, g.state);
+  let d = Math.max(1, Math.ceil(((step + 1) / fps - g.tSeconds) * 1e3));
+  while (frameStep(g.tSeconds + d / 1e3, g.state) === step) d++;
+  return d;
+}
+
+// domain/oklch.ts
+var clamp01 = (v) => Math.min(1, Math.max(0, v));
+function oklch(L, C, hDeg) {
+  const h2 = hDeg * Math.PI / 180;
+  const a = C * Math.cos(h2), b = C * Math.sin(h2);
+  const l_ = L + 0.3963377774 * a + 0.2158037573 * b;
+  const m_ = L - 0.1055613458 * a - 0.0638541728 * b;
+  const s_ = L - 0.0894841775 * a - 1.291485548 * b;
+  const l = l_ ** 3, m = m_ ** 3, s = s_ ** 3;
+  return [
+    4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+    -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+    -0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s
+  ].map((c) => {
+    const v = clamp01(c);
+    return Math.round(255 * (v <= 31308e-7 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055));
+  });
+}
+
 // domain/pattern.ts
-var BLANCH = { L: 0.9, C: 0.035 };
-var GREY = { L: 0.6, C: 0 };
-var GROUND = [...TOKENS.ground.rgb];
-var AMBER = [...TOKENS.alarm.amber.rgb];
-var RED = [...TOKENS.alarm.red.rgb];
+var TIER_L = TOKENS.identity.tier_lightness;
+var TIER_HUE = TOKENS.identity.tier_hue_offset_deg;
+var TIER_TONIC = TOKENS.identity.tier_tonic_expansion;
+var TIER_CUT = TOKENS.identity.tier_weights_cumulative;
+var TIER_C = TOKENS.identity.chroma;
+var GLYPHS = TOKENS.organs.glyph_ladder;
+var GLYPH_E = TOKENS.organs.glyph_thresholds;
+var E_STEPS = TOKENS.organs.expansion_steps;
+var L_CAP = TOKENS.organs.lightness_cap;
+var L_GAIN = TOKENS.organs.lightness_gain;
+var C_GAIN = TOKENS.organs.chroma_gain;
+var AMBER = TOKENS.alarm.amber;
+var RED = TOKENS.alarm.red;
+var GLINT = TOKENS.alarm.glint;
+var GREY = TOKENS.grey;
+var DENSITY = TOKENS.organs.density;
+var BURST_EVERY = 0.25;
+var SCALES = Object.freeze({
+  XL: [TOKENS.scales.XL.cols, TOKENS.scales.XL.rows, DENSITY],
+  M: [TOKENS.scales.M.cols, TOKENS.scales.M.rows, DENSITY],
+  S: [TOKENS.scales.S.cols, TOKENS.scales.S.rows, TOKENS.organs.density_S]
+});
+var memo = /* @__PURE__ */ new Map();
+function h(...parts) {
+  const key = parts.join("|");
+  let v = memo.get(key);
+  if (v === void 0) {
+    const d = blake2b(utf8(key), 8);
+    const hi = (d[0] << 24 | d[1] << 16 | d[2] << 8 | d[3]) >>> 0;
+    const lo = (d[4] << 24 | d[5] << 16 | d[6] << 8 | d[7]) >>> 0;
+    v = (hi * 4294967296 + lo) / 18446744073709552e3;
+    if (memo.size > 1 << 16) memo.clear();
+    memo.set(key, v);
+  }
+  return v;
+}
+function constellation(seed, cols, rows, density = DENSITY) {
+  const out = [];
+  const taken = /* @__PURE__ */ new Set();
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      if (h("pos", seed, x, y) >= density) continue;
+      let touch = false;
+      for (let dx = -1; dx <= 1 && !touch; dx++) for (let dy = -1; dy <= 1; dy++) if (taken.has(`${x + dx},${y + dy}`)) {
+        touch = true;
+        break;
+      }
+      if (touch) continue;
+      taken.add(`${x},${y}`);
+      const r = h("tier", seed, x, y);
+      const tier = r < TIER_CUT[0] ? 0 : r < TIER_CUT[1] ? 1 : 2;
+      out.push({ x, y, tier, phase: h("ph", seed, x, y), rate: 0.7 + 0.6 * h("rt", seed, x, y), alarm: h("alarm", seed, x, y), e: 0 });
+    }
+  }
+  return out;
+}
+function bump(dt, rise, fall) {
+  if (dt < 0) return 0;
+  if (dt < rise) return dt / rise;
+  return Math.exp(-(dt - rise) / fall);
+}
+function vnoise(x, y, seed = "n") {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const fx = x - xi, fy = y - yi;
+  const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+  const a = h(seed, xi, yi), b = h(seed, xi + 1, yi), c = h(seed, xi, yi + 1), d = h(seed, xi + 1, yi + 1);
+  return a + (b - a) * sx + (c + (d - c) * sx - (a + (b - a) * sx)) * sy;
+}
+var burstMemo = /* @__PURE__ */ new Map();
+function bursts(k0, cols, rows) {
+  const key = `${k0}|${cols}|${rows}`;
+  let v = burstMemo.get(key);
+  if (!v) {
+    const perTick = Math.max(1, Math.floor(cols * rows / 650 + 0.5));
+    v = [];
+    for (let k = k0 - 4; k <= k0; k++) for (let j = 0; j < perTick; j++) v.push([h("bx", k, j) * cols, h("by", k, j) * rows, 5 + 7 * h("br", k, j), k * BURST_EVERY]);
+    if (burstMemo.size > 8) burstMemo.clear();
+    burstMemo.set(key, v);
+  }
+  return v;
+}
+var clamp012 = (v) => Math.min(1, Math.max(0, v));
+function drive(o, state, t, ts, cols, rows, twinkle = true) {
+  const tonic = TIER_TONIC[o.tier];
+  switch (state) {
+    case "idle": {
+      const period = 9 / o.rate;
+      const k = Math.floor((t + o.phase * period) / period);
+      if (twinkle && h("tw", o.x, o.y, k) < 0.18) {
+        const start = k * period - o.phase * period + h("tws", o.x, o.y, k) * period * 0.5;
+        return [Math.min(1, tonic + 0.6 * bump(t - start, 0.12, 0.9)), "id"];
+      }
+      return [tonic, "id"];
+    }
+    case "thinking": {
+      const u = o.x / Math.max(6, cols / 9) - t * 1.5;
+      const v = o.y / Math.max(2, rows / 3.5);
+      const n = 0.65 * vnoise(u, v, "c1") + 0.35 * vnoise(2.1 * u + 7, 2.1 * v, "c2");
+      let cloud = clamp012((n - 0.48) / 0.22);
+      cloud = cloud * cloud * (3 - 2 * cloud);
+      return [0.24 + 0.72 * cloud, "id"];
+    }
+    case "tool": {
+      let level = 0.25;
+      for (const [cx, cy, radius, start] of bursts(Math.floor(t / BURST_EVERY), cols, rows)) {
+        const dx = (o.x - cx) / 2;
+        if (Math.abs(dx) > radius) continue;
+        const dy = o.y - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > radius) continue;
+        const onset = start + dist * 0.035;
+        level = Math.max(level, 0.95 * Math.sqrt(1 - dist / radius) * bump(t - onset, 0.08, 0.45));
+      }
+      return [Math.min(1, level), level > 0.7 ? "glint" : "id"];
+    }
+    case "review": {
+      const n = vnoise(o.x / Math.max(4, cols / 16), o.y / Math.max(2, rows / 6), "rv");
+      return [0.2 + 0.5 * Math.min(1, Math.max(0, (n - 0.2) / 0.6)), "id"];
+    }
+    case "needs-you": {
+      if (o.alarm < 0.06) {
+        const pulse = 0.5 * (1 + Math.sin(2 * Math.PI * 0.5 * t));
+        return [0.55 + 0.45 * pulse, "amber"];
+      }
+      return [0.26, "id"];
+    }
+    case "fault":
+      return o.alarm < 0.1 && ts > 0.6 ? [0.8, "red"] : [0, "id"];
+    case "unknown":
+    case "degraded":
+      return [0.5, "grey"];
+    // no identity claim: sparse grey organs, static
+    default:
+      throw new RangeError(`unknown state ${state}`);
+  }
+}
+var paintMemo = /* @__PURE__ */ new Map();
+function appearance(tier, e, pigment, hue) {
+  const q = Math.floor(e * E_STEPS + 0.5);
+  const key = `${tier}|${q}|${pigment}|${hue}`;
+  let v = paintMemo.get(key);
+  if (!v) {
+    v = paint(tier, q / E_STEPS, pigment, hue);
+    if (paintMemo.size > 4096) paintMemo.clear();
+    paintMemo.set(key, v);
+  }
+  return v;
+}
+function paint(tier, e, pigment, hue) {
+  if (e < GLYPH_E[0]) return [" ", null];
+  const g = GLYPHS[e < GLYPH_E[1] ? 1 : e < GLYPH_E[2] ? 2 : 3];
+  if (pigment === "grey" || hue === null) return [g, oklch(GREY.lightness, GREY.chroma, 0)];
+  if (pigment === "amber") return [g, oklch(AMBER.lightness * (0.8 + 0.2 * e), AMBER.chroma, AMBER.hue_deg)];
+  if (pigment === "red") return [g, oklch(RED.lightness * (0.82 + 0.18 * e), RED.chroma, RED.hue_deg)];
+  if (pigment === "glint") return [g, oklch(GLINT.lightness, GLINT.chroma, hue + GLINT.hue_offset_deg)];
+  const L = TIER_L[tier] * (L_GAIN[0] + L_GAIN[1] * e);
+  return [g, oklch(Math.min(L_CAP, L), TIER_C * (C_GAIN[0] + C_GAIN[1] * e), hue + TIER_HUE[tier])];
+}
+function renderScene(a) {
+  const hue = a.state === "degraded" ? null : a.hue;
+  const sim = a.state === "degraded" ? "unknown" : a.state;
+  const fps = FPS[sim];
+  if (fps === void 0) throw new RangeError(`unknown state ${a.state}`);
+  const twinkle = a.twinkle ?? true;
+  const organs = constellation(a.seed, a.cols, a.rows, a.density ?? DENSITY);
+  const out = [];
+  let i = 0;
+  for (const t of a.times) {
+    const n = Math.floor((t - a.entered) * fps);
+    for (; i <= n; i++) {
+      for (const o of organs) {
+        const [target] = drive(o, sim, a.entered + i / fps, i / fps, a.cols, a.rows, twinkle);
+        o.e = stepKinetics(o.e, target, 1 / fps);
+      }
+    }
+    const cells = [];
+    for (const o of organs) {
+      const [, pig] = drive(o, sim, a.entered + n / fps, n / fps, a.cols, a.rows, twinkle);
+      const [glyph, rgb] = appearance(o.tier, o.e, pig, hue);
+      if (rgb) cells.push({ x: o.x, y: o.y, glyph, rgb, pigment: pig, e: o.e });
+    }
+    out.push(cells);
+  }
+  return out;
+}
 var INK = TOKENS.text_pairs[0].fg;
 var PLATE = TOKENS.text_pairs[0].bg;
 var ALARM_FG = { "needs-you": TOKENS.text_pairs[1].fg, fault: TOKENS.text_pairs[2].fg };
 var ALARM_BG = { "needs-you": TOKENS.text_pairs[1].bg, fault: TOKENS.text_pairs[2].bg };
-var clamp012 = (v) => Math.min(1, Math.max(0, v));
-function hash(i, j, k = 0) {
-  let n = i * 374761393 + j * 668265263 + k * 2147483647 | 0;
-  n = Math.imul(n ^ n >>> 13, 1274126177);
-  return ((n ^ n >>> 16) >>> 0) / 4294967296;
-}
-function vnoise(x, y, seed) {
-  const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi;
-  const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
-  const a = hash(xi, yi, seed), b = hash(xi + 1, yi, seed), c = hash(xi, yi + 1, seed), d = hash(xi + 1, yi + 1, seed);
-  return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
-}
-function dotLook(c, r, cols, rows, look, step, colors, seed, kind) {
-  const j = hash(c, r, seed);
-  const shade = colors.dots[Math.floor(j * 3) % 3];
-  switch (look) {
-    case "idle":
-      return { open: j < 0.18 ? 0 : 1, tone: shade };
-    case "working": {
-      const narrow = kind === "M" && cols <= 30;
-      const period = kind === "S" ? Math.max(3, cols) : narrow ? 6 : kind === "M" ? 16 : 14;
-      const half = kind === "S" ? 0 : narrow ? 1 : kind === "M" ? 2 : 3;
-      const pos = ((c + Math.floor(r * 0.5) - step) % period + period) % period;
-      const d = Math.min(pos, period - pos);
-      if (d <= half) return { open: d === half && half > 0 ? 0.5 : 0, tone: shade };
-      return { open: j < 0.1 ? 0 : 1, tone: shade };
-    }
-    case "review": {
-      const k = kind === "XL" ? 5 : 3;
-      const n = vnoise(c / k, r / (kind === "XL" ? k : 1.2), seed + 7);
-      if (n < 0.38) return { open: 0, tone: shade };
-      return { open: n < 0.5 ? 0.5 : 1, tone: n > 0.66 ? colors.dots[2] : colors.dots[0] };
-    }
-    case "needs-you": {
-      const band = kind === "XL" ? Math.floor((c + (r & 1) * 0.5 + r * 0.5) / 2) : Math.floor(c / 2);
-      return band % 2 === 0 ? { open: 1, tone: colors.dots[2] } : { open: 0, tone: shade };
-    }
-    case "fault": {
-      const edge = kind === "XL" ? 2 : 1;
-      const onEdge = c < edge || c >= cols - edge || kind === "XL" && (r < edge || r >= rows - edge);
-      if (onEdge) return { open: 1, tone: RED };
-      return { open: j < 0.06 ? 0.5 : 1, tone: colors.blanch };
-    }
-    default:
-      return { open: (c + r) % 3 === 0 ? 1 : 0, tone: colors.grey };
-  }
-}
-function eyespots(kind, w, h) {
-  if (kind === "XL") {
-    const r = Math.max(4, Math.min(w, h) * 0.09);
-    return [{ x: w * 0.3, y: h * 0.5, r }, { x: w * 0.7, y: h * 0.5, r }];
-  }
-  if (w <= 8) return [{ x: w - 1, y: 0, r: 0 }];
-  return [{ x: Math.floor(w * 0.35), y: Math.floor((h - 1) / 2), r: 0 }, { x: Math.floor(w * 0.65), y: Math.floor((h - 1) / 2), r: 0 }];
-}
-function put(px, i, c) {
-  px[i] = c[0];
-  px[i + 1] = c[1];
-  px[i + 2] = c[2];
-  px[i + 3] = 255;
-}
-var mix = (a, b, k) => [0, 1, 2].map((n) => Math.round(a[n] + (b[n] - a[n]) * k));
-function paint(a) {
-  const { scale, w, h } = a;
-  const degraded = a.hueDeg == null;
-  const look = degraded ? "unknown" : a.look;
-  const hue = degraded ? 0 : a.hueDeg;
-  const colors = {
-    dots: TOKENS.identity.dot_lightness.map((L) => oklch(L, TOKENS.identity.dot_chroma, hue)),
-    blanch: oklch(BLANCH.L, BLANCH.C, hue),
-    grey: oklch(GREY.L, GREY.C, 0)
-  };
-  const moving = look === "working" && !a.reducedMotion;
-  const step = moving ? a.step : 0;
-  const seed = degraded ? 1 : Math.round(hue * 10);
-  const G2 = GROUND;
-  const px = new Uint8ClampedArray(w * h * 4);
-  const kind = scale === "XL" ? "XL" : w <= 8 ? "S" : "M";
-  if (scale === "XL") {
-    const P = TOKENS.scales.XL.pitch_px, RP = P * 0.866, R = P * TOKENS.scales.XL.dot_radius_ratio;
-    const rows = Math.ceil(h / RP) + 1, cols = Math.ceil(w / P) + 1;
-    const spots = look === "needs-you" ? eyespots("XL", w, h) : [];
-    const levels = TOKENS.scales.XL.coverage_levels - 1;
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        let col = G2, best = 0;
-        const r0 = Math.round(y / RP);
-        for (let r = r0 - 1; r <= r0 + 1; r++) {
-          const off = r & 1 ? P / 2 : 0;
-          const c0 = Math.round((x - off) / P);
-          for (let c = c0 - 1; c <= c0 + 1; c++) {
-            const d = dotLook(c, r, cols, rows, look, step, colors, seed, "XL");
-            if (d.open <= 0) continue;
-            const rad = d.open >= 1 ? R : R * 0.55;
-            const dist = Math.hypot(x - (c * P + off), y - r * RP);
-            const cov = Math.round(clamp012(rad - dist + 0.5) * levels) / levels;
-            if (cov > best) {
-              best = cov;
-              col = mix(G2, d.tone, cov);
-            }
-          }
-        }
-        for (const s of spots) {
-          const d = Math.hypot(x - s.x, y - s.y);
-          if (d < s.r * 0.35) col = G2;
-          else if (d < s.r) col = AMBER;
-        }
-        put(px, (y * w + x) * 4, col);
-      }
-    }
-  } else {
-    const spots = look === "needs-you" ? eyespots(kind, w, h) : [];
-    for (let y = 0; y < h; y++) {
-      for (let x = 0; x < w; x++) {
-        const d = dotLook(x, y, w, h, look, step, colors, seed, kind);
-        let col = d.open >= 1 ? d.tone : d.open > 0 ? mix(G2, d.tone, 0.5) : G2;
-        if (spots.some((s) => s.x === x && s.y === y)) col = AMBER;
-        put(px, (y * w + x) * 4, col);
-      }
-    }
-  }
+function labels(scale, w, look, name, alarmText, degraded) {
   const text = [];
-  const name = degraded ? "unbound" : a.name;
-  const alarm = look === "unknown" ? "?" : a.alarmText || null;
+  const shown = degraded ? "unbound" : name;
+  const alarm = look === "unknown" ? "?" : alarmText || null;
   const fg = ALARM_FG[look] ?? INK, bg = ALARM_BG[look] ?? PLATE;
   if (scale === "XL") {
-    text.push({ x: 16, y: 16, str: name, fg: INK, bg: PLATE });
+    text.push({ x: 16, y: 16, str: shown, fg: INK, bg: PLATE });
     if (alarm) text.push({ x: 16, y: 48, str: alarm, fg, bg });
   } else if (w > 8) {
-    const label = ` ${name} `.slice(0, w);
+    const label = ` ${shown} `.slice(0, w);
     const s = alarm ? ` ${alarm} ` : "";
     if (!alarm) text.push({ x: 0, y: 0, str: label, fg: INK, bg: PLATE });
     else if (label.length + s.length <= w) {
@@ -485,44 +635,59 @@ function paint(a) {
       text.push({ x: 0, y: 0, str: s.slice(0, w), fg, bg });
     }
   }
-  return { pixels: px, text };
+  return text;
 }
 
 // app/resolve.ts
-var LOOKS = ["idle", "working", "review", "needs-you", "fault", "unknown"];
+var LOOKS = ["idle", "thinking", "tool", "review", "needs-you", "fault", "unknown"];
+var LEGACY = { working: "thinking" };
+var SETTLE_S = 6;
+var T_STATIC = 6;
 function resolveHue(s) {
   if (!s) return null;
   if (typeof s.hue_deg === "number" && Number.isFinite(s.hue_deg)) return s.hue_deg;
   if (typeof s.lineage_root === "string" && s.lineage_root.trim() !== "") return allocate(s.lineage_root, s.peers ?? []).hue_deg;
   return null;
 }
+function seedOf(s) {
+  return s?.lineage_root?.trim() || s?.name || "unbound";
+}
 function renderModel(i) {
   const hueDeg = resolveHue(i.session);
   const degraded = hueDeg === null;
-  const look = degraded || !LOOKS.includes(i.state) ? "unknown" : i.state;
-  const animate = !degraded && shouldAnimate({ state: look, focused: i.focused, visible: i.visible, reducedMotion: i.reducedMotion });
-  const step = animate ? frameStep(i.now) : 0;
-  const alarmText = look === "needs-you" || look === "fault" ? i.session?.alarm_text ?? null : null;
-  const painted = paint({
-    scale: i.scale,
-    w: i.w,
-    h: i.h,
-    look,
-    hueDeg,
-    name: i.session?.name ?? "",
-    alarmText,
-    step,
-    reducedMotion: i.reducedMotion || !animate
+  const wanted = LEGACY[i.state] ?? i.state;
+  const look = degraded || !LOOKS.includes(wanted) ? "unknown" : wanted;
+  const gate = { state: look, focused: i.focused, visible: i.visible, reducedMotion: i.reducedMotion, idleTwinkle: i.idleTwinkle, host: i.host };
+  const animate = !degraded && shouldAnimate(gate);
+  const step = animate ? frameStep(i.now, look) : 0;
+  const tEval = animate ? step / fpsOf(look) : T_STATIC;
+  const entered = animate ? Math.max(i.entered ?? tEval - SETTLE_S, tEval - SETTLE_S) : tEval - SETTLE_S;
+  const [cols, rows] = i.scale === "XL" ? [Math.max(1, Math.ceil(i.w / TOKENS.scales.XL.cell_px[0])), Math.max(1, Math.ceil(i.h / TOKENS.scales.XL.cell_px[1]))] : [Math.max(1, i.w), Math.max(1, i.h)];
+  const density = i.scale === "S" ? TOKENS.organs.density_S : TOKENS.organs.density;
+  const twinkle = look === "idle" && twinkleAllowed(i.idleTwinkle, i.host, i.reducedMotion) && animate;
+  const [cells] = renderScene({
+    seed: seedOf(i.session),
+    hue: hueDeg,
+    state: degraded ? "degraded" : look,
+    cols,
+    rows,
+    entered,
+    times: [Math.max(tEval, entered)],
+    density,
+    twinkle
   });
+  const alarmText = look === "needs-you" || look === "fault" ? i.session?.alarm_text ?? null : null;
   return {
     look,
     name: degraded ? "unbound" : i.session.name,
     hueDeg,
     animate,
     step,
-    nextFrameDelayMs: animate ? nextFrameDelayMs({ state: look, focused: i.focused, visible: i.visible, reducedMotion: i.reducedMotion, tSeconds: i.now }) : null,
-    pixels: painted.pixels,
-    text: painted.text
+    nextFrameDelayMs: animate ? nextFrameDelayMs({ ...gate, tSeconds: i.now }) : null,
+    cols,
+    rows,
+    cells,
+    text: labels(i.scale, i.w, look, i.session?.name ?? "", alarmText, degraded)
   };
 }
 
@@ -811,199 +976,56 @@ function replay(traceLines, opts = {}) {
 function replayJson(traceLines, opts = {}) {
   return canonicalJson(replay(traceLines, opts));
 }
-
-// domain/field-shader.ts
-var FIELD_LOOKS = ["idle", "working", "review", "needs-you", "fault", "unknown"];
-var FIELD_VERTEX_SOURCE = `#version 300 es
-in vec2 aPos;
-void main() { gl_Position = vec4(aPos, 0.0, 1.0); }
-`;
-var FIELD_FRAGMENT_SOURCE = `#version 300 es
-precision highp float;
-precision highp int;
-
-uniform int uLook;        // 0 idle 1 working 2 review 3 needs-you 4 fault 5 unknown (degraded paints as unknown)
-uniform int uSeed;        // round(hue * 10), or 1 when degraded
-uniform int uStep;        // working frame index; 0 for every other look
-uniform vec2 uSize;       // w, h in logical px
-uniform vec2 uGrid;       // dot lattice cols, rows
-uniform vec3 uLattice;    // pitch, row pitch, dot radius (px)
-uniform float uLevels;    // coverage steps (3 = 4 coverage levels)
-uniform vec3 uDots[3];    // identity dot colours, 0..255
-uniform vec3 uBlanch;
-uniform vec3 uGrey;
-uniform vec3 uRed;
-uniform vec3 uAmber;
-uniform vec3 uGround;
-
-out vec4 fragColor;
-
-// JS: n = (i*374761393 + j*668265263 + k*2147483647) | 0 ; n = imul(n ^ (n >>> 13), 1274126177) ;
-// ((n ^ (n >>> 16)) >>> 0) / 2^32.  uint arithmetic wraps mod 2^32, exactly like imul / |0 / >>>.
-uint hashU(int i, int j, int k) {
-  uint n = uint(i) * 374761393u + uint(j) * 668265263u + uint(k) * 2147483647u;
-  n = (n ^ (n >> 13u)) * 1274126177u;
-  return n ^ (n >> 16u);
-}
-float hash(int i, int j, int k) { return float(hashU(i, j, k)) / 4294967296.0; }
-
-float vnoise(float x, float y, int seed) {
-  float xi = floor(x), yi = floor(y), fx = x - xi, fy = y - yi;
-  float sx = fx * fx * (3.0 - 2.0 * fx), sy = fy * fy * (3.0 - 2.0 * fy);
-  int ix = int(xi), iy = int(yi);
-  float a = hash(ix, iy, seed), b = hash(ix + 1, iy, seed), c = hash(ix, iy + 1, seed), d = hash(ix + 1, iy + 1, seed);
-  return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
-}
-
-// One dot's look: returns openness (0 closed, 0.5 half, 1 open); tone is the dot colour.
-float dotLook(int c, int r, out vec3 tone) {
-  float j = hash(c, r, uSeed);
-  tone = uDots[min(int(j * 3.0), 2)];
-  float cf = float(c), rf = float(r);
-  if (uLook == 0) {                                              // idle: ~18 % closed
-    return j < 0.18 ? 0.0 : 1.0;
-  } else if (uLook == 1) {                                       // working: a closed band drifts one dot per frame
-    const float period = 14.0, halfBand = 3.0;
-    float pos = mod(cf + floor(rf * 0.5) - float(uStep), period);
-    float d = min(pos, period - pos);
-    if (d <= halfBand) return d == halfBand ? 0.5 : 0.0;
-    return j < 0.1 ? 0.0 : 1.0;
-  } else if (uLook == 2) {                                       // review: value-noise mottle
-    float n = vnoise(cf / 5.0, rf / 5.0, uSeed + 7);
-    if (n < 0.38) return 0.0;
-    tone = n > 0.66 ? uDots[2] : uDots[0];
-    return n < 0.5 ? 0.5 : 1.0;
-  } else if (uLook == 3) {                                       // needs-you: zebra bands
-    float band = floor((cf + float(r & 1) * 0.5 + rf * 0.5) / 2.0);
-    if (mod(band, 2.0) == 0.0) { tone = uDots[2]; return 1.0; }
-    return 0.0;
-  } else if (uLook == 4) {                                       // fault: blanch + red margin
-    bool onEdge = c < 2 || cf >= uGrid.x - 2.0 || r < 2 || rf >= uGrid.y - 2.0;
-    if (onEdge) { tone = uRed; return 1.0; }
-    tone = uBlanch;
-    return j < 0.06 ? 0.5 : 1.0;
-  }
-  tone = uGrey;                                                  // unknown / degraded: sparse diagonal
-  return mod(cf + rf, 3.0) == 0.0 ? 1.0 : 0.0;
-}
-
-void main() {
-  // gl_FragCoord is bottom-up, pixel centres at +0.5; the CPU oracle is top-down on integer pixels.
-  float x = floor(gl_FragCoord.x);
-  float y = uSize.y - 1.0 - floor(gl_FragCoord.y);
-  float P = uLattice.x, RP = uLattice.y, R = uLattice.z;
-  vec3 col = uGround;
-  float best = 0.0;
-  int r0 = int(floor(y / uLattice.y + 0.5));
-  for (int r = r0 - 1; r <= r0 + 1; r++) {
-    float off = (r & 1) == 1 ? P * 0.5 : 0.0;
-    int c0 = int(floor((x - off) / P + 0.5));
-    for (int c = c0 - 1; c <= c0 + 1; c++) {
-      vec3 tone;
-      float open = dotLook(c, r, tone);
-      if (open <= 0.0) continue;
-      float rad = open >= 1.0 ? R : R * 0.55;
-      float dist = length(vec2(x - (float(c) * P + off), y - float(r) * RP));
-      float cov = floor(clamp(rad - dist + 0.5, 0.0, 1.0) * uLevels + 0.5) / uLevels;
-      if (cov > best) { best = cov; col = uGround + (tone - uGround) * cov; }
-    }
-  }
-  if (uLook == 3) {                                              // two amber eyespots with a ground pupil
-    float er = max(4.0, min(uSize.x, uSize.y) * 0.09);
-    for (int s = 0; s < 2; s++) {
-      float d = length(vec2(x - uSize.x * (s == 0 ? 0.3 : 0.7), y - uSize.y * 0.5));
-      if (d < er * 0.35) col = uGround;
-      else if (d < er) col = uAmber;
-    }
-  }
-  fragColor = vec4(floor(col + 0.5) / 255.0, 1.0);
-}
-`;
-var FIELD_UNIFORM_TYPES = Object.freeze({
-  uLook: "i",
-  uSeed: "i",
-  uStep: "i",
-  uSize: "2f",
-  uGrid: "2f",
-  uLattice: "3f",
-  uLevels: "f",
-  uDots: "3fv",
-  uBlanch: "3f",
-  uGrey: "3f",
-  uRed: "3f",
-  uAmber: "3f",
-  uGround: "3f"
-});
-var flat = (c) => [c[0], c[1], c[2]];
-function uniformsFor(a) {
-  const degraded = a.hueDeg == null;
-  const look = degraded ? "unknown" : a.look;
-  const hue = degraded ? 0 : a.hueDeg;
-  const li = FIELD_LOOKS.indexOf(look);
-  const moving = look === "working" && !a.reducedMotion;
-  const sc = TOKENS.scales.XL;
-  const P = sc.pitch_px, RP = P * 0.866;
-  return {
-    uLook: li < 0 ? 5 : li,
-    // an unrecognised look paints as unknown, like paint()
-    uSeed: degraded ? 1 : Math.round(hue * 10),
-    uStep: moving ? a.step : 0,
-    uSize: [a.w, a.h],
-    uGrid: [Math.ceil(a.w / P) + 1, Math.ceil(a.h / RP) + 1],
-    uLattice: [P, RP, P * sc.dot_radius_ratio],
-    uLevels: sc.coverage_levels - 1,
-    uDots: TOKENS.identity.dot_lightness.flatMap((L) => flat(oklch(L, TOKENS.identity.dot_chroma, hue))),
-    uBlanch: flat(oklch(BLANCH.L, BLANCH.C, hue)),
-    uGrey: flat(oklch(GREY.L, GREY.C, 0)),
-    uRed: [...TOKENS.alarm.red.rgb],
-    uAmber: [...TOKENS.alarm.amber.rgb],
-    uGround: [...TOKENS.ground.rgb]
-  };
-}
 export {
   ARC_END,
   ARC_START,
-  BLANCH,
   CAP,
   CORE_DOT_LABELS,
-  FIELD_FRAGMENT_SOURCE,
-  FIELD_LOOKS,
-  FIELD_UNIFORM_TYPES,
-  FIELD_VERTEX_SOURCE,
+  DENSITY,
   FPS,
-  FRAME_MS,
-  GREY,
   REVIEW_DWELL_S,
+  SCALES,
+  SETTLE_S,
   SLOTS,
   STALE_S,
   STATES,
   STEP,
   TAIL_S,
+  TAU_CLOSE,
+  TAU_OPEN,
   TOKENS,
+  T_STATIC,
   allocate,
+  appearance,
   blake2b,
   canonicalJson,
   classifyParity,
+  constellation,
   initial2 as desktopInitial,
   reduce2 as desktopReduce,
   resolve2 as desktopResolve,
   storedIds as desktopStoredIds,
+  drive,
+  fpsOf,
   frameStep,
   initial as hookInitial,
   reduce as hookReduce,
   reduceKeyed as hookReduceKeyed,
   resolve as hookResolve,
   hueOfSlot,
+  labels,
   nextFrameDelayMs,
   oklch,
-  paint,
   preferredSlot,
   renderModel,
+  renderScene,
   replay,
   replayJson,
   shouldAnimate,
+  stepKinetics,
   trackInit,
   trackStep,
-  uniformsFor,
-  utf8
+  twinkleAllowed,
+  utf8,
+  vnoise
 };

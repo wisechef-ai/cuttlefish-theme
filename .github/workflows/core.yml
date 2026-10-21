@@ -3,7 +3,8 @@ name: core
 # packages/core: pure domain + ports + app. Oracle parity against design/directions/d-dots, identity
 # golden vectors (cross-checked against python hashlib), state reducers + replayer, property tests, and the
 # two committed bundles (desktop/core.bundle.js, tui/core.bundle.mjs) which must equal a fresh build.
-# shader-gpu: XL WebGL2 shader vs the CPU pattern in headless Chromium (SwiftShader).
+# D2: the WebGL shader and its `shader-gpu` job are deleted (CONTEXT-D2 §2); XL is canvas 2D. The scatter grammar is
+# pinned by python/domain/dots.py -> fixtures/dots-vectors.json (exact glyph + rgb parity).
 on:
   push:
     branches: [v22, "agent/**"]
@@ -36,6 +37,7 @@ jobs:
       - run: node tools/gen-tokens.mjs --check
       - run: node tools/gen-identity-vectors.mjs --check
       - run: python3 tools/gen-blake2b-vectors.py --check
+      - run: python3 ../../tools/gen-dots-vectors.py --check
 
   bundles-fresh:
     # The hosts consume the COMMITTED bundles, so a source change without `npm run build` must fail here.
@@ -70,31 +72,3 @@ jobs:
         working-directory: packages/core
       - name: parity by trace (exit 1 bundles differ | 2 state unreached | 3 core-dot MISMATCH)
         run: node tools/traces/parity.mjs --require-all
-
-  shader-gpu:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: "24"
-      - name: Install Playwright + Chromium (pinned by tools/package-lock.json)
-        working-directory: tools
-        run: |
-          npm ci
-          npx playwright install --with-deps chromium
-      - run: npm ci
-        working-directory: packages/core
-      - name: "GPU parity (CF_REQUIRE_GPU=1 makes missing Chromium a failure, never a skip)"
-        working-directory: packages/core
-        run: |
-          set -o pipefail
-          CF_REQUIRE_GPU=1 node --test "test/shader/*.test.ts" 2>&1 | tee ../../shader-gpu.log
-      - name: Prove the GPU tests EXECUTED (not skipped)
-        run: |
-          grep -E '^# GPU parity renderer: .*(SwiftShader|WebGL)' shader-gpu.log
-          grep -E '^# 72 scenes, all >= 99.5 % exact' shader-gpu.log
-          grep -E '^# planted lattice bug: worst-scene exact' shader-gpu.log
-          grep -E '^ℹ skipped 0$' shader-gpu.log
-          grep -E '^ℹ fail 0$' shader-gpu.log

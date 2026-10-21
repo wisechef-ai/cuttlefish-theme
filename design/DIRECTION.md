@@ -1,4 +1,19 @@
-# Locked direction: D — dots
+# Locked direction: D2 — scatter (2026-10-21) · D — dots kept as history
+
+**D2 "scatter" is the locked direction (Adam, 2026-10-21, approved live):** sparse chromatophore dots in random but
+FIXED places that change with the agent's state, and **no background change anywhere** (no skin `background`, no OSC 11,
+no forced ground; the user's own terminal/app background shows through). The canonical behaviour is the Python oracle
+`python/domain/dots.py`; the TS core (`packages/core/domain/pattern.ts` + `motion.ts`) matches it exactly on
+`packages/core/fixtures/dots-vectors.json`. Grammar, kinetics and the 7 states: `sprint-2909/CONTEXT-D2.md` §0.
+The G2 identity metric is re-specified for D2 as the median OKLab over ORGAN pixels only (floors unchanged).
+The WebGL XL shader is deleted; XL is canvas 2D on a transparent canvas.
+
+Everything below is the **superseded D (dots) lock, kept as history**; the lattice, the flat `#0e0f13` ground and the
+shader described there no longer ship.
+
+---
+
+# (History) Locked direction: D — dots
 
 **Locked 2026-10-15 by the P1 lead (card t_0c601204), on Adam's ruling in #tori:**
 > "I imagine that the cuttlefish design can be simply a set of colloured dots without any sophisticated background"

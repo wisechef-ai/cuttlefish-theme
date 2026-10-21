@@ -76,23 +76,22 @@ def check_identity(man: gl.Manifest, direction_dir: Path) -> dict:
             reqs.append({"scale": "S", "w": round(tw / gl.CELL_W), "h": round(th / gl.CELL_H) * 2, "state": g.state,
                          "session_idx": t["session_idx"], "degraded": False, "t": g.frame_t, "depth": g.depth})
         texts = dt.run_node(direction_dir, reqs)["results"]
-        labs, pig = [], []
+        labs, tilemed = [], []
         for t, r in zip(tiles, texts):
             x, y, w, h = t["crop"]
             tile = img[y:y + h, x:x + w]
             mask = np.zeros(tile.shape[:2], dtype=bool)
             for (bx, by, bw, bh, _s) in dt.text_cell_boxes(r["text"]):
                 mask[by:by + bh, bx:bx + bw] = True
-            labs.append(gl.median_oklab(tile, mask))
-            nb = gl.non_background_mask(tile, mask)
-            pig.append(gl.median_oklab(tile, ~nb) if nb.any() else labs[-1])
+            labs.append(gl.organ_oklab(tile, mask))          # GATING (D2): organ pixels only
+            tilemed.append(gl.median_oklab(tile, mask))      # informational: the old whole-tile median
         chk = gl.identity_check(np.array(labs), DELTA_MIN)
         names = [t["session_idx"] for t in tiles]
         ok = chk["ok_delta"] and not chk["alarm_arc_violations"]
         worst_pair = [names[i] for i in chk["worst_indices"]] if chk["worst_indices"] else None
-        pw = gl.nearest_pair(np.array(pig))
+        pw = gl.nearest_pair(np.array(tilemed))
         out["grids"][str(n)] = {"file": g.file,
-                                "informational_pigment_only": {"note": "NOT gating: median OKLab of non-background pixels per tile; shows identity carried by sparse pigment that the frozen tile-median cannot see",
+                                "informational_tile_median": {"note": "NOT gating (D2 re-spec): the superseded whole-tile median OKLab; on a sparse scatter it is just the ground",
                                                                "worst_delta_e": pw[0], "worst_pair_sessions": [names[i] for i in pw[1]] if pw[1] else None}, "sessions": names, "worst_delta_e": chk["worst_pair"], "worst_pair_sessions": worst_pair,
                                 "ok_delta": chk["ok_delta"], "alarm_arc_violations": [names[i] for i in chk["alarm_arc_violations"]],
                                 "tile_oklch": [[round(v, 4) for v in row] for row in chk["lch"]],
@@ -176,14 +175,14 @@ def to_markdown(r: dict) -> str:
           f'{cr["n"]} strings over {cr["entries_measured"]} renders; worst: ' + (f'`{cr["worst"]["file"]}` "{cr["worst"]["text"]}" = {cr["worst"]["ratio"]}:1' if cr["worst"] else "n/a")]
     L += ["", "| render | text | ratio | ok |", "|---|---|---|---|"]
     L += [f'| {x["file"]} | {x["text"]} | {x["ratio"]} | {"yes" if x["ok"] else "**NO**"} |' for x in cr["rows"]]
-    L += ["", f'## Identity on rendered pixels (nearest-pair dE_OK >= {r["identity"]["threshold"]}, hue arc {r["identity"]["arc_deg"]})']
+    L += ["", f'## Identity on ORGAN pixels (D2: median OKLab of non-ground, non-text pixels; nearest-pair dE_OK >= {r["identity"]["threshold"]}, hue arc {r["identity"]["arc_deg"]})']
     for n, g in r["identity"]["grids"].items():
         if g.get("error"):
             L.append(f'- grid {n}: **{g["error"]}**')
             continue
         L.append(f'- grid {n} (`{g["file"]}`): worst pair sessions {g["worst_pair_sessions"]} dE_OK = **{g["worst_delta_e"]:.4f}**; arc violations: {g["alarm_arc_violations"] or "none"}')
-        ip = g["informational_pigment_only"]
-        L.append(f'  - informational (not gating), pigment-only worst pair {ip["worst_pair_sessions"]} dE_OK = {ip["worst_delta_e"]:.4f}')
+        ip = g["informational_tile_median"]
+        L.append(f'  - informational (not gating), whole-tile-median worst pair {ip["worst_pair_sessions"]} dE_OK = {ip["worst_delta_e"]:.4f}')
         L += ["", "  tile OKLCh (session, L, C, h):", ""]
         L += [f'  - {s}: L={v[0]:.3f} C={v[1]:.3f} h={v[2]:.1f}' for s, v in zip(g["sessions"], g["tile_oklch"])]
         L += ["", f"  dE_OK matrix {n}x{n} is in g2.json (`identity.grids.{n}.matrix`).", ""]
