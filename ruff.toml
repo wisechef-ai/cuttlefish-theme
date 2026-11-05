@@ -1,0 +1,9 @@
+line-length = 140
+target-version = "py312"
+extend-exclude = [".venv", "desktop/node_modules", "tools/node_modules"]
+
+[lint]
+select = ["E", "F", "W", "I", "C90", "B"]
+
+[lint.mccabe]
+max-complexity = 9

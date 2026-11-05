@@ -1,30 +1,57 @@
-.PHONY: test lint proof clean help
+# Cuttlefish 2.0 — canonical commands. Every heavy target runs niced (host safety, incident 10-21) with TMPDIR=/tmp
+# (adam-xps: /home/adam is itself a git repo, and pytest's tmp_path must not land under ~/.hermes).
+SHELL := /bin/bash
+.ONESHELL:
+.SHELLFLAGS := -eu -o pipefail -c
+PY ?= .venv/bin/python
+NODE ?= node
+NICE := nice -n 10
+export TMPDIR := /tmp
+
+CONTRACT_JS := desktop/test/acceptance/*.test.ts
+UNIT_JS := $(wildcard desktop/test/unit/*.test.ts) $(wildcard desktop/test/adapters/*.test.ts)
+RELEASE_ONLY := tests/acceptance/test_o7_desktop_evidence.py tests/acceptance/test_o8_submission_kit.py
+
+.PHONY: help venv build lint unit contract contract-js contract-py test release-check clean
 
 help:
-	@echo "make test   - THE canonical command: lint, suite, live proof"
-	@echo "make lint   - syntax only (fast)"
-	@echo "make proof  - live repaint proof against the real Hermes skin engine"
+	@echo "make test           THE builder gate: lint + unit + the locked contract (minus release evidence)"
+	@echo "make contract       the whole locked contract, strict (missing Hermes = failure)"
+	@echo "make release-check  O7 real-Desktop evidence + O8 submission kit (lead, before the tag)"
+	@echo "make build          desktop/src -> desktop/plugin.js (deterministic)"
 
-# Syntax-only by design: a plugin that will not parse fails silently inside the
-# agent's process, so this must be cheap enough to run on every edit.
+venv:
+	uv venv -q --python /usr/bin/python3 .venv && VIRTUAL_ENV=$$PWD/.venv uv pip install -q -r requirements-dev.txt
+
+build:
+	$(NODE) desktop/build.mjs
+
 lint:
-	@python3 -m compileall -q . -x '\.worktrees|__pycache__|\.git' && echo "lint ok"
+	$(PY) -m ruff check .
+	$(PY) -m compileall -q -x '(\.venv|node_modules|\.git)' . >/dev/null
+	if [ -f desktop/plugin.js ]; then $(NODE) --check desktop/plugin.js; fi
+	if [ -d desktop/node_modules ]; then (cd desktop && $(NODE) node_modules/typescript/bin/tsc --noEmit -p .); fi
+	echo "lint ok"
 
-test: lint
-	@python3 -m pytest tests/ -q
-	@python3 tests/proofs/live_repaint_proof.py
-	@python3 tests/proofs/running_app_proof.py
-	@python3 tests/proofs/animated_repaint_proof.py
-	@python3 tests/proofs/terminal_paint_proof.py
+unit:
+	if [ -n "$(strip $(UNIT_JS))" ]; then $(NICE) $(NODE) --test $(UNIT_JS); fi
+	if [ -d tests/unit ]; then $(NICE) $(PY) -m pytest tests/unit -q -p no:cacheprovider; fi
 
-# Needs the Hermes venv on the path; skipped rather than failed when absent, so
-# `make test` stays green on a machine without Hermes installed.
-proof:
-	@python3 tests/proofs/live_repaint_proof.py
-	@python3 tests/proofs/running_app_proof.py
-	@python3 tests/proofs/animated_repaint_proof.py
-	@python3 tests/proofs/terminal_paint_proof.py
+contract-js:
+	$(NICE) $(NODE) --test $(CONTRACT_JS)
+
+contract-py:
+	$(NICE) $(PY) -m pytest tests/acceptance -q -p no:cacheprovider $(foreach f,$(RELEASE_ONLY),--ignore=$(f))
+
+contract: export CF_STRICT := 1
+contract: contract-js contract-py
+
+test: export CF_STRICT := 1
+test: lint unit contract-js contract-py
+
+release-check: export CF_STRICT := 1
+release-check: contract
+	$(NICE) $(PY) -m pytest $(RELEASE_ONLY) -q -p no:cacheprovider
 
 clean:
-	@find . -name '__pycache__' -type d -prune -exec rm -rf {} + 2>/dev/null; true
-	@find . -name '*.pyc' -delete 2>/dev/null; true
+	find . -name '__pycache__' -type d -prune -not -path './.venv/*' -exec rm -rf {} + ; rm -rf .pytest_cache .metrics coverage

@@ -8,3 +8,8 @@ build/
 *.egg-info/
 .worktrees/
 gate-*.txt
+.metrics/
+coverage/
+desktop/node_modules/
+tools/node_modules/
+.coverage
