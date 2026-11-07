@@ -1,0 +1,14 @@
+{
+  "name": "@cuttlefish/desktop",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Cuttlefish 2.0 desktop plugin: pure domain (this tree) + adapters (desktop/src/adapters, another lane).",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "5.9"
+  }
+}
