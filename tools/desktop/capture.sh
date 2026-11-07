@@ -17,6 +17,7 @@ core=$(git -C "$CF_HERMES_CORE" rev-parse HEAD)
 case "$core" in b200f5bc60e*) ;; *) echo "core is $core, not v0.22.7 (b200f5bc60e)"; exit 2;; esac
 [ -d "$RUN/.git" ] || { mkdir -p "$(dirname "$RUN")"; git clone -q "$ORIGIN" "$RUN"; }
 cd "$RUN"
+git reset -q --hard && git clean -fdq   # this clone is private to the capture: no hand edits survive
 git fetch -q origin '+refs/heads/*:refs/remotes/origin/*'
 sha=$(git rev-parse --verify -q "$COMMIT^{commit}" || git rev-parse --verify "origin/$COMMIT^{commit}")
 git checkout -q --detach "$sha"
