@@ -9,10 +9,10 @@
 // ---- react (the two doors the surfaces use) ---------------------------------------------------------
 
 declare module 'react' {
-  export function useSyncExternalStore(
+  export function useSyncExternalStore<T>(
     subscribe: (onStoreChange: () => void) => () => void,
-    getSnapshot: () => number,
-  ): number
+    getSnapshot: () => T,
+  ): T
   export function useEffect(effect: () => void | (() => void), deps?: readonly unknown[]): void
 }
 

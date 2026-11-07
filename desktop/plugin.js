@@ -435,8 +435,9 @@ function armBloom(a          )       {
 }
 
 function applyInput(a          , input           )       {
+  const before = a.v.version
   if (applyFeed(a.v, input)) armBloom(a)
-  paint(a)
+  if (a.v.version !== before) paint(a)
 }
 
 /** C5: a config maps to settings via the domain resolver; only a real change blooms. */
@@ -524,6 +525,7 @@ function attach(ctx               )       {
   offs.push(wireReduce(v, () => paint(a)))
   offs.push(registerSurfaces(ctx, v, () => mountStyle(a)))
   applyInput(a, stateSnapshot(atoms, Date.now()))
+  paint(a) // the first sight always paints, even when it changes nothing
 
   ctx.onDispose(() => teardown(a, offs))
 }
@@ -541,13 +543,24 @@ __cf_defs["src/adapters/surfaces.ts"] = (exports) => {
 // is the plugin's permanent style owner; it renders nothing itself.
 const { useEffect, useSyncExternalStore } = __cf_ext("react");const { jsx } = __cf_ext("react/jsx-runtime");const { COMPOSER_AREAS, SESSION_ROW_AREAS, STATUSBAR_AREAS, TITLEBAR_AREAS } = __cf_ext("@hermes/plugin-sdk");const { allocate, renderStrip, renderSwatch, signalsOf, stateFor } = __cf_require("src/domain/index.ts");const { bandElement, svgElement } = __cf_require("src/adapters/svg.ts");const { safePattern, seedOfStored } = __cf_require("src/adapters/view.ts");/** The composer rim's height in px (brief: a 4–6 px band). */
 const RIM_HEIGHT = 5
-function useLive(v        )       {
-  useSyncExternalStore((cb            ) => v.listen(cb), () => v.version)
+/** Re-render when — and only when — this surface's own derived key changes (React compares the snapshot by value). */
+function useLive(v        , key              )       {
+  useSyncExternalStore((cb            ) => v.listen(cb), key)
+}
+
+/** A row swatch's whole input: its own state and how things look. Another session's change leaves it alone. */
+function swatchKey(v        , sessionId        )         {
+  return `${stateFor(v.settings, signalsOf(v.feed, sessionId))}|${v.styleKey}`
+}
+
+/** The strip's and the rim's whole input: the focused state, who is focused, how things look. */
+function chromeKey(v        )         {
+  return `${v.focusedState}|${v.focusedStored ?? ''}|${v.styleKey}`
 }
 
 /** The sidebar row swatch: the session's OWN state and identity, never the focused one's. */
 function SwatchView({ v, sessionId }                                     )          {
-  useLive(v)
+  useLive(v, () => swatchKey(v, sessionId))
   const state = stateFor(v.settings, signalsOf(v.feed, sessionId))
   const out = renderSwatch({
     seed: sessionId,
@@ -559,10 +572,11 @@ function SwatchView({ v, sessionId }                                     )      
   return svgElement(jsx, out, { 'data-cf-session': sessionId, 'data-cf-state': state }, out.dots)
 }
 
-/** The focused state's words, or '' when the settings do not name it — never a throw. */
+/** The focused state's words; when its label is empty (resting's locked default) or the settings do not name it, the
+ *  state's own name — the strip always says where the session stands, and never throws. */
 function labelOf(v        , state        )         {
   const found = v.settings.states[state]?.label
-  return found !== undefined ? found : ''
+  return found !== undefined && found !== '' ? found : state.replaceAll('_', ' ')
 }
 
 /** The focused state's strip dots (the status strip's and the rim's one source). */
@@ -580,14 +594,14 @@ function focusedStrip(v        )                                                
 
 /** The status strip: the focused state's dots and its words. */
 function StripView({ v }               )          {
-  useLive(v)
+  useLive(v, () => chromeKey(v))
   const { strip, state } = focusedStrip(v)
   return jsx('div', { 'data-cf-state': state, 'data-cf-strip': 'cuttlefish', children: [svgElement(jsx, strip, {}, strip.dots), labelOf(v, state)] })
 }
 
 /** The composer rim: a 5 px full-width band of the same dots, no words, static. */
 function RimView({ v }               )          {
-  useLive(v)
+  useLive(v, () => chromeKey(v))
   const { strip, state } = focusedStrip(v)
   return jsx('div', {
     'data-cf-state': state,
@@ -625,7 +639,7 @@ function registerSurfaces(ctx               , v        , mountStyle             
   return () => { for (const off of offs) off() }
 }
 
-Object.assign(exports, { registerSurfaces });
+Object.assign(exports, { swatchKey, chromeKey, registerSurfaces });
 };
 
 __cf_defs["src/adapters/svg.ts"] = (exports) => {
@@ -727,8 +741,10 @@ function seedOfStored(stored               )         {
                                                                                   
              
                        
-                                             
+                                                                                                      
                  
+                                                                                                         
+                  
                                       
  
 
@@ -747,8 +763,17 @@ function safePattern(settings          , state        )              {
   return { ...settings.patterns.mottle }
 }
 
+/** Every session's resolved state plus the focus: the whole derived output of the feed, as one string. */
+function fingerprint(v        )         {
+  const parts = Object.keys(v.feed.sessions).sort().map(id => `${id}=${stateFor(v.settings, signalsOf(v.feed, id))}`)
+  return `${v.feed.focusedStored ?? ''}|${stateFor(v.settings, signalsOf(v.feed, v.feed.focusedStored ?? ''))}|${parts.join(',')}`
+}
+
+const PRINTS = new WeakMap                ()
+
 /** Recompute the derived fields from feed + settings, and bump the version. */
 function derive(v        )          {
+  PRINTS.set(v, fingerprint(v))
   const before = v.focusedState
   const stored = v.feed.focusedStored
   v.focusedStored = stored
@@ -777,6 +802,7 @@ function initialView(env       )         {
     tMs: 0,
     sinceChangeMs: 0,
     version: 0,
+    styleKey: 0,
     listen(fn) {
       const subs = SUBS.get(this)
       if (!subs) return () => {}
@@ -794,6 +820,9 @@ function applyFeed(v        , input           )          {
   const next = reduceFeed(v.feed, input)
   if (next === v.feed) return false   // the reducer returns its model untouched when nothing changed: nothing to re-derive or repaint
   v.feed = next
+  // A burst of host events that leaves every session's state and the focus as they were changes nothing anyone can see:
+  // no derive, no version bump, no notification — so no surface re-renders and no paint follows.
+  if (fingerprint(v) === PRINTS.get(v)) return false
   return derive(v)
 }
 
@@ -801,6 +830,7 @@ function applyFeed(v        , input           )          {
 function applySettings(v        , settings          )          {
   v.settings = settings
   v.motion = settings.motion
+  v.styleKey += 1
   return derive(v)
 }
 
@@ -810,6 +840,7 @@ function applyEnv(v        , patch            )       {
   if (patch.height !== undefined) v.height = patch.height
   if (patch.ground !== undefined) v.ground = patch.ground
   if (patch.reducedMotion !== undefined) v.reducedMotion = patch.reducedMotion
+  v.styleKey += 1
   v.version += 1
   notify(v)
 }

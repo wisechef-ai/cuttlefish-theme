@@ -74,7 +74,19 @@ test('surfaces: the chip speaks the state\'s own words, and says nothing for an 
   const h2 = fakeCtx()
   registerSurfaces(h2.ctx, ghost, () => () => {})
   const mute = expand((h2.contributions.get('strip')!.render as () => unknown)()).tree as { props: { children: unknown[] } }
-  assert.equal(mute.props.children[1], '', 'an unnamed state falls back to silence, never a throw')
+  assert.equal(mute.props.children[1], 'a state no settings name', 'a state with no label falls back to its own name, never a throw')
+})
+
+test('surfaces D4: the status strip ALWAYS names the state — a resting (empty-label) strip says "resting", dim', () => {
+  const h = fakeCtx()
+  const v = view()
+  applyFeed(v, { kind: 'state', t: 0, session: null, payload: { gateway: 'open', focused_session_id: 'a', focused_stored_session_id: 'SA' } })
+  assert.equal(v.settings.states.resting.label, '', 'the locked default label of resting is empty')
+  registerSurfaces(h.ctx, v, () => () => {})
+  const chip = expand((h.contributions.get('strip')!.render as () => unknown)()).tree as { props: { children: unknown[] } }
+  assert.equal(chip.props.children[1], 'resting')
+  const text = JSON.stringify(expand((h.contributions.get('strip')!.render as () => unknown)()).tree)
+  assert.ok(text.includes('"resting"'))
 })
 
 test('surfaces: the composer rim is a 4–6 px full-width band of dots with no words, tiled whole (F4)', () => {
@@ -97,4 +109,23 @@ test('surfaces: the composer rim is a 4–6 px full-width band of dots with no w
   assert.ok(json.includes('"type":"pattern"'), 'tiled across the full width, whole tile visible')
   const strip = JSON.stringify(expand((h.contributions.get('strip')!.render as () => unknown)()).tree)
   assert.ok(!strip.includes('"type":"pattern"'), 'the status strip keeps its own look')
+})
+
+test('surfaces D3: a swatch re-renders only for its OWN state; the chrome only for the focused one; settings/ground move every key', async () => {
+  const { swatchKey, chromeKey } = await import('../../../src/adapters/surfaces.ts')
+  const { applyEnv } = await import('../../../src/adapters/view.ts')
+  const v = view()
+  applyFeed(v, { kind: 'state', t: 0, session: null, payload: { gateway: 'open', focused_session_id: 'a', focused_stored_session_id: 'SA' } })
+  applyFeed(v, { kind: 'session.info', t: 1, session: 'b', payload: { stored_session_id: 'SB' } })
+  const [a0, b0, c0] = [swatchKey(v, 'SA'), swatchKey(v, 'SB'), chromeKey(v)]
+  applyFeed(v, { kind: 'plugin.cuttlefish-theme.needs_you', t: 2, session: null, payload: { session_id: 'SB', request_id: 'r', active: true } })
+  assert.equal(swatchKey(v, 'SA'), a0, 'A is unmoved by B')
+  assert.notEqual(swatchKey(v, 'SB'), b0, 'B changed')
+  assert.equal(chromeKey(v), c0, 'the focused chrome is unmoved by a background session')
+  applyFeed(v, { kind: 'plugin.cuttlefish-theme.needs_you', t: 3, session: null, payload: { session_id: 'SA', request_id: 'r2', active: true } })
+  assert.notEqual(chromeKey(v), c0, 'the focused session changed state')
+  const k = chromeKey(v)
+  applyEnv(v, { ground: '#fafafa' })
+  assert.notEqual(chromeKey(v), k)
+  assert.notEqual(swatchKey(v, 'SB'), b0)
 })

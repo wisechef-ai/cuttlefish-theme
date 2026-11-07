@@ -43,8 +43,10 @@ export interface CfView extends CfEnv {
   /** Loop-time inputs, written by the draw callback (tMs) and the bloom clock. */
   tMs: number
   sinceChangeMs: number
-  /** Subscription: bumped once per apply. */
+  /** Bumped when ANY derived output changed (a session's state, the focus, settings, environment). */
   version: number
+  /** Bumped when how things LOOK changed (settings, ground, viewport, motion) — a surface's memo key. */
+  styleKey: number
   listen(fn: ViewListener): () => void
 }
 
@@ -63,8 +65,17 @@ export function safePattern(settings: Settings, state: string): PatternSpec {
   return { ...settings.patterns.mottle }
 }
 
+/** Every session's resolved state plus the focus: the whole derived output of the feed, as one string. */
+function fingerprint(v: CfView): string {
+  const parts = Object.keys(v.feed.sessions).sort().map(id => `${id}=${stateFor(v.settings, signalsOf(v.feed, id))}`)
+  return `${v.feed.focusedStored ?? ''}|${stateFor(v.settings, signalsOf(v.feed, v.feed.focusedStored ?? ''))}|${parts.join(',')}`
+}
+
+const PRINTS = new WeakMap<CfView, string>()
+
 /** Recompute the derived fields from feed + settings, and bump the version. */
 function derive(v: CfView): boolean {
+  PRINTS.set(v, fingerprint(v))
   const before = v.focusedState
   const stored = v.feed.focusedStored
   v.focusedStored = stored
@@ -93,6 +104,7 @@ export function initialView(env: CfEnv): CfView {
     tMs: 0,
     sinceChangeMs: 0,
     version: 0,
+    styleKey: 0,
     listen(fn) {
       const subs = SUBS.get(this)
       if (!subs) return () => {}
@@ -110,6 +122,9 @@ export function applyFeed(v: CfView, input: FeedInput): boolean {
   const next = reduceFeed(v.feed, input)
   if (next === v.feed) return false   // the reducer returns its model untouched when nothing changed: nothing to re-derive or repaint
   v.feed = next
+  // A burst of host events that leaves every session's state and the focus as they were changes nothing anyone can see:
+  // no derive, no version bump, no notification — so no surface re-renders and no paint follows.
+  if (fingerprint(v) === PRINTS.get(v)) return false
   return derive(v)
 }
 
@@ -117,6 +132,7 @@ export function applyFeed(v: CfView, input: FeedInput): boolean {
 export function applySettings(v: CfView, settings: Settings): boolean {
   v.settings = settings
   v.motion = settings.motion
+  v.styleKey += 1
   return derive(v)
 }
 
@@ -126,6 +142,7 @@ export function applyEnv(v: CfView, patch: CfEnvPatch): void {
   if (patch.height !== undefined) v.height = patch.height
   if (patch.ground !== undefined) v.ground = patch.ground
   if (patch.reducedMotion !== undefined) v.reducedMotion = patch.reducedMotion
+  v.styleKey += 1
   v.version += 1
   notify(v)
 }

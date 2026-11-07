@@ -130,8 +130,9 @@ function armBloom(a: Attached): void {
 }
 
 function applyInput(a: Attached, input: FeedInput): void {
+  const before = a.v.version
   if (applyFeed(a.v, input)) armBloom(a)
-  paint(a)
+  if (a.v.version !== before) paint(a)
 }
 
 /** C5: a config maps to settings via the domain resolver; only a real change blooms. */
@@ -219,6 +220,7 @@ export function attach(ctx: PluginContext): void {
   offs.push(wireReduce(v, () => paint(a)))
   offs.push(registerSurfaces(ctx, v, () => mountStyle(a)))
   applyInput(a, stateSnapshot(atoms, Date.now()))
+  paint(a) // the first sight always paints, even when it changes nothing
 
   ctx.onDispose(() => teardown(a, offs))
 }
