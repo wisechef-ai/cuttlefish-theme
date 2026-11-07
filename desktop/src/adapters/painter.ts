@@ -12,8 +12,24 @@ export function ringOf(hueDeg: number, ground: string): string {
   return planGround(hueDeg, ground).chroma
 }
 
+/** Rendered texts by input: a working loop revisits the same frames every cloud cycle, and an SVG of ~190 organs
+ *  costs ~4 ms to build, so the repeats are served from here. Bounded; cleared whole when full. */
+const memo = new Map<string, string>()
+const MEMO_CAP = 160
+
 /** The whole owned CSS for the current view: two rules, nothing else (P5/P7 allowlists). */
 export function fieldCss(v: CfView): string {
+  const key = JSON.stringify([v.focusedStored, v.width, v.height, v.hueDeg, v.ground, v.pattern, v.settings.intensity,
+    v.motion, v.reducedMotion, v.tMs, v.sinceChangeMs])
+  const hit = memo.get(key)
+  if (hit !== undefined) return hit
+  const css = buildCss(v)
+  if (memo.size >= MEMO_CAP) memo.clear()
+  memo.set(key, css)
+  return css
+}
+
+function buildCss(v: CfView): string {
   const svg = toSvg(
     renderField({
       seed: seedOfStored(v.focusedStored),

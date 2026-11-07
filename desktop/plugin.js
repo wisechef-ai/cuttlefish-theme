@@ -268,8 +268,24 @@ const { planGround, renderField, toSvg } = __cf_require("src/domain/index.ts");c
 function ringOf(hueDeg        , ground        )         {
   return planGround(hueDeg, ground).chroma
 }
+/** Rendered texts by input: a working loop revisits the same frames every cloud cycle, and an SVG of ~190 organs
+ *  costs ~4 ms to build, so the repeats are served from here. Bounded; cleared whole when full. */
+const memo = new Map                ()
+const MEMO_CAP = 160
+
 /** The whole owned CSS for the current view: two rules, nothing else (P5/P7 allowlists). */
 function fieldCss(v        )         {
+  const key = JSON.stringify([v.focusedStored, v.width, v.height, v.hueDeg, v.ground, v.pattern, v.settings.intensity,
+    v.motion, v.reducedMotion, v.tMs, v.sinceChangeMs])
+  const hit = memo.get(key)
+  if (hit !== undefined) return hit
+  const css = buildCss(v)
+  if (memo.size >= MEMO_CAP) memo.clear()
+  memo.set(key, css)
+  return css
+}
+
+function buildCss(v        )         {
   const svg = toSvg(
     renderField({
       seed: seedOfStored(v.focusedStored),
@@ -308,9 +324,13 @@ __cf_defs["src/adapters/runtime.ts"] = (exports) => {
 // attributes) happen at apply time so the skin exists even while the loop is
 // parked; the loop only exists to animate (working clouds, the bloom). attach
 // itself stays straight-line wiring: every decision lives in a named helper.
-const { createBudgetedLoop, host } = __cf_ext("@hermes/plugin-sdk");const { pollPlan, resolveSettings } = __cf_require("src/domain/index.ts");const { eventToFeed, stateSnapshot } = __cf_require("src/adapters/feedmap.ts");const { parseGround } = __cf_require("src/adapters/ground.ts");const { wireWatch } = __cf_require("src/adapters/configwatch.ts");const { drawClock, idleSince, initialClock, noteStateChange, wantsFrame } = __cf_require("src/adapters/looplogic.ts");const { fieldCss } = __cf_require("src/adapters/painter.ts");const { registerSurfaces } = __cf_require("src/adapters/surfaces.ts");const { applyEnv, applyFeed, applySettings, initialView } = __cf_require("src/adapters/view.ts");const FALLBACK_GROUND = '#141416'
+const { createBudgetedLoop, host } = __cf_ext("@hermes/plugin-sdk");const { CLOUD_TRAVEL_MS, pollPlan, resolveSettings } = __cf_require("src/domain/index.ts");const { eventToFeed, stateSnapshot } = __cf_require("src/adapters/feedmap.ts");const { parseGround } = __cf_require("src/adapters/ground.ts");const { wireWatch } = __cf_require("src/adapters/configwatch.ts");const { drawClock, idleSince, initialClock, noteStateChange, wantsFrame } = __cf_require("src/adapters/looplogic.ts");const { fieldCss } = __cf_require("src/adapters/painter.ts");const { registerSurfaces } = __cf_require("src/adapters/surfaces.ts");const { applyEnv, applyFeed, applySettings, initialView } = __cf_require("src/adapters/view.ts");const FALLBACK_GROUND = '#141416'
 const REDUCE_QUERY = '(prefers-reduced-motion: reduce)'
-const LOOP_FPS = 5
+const LOOP_FPS = 4.6
+/** Frame times sit on this grid (below the loop's frame interval, so no frame is ever dropped), and — outside `alive`,
+ *  where time only moves the clouds — wrap at the cloud cycle: the painted text then repeats exactly, and the engine
+ *  re-uses the decoded image of a data-URI it has already seen instead of parsing a new SVG at every frame. */
+const FRAME_GRID_MS = 200
 /** Everything the paint/teardown helpers need, in one bundle. */
                     
            
@@ -350,9 +370,15 @@ function viewportOf(vp                                    = host.state.viewport.
   return { width: vp.width > 0 ? vp.width : 1200, height: vp.height > 0 ? vp.height : 800 }
 }
 
+/** The time a frame paints with: on the grid, and wrapped at the cloud cycle unless `alive` twinkles run on their own periods. */
+function frameTime(now        , motion        )         {
+  const onGrid = Math.floor(now / FRAME_GRID_MS) * FRAME_GRID_MS
+  return motion === 'alive' ? onGrid : onGrid % CLOUD_TRAVEL_MS
+}
+
 /** One animation frame: advance the clock, repaint the field CSS in place. */
 function draw(a          , now        )       {
-  a.v.tMs = now
+  a.v.tMs = frameTime(now, a.v.motion)
   a.v.sinceChangeMs = drawClock(a.clock, now)
   paintField(a)
 }
@@ -502,7 +528,7 @@ function attach(ctx               )       {
   ctx.onDispose(() => teardown(a, offs))
 }
 
-Object.assign(exports, { attach });
+Object.assign(exports, { frameTime, attach });
 };
 
 __cf_defs["src/adapters/surfaces.ts"] = (exports) => {
@@ -1471,8 +1497,8 @@ __cf_defs["src/domain/index.ts"] = (exports) => {
 // Everything the adapter lane may use is re-exported here, and nothing under desktop/src/domain
 // is reachable except through it (test_S2). The domain is PURE: no SDK, no DOM, no clock, no
 // randomness — time arrives as tMs/nowMs, entropy only from seeded blake2b.
-const { blake2b, seededStream, utf8 } = __cf_require("src/domain/blake2b.ts");const { allocate, ARC_END, ARC_START, hueDistance, hueOfSlot, preferredSlot, SLOTS } = __cf_require("src/domain/identity.ts");const { blanchDl, hashUnit, inkTargets, MAX_DL, planGround, REST_HI, REST_LO, REST_MEAN, twinkleFactor } = __cf_require("src/domain/pattern.ts");const { alphaFor, renderField, renderStrip, renderSwatch, toSvg } = __cf_require("src/domain/field.ts");const { constellation, eyeSpotAt } = __cf_require("src/domain/organs.ts");const { BLOOM_MS, bloomFactor, motionPlan } = __cf_require("src/domain/motion.ts");const { DEFAULT_SETTINGS, patternOf, resolveSettings, stateFor } = __cf_require("src/domain/settings.ts");const { initialFeed, knownSessions, POLL_INTERVAL_MS, pollPlan, reduceFeed, signalsOf } = __cf_require("src/domain/feed.ts");const { configPlan, initialConfigWatch } = __cf_require("src/domain/configwatch.ts");const { oklchToHex, rgbToHex, rgbToOklab } = __cf_require("src/domain/oklch.ts");const { PATTERN_KINDS, SIGNALS } = __cf_require("src/domain/types.ts");
-Object.assign(exports, { blake2b, seededStream, utf8, allocate, ARC_END, ARC_START, hueDistance, hueOfSlot, preferredSlot, SLOTS, blanchDl, hashUnit, inkTargets, MAX_DL, planGround, REST_HI, REST_LO, REST_MEAN, twinkleFactor, alphaFor, renderField, renderStrip, renderSwatch, toSvg, constellation, eyeSpotAt, BLOOM_MS, bloomFactor, motionPlan, DEFAULT_SETTINGS, patternOf, resolveSettings, stateFor, initialFeed, knownSessions, POLL_INTERVAL_MS, pollPlan, reduceFeed, signalsOf, configPlan, initialConfigWatch, oklchToHex, rgbToHex, rgbToOklab, PATTERN_KINDS, SIGNALS });
+const { blake2b, seededStream, utf8 } = __cf_require("src/domain/blake2b.ts");const { allocate, ARC_END, ARC_START, hueDistance, hueOfSlot, preferredSlot, SLOTS } = __cf_require("src/domain/identity.ts");const { blanchDl, CLOUD_TRAVEL_MS, hashUnit, inkTargets, MAX_DL, planGround, REST_HI, REST_LO, REST_MEAN, twinkleFactor } = __cf_require("src/domain/pattern.ts");const { alphaFor, renderField, renderStrip, renderSwatch, toSvg } = __cf_require("src/domain/field.ts");const { constellation, eyeSpotAt } = __cf_require("src/domain/organs.ts");const { BLOOM_MS, bloomFactor, motionPlan } = __cf_require("src/domain/motion.ts");const { DEFAULT_SETTINGS, patternOf, resolveSettings, stateFor } = __cf_require("src/domain/settings.ts");const { initialFeed, knownSessions, POLL_INTERVAL_MS, pollPlan, reduceFeed, signalsOf } = __cf_require("src/domain/feed.ts");const { configPlan, initialConfigWatch } = __cf_require("src/domain/configwatch.ts");const { oklchToHex, rgbToHex, rgbToOklab } = __cf_require("src/domain/oklch.ts");const { PATTERN_KINDS, SIGNALS } = __cf_require("src/domain/types.ts");
+Object.assign(exports, { blake2b, seededStream, utf8, allocate, ARC_END, ARC_START, hueDistance, hueOfSlot, preferredSlot, SLOTS, blanchDl, CLOUD_TRAVEL_MS, hashUnit, inkTargets, MAX_DL, planGround, REST_HI, REST_LO, REST_MEAN, twinkleFactor, alphaFor, renderField, renderStrip, renderSwatch, toSvg, constellation, eyeSpotAt, BLOOM_MS, bloomFactor, motionPlan, DEFAULT_SETTINGS, patternOf, resolveSettings, stateFor, initialFeed, knownSessions, POLL_INTERVAL_MS, pollPlan, reduceFeed, signalsOf, configPlan, initialConfigWatch, oklchToHex, rgbToHex, rgbToOklab, PATTERN_KINDS, SIGNALS });
 };
 
 __cf_defs["src/domain/motion.ts"] = (exports) => {
@@ -1873,7 +1899,7 @@ function hashUnit(seed        , domain        )         {
   return n / 2 ** 64
 }
 
-Object.assign(exports, { REST_LO, REST_HI, REST_MEAN, MAX_DL, planGround, blanchDl, inkTargets, twinkleFactor, effectiveDl, hashUnit });
+Object.assign(exports, { REST_LO, REST_HI, REST_MEAN, MAX_DL, CLOUD_TRAVEL_MS, planGround, blanchDl, inkTargets, twinkleFactor, effectiveDl, hashUnit });
 };
 
 __cf_defs["src/domain/settings.ts"] = (exports) => {

@@ -7,7 +7,7 @@
 // parked; the loop only exists to animate (working clouds, the bloom). attach
 // itself stays straight-line wiring: every decision lives in a named helper.
 import { createBudgetedLoop, host, type BudgetedLoop, type PluginContext } from '@hermes/plugin-sdk'
-import { pollPlan, resolveSettings, type FeedInput, type Settings } from '../domain/index.ts'
+import { CLOUD_TRAVEL_MS, pollPlan, resolveSettings, type FeedInput, type Settings } from '../domain/index.ts'
 import { eventToFeed, stateSnapshot, type StateAtoms } from './feedmap.ts'
 import { parseGround } from './ground.ts'
 import { wireWatch } from './configwatch.ts'
@@ -18,7 +18,11 @@ import { applyEnv, applyFeed, applySettings, initialView, type CfEnv, type CfVie
 
 const FALLBACK_GROUND = '#141416'
 const REDUCE_QUERY = '(prefers-reduced-motion: reduce)'
-const LOOP_FPS = 5
+const LOOP_FPS = 4.6
+/** Frame times sit on this grid (below the loop's frame interval, so no frame is ever dropped), and — outside `alive`,
+ *  where time only moves the clouds — wrap at the cloud cycle: the painted text then repeats exactly, and the engine
+ *  re-uses the decoded image of a data-URI it has already seen instead of parsing a new SVG at every frame. */
+const FRAME_GRID_MS = 200
 
 type Holder = { el: HTMLStyleElement | null; css: string }
 
@@ -61,9 +65,15 @@ function viewportOf(vp: { width: number; height: number } = host.state.viewport.
   return { width: vp.width > 0 ? vp.width : 1200, height: vp.height > 0 ? vp.height : 800 }
 }
 
+/** The time a frame paints with: on the grid, and wrapped at the cloud cycle unless `alive` twinkles run on their own periods. */
+export function frameTime(now: number, motion: string): number {
+  const onGrid = Math.floor(now / FRAME_GRID_MS) * FRAME_GRID_MS
+  return motion === 'alive' ? onGrid : onGrid % CLOUD_TRAVEL_MS
+}
+
 /** One animation frame: advance the clock, repaint the field CSS in place. */
 function draw(a: Attached, now: number): void {
-  a.v.tMs = now
+  a.v.tMs = frameTime(now, a.v.motion)
   a.v.sinceChangeMs = drawClock(a.clock, now)
   paintField(a)
 }

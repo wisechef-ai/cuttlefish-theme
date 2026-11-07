@@ -9,7 +9,7 @@ export {
   allocate, ARC_END, ARC_START, hueDistance, hueOfSlot, preferredSlot, SLOTS, type Allocation,
 } from './identity.ts'
 export {
-  blanchDl, hashUnit, inkTargets, MAX_DL, planGround, REST_HI, REST_LO, REST_MEAN,
+  blanchDl, CLOUD_TRAVEL_MS, hashUnit, inkTargets, MAX_DL, planGround, REST_HI, REST_LO, REST_MEAN,
   twinkleFactor, type GroundPlan, type InkOptions,
 } from './pattern.ts'
 export {
