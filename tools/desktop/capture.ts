@@ -326,7 +326,11 @@ async function main(): Promise<void> {
     for (const k of ['r1', 'r2', 'r3']) await take(k, 'resting', true, false)
     await take('b', 'needs_you', true, true)
     await take('c', 'error', true, true)
+    // full-frame stills for the visual check of the composer rim + field behind the transcript (hashed only, not measured)
+    const rimStill = (name: string) => { grab(path.join(RAW, `stills/${name}.png`)); stills.push({ state: name, path: `evidence/v2/raw/stills/${name}.png`, sha256: sha256Hex(fs.readFileSync(path.join(RAW, `stills/${name}.png`))) }) }
+    rimStill('rim-error')
     await take('a', 'working', true, true)
+    rimStill('rim-working')
     await focusRow(page, TITLES.r4); await sleep(SETTLE_S * 1000)
     grab(path.join(RAW, 'stills/overview.png'))
     stills.push({ state: 'overview', path: 'evidence/v2/raw/stills/overview.png', sha256: sha256Hex(fs.readFileSync(path.join(RAW, 'stills/overview.png'))) })
