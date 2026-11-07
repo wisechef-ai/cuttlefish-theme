@@ -7,7 +7,8 @@ Locked O7 trusts numbers the manifest author typed. Here the harness must also l
   the pid,ts,cpu_pct sampler CSVs | field_updates_per_s ← the css-hash sampler | vision verdicts ← the model's raw response.
 Every raw file's sha256 and the plugin.js sha are bound into the manifest; the vision response must quote every still it judged.
 Floors next to the ceilings (F5): a still taken INSIDE the idle-CPU window shows ≥ 20 organs, so idle CPU is measured WITH a field.
-F9: the DOM dumps carry the status-strip words and the computed composer border colour of each focused state.
+F9 (addendum R-S1): the DOM dumps carry the status-strip words and the composer RIM (the composer.top
+contribution's data-cf-state + the sha256 of its SVG) of each focused state.
 
 RESIDUAL RISK (stated, not hidden): a harness that fabricates the raw files themselves passes this part. What it cannot do
 cheaply is keep the PNG pixels, the sampler timestamps, the DOM dumps and the model's quoted hashes mutually consistent;
@@ -143,15 +144,16 @@ def test_R5_the_status_strip_says_the_focused_state_in_words(dumps):
     assert len(set(texts.values())) == len(texts), f"the strip does not tell the states apart: {texts}"
 
 
-def test_R6_the_composer_ring_is_state_dependent_in_computed_style(dumps):
-    by_state = {d["state"]: d for d in _focused(dumps).values()}
-    assert {"resting", "needs_you"} <= set(by_state), "the capture must include a focused resting and a focused needs_you dump"
-    a, b = by_state["resting"]["composer"], by_state["needs_you"]["composer"]
-    assert re_.parse_css_rgb(a["border_color"]) != re_.parse_css_rgb(b["border_color"]), \
-        f"computed composer border is {a['border_color']} at rest and while needing you: the ring does not speak"
-    for d in by_state.values():
-        for var in ("--dt-composer-ring", "--composer-ring-strength"):
-            assert str(d["composer"]["ring_vars"].get(var, "")).strip(), f"{d['state']}: {var} is not set in the real DOM"
+def test_R6_the_composer_rim_is_state_dependent_in_the_real_dom(dumps):
+    """R-S1: core pins the composer border (!important), so the composer speaks through a plugin-owned rim in composer.top."""
+    focused = _focused(dumps)
+    for sid, d in focused.items():
+        rim = d["composer"]["rim"]
+        assert rim["data-cf-state"] == d["state"], f"{sid}: the composer.top rim says {rim['data-cf-state']}, the session is {d['state']}"
+        assert str(d["composer"]["ring_vars"].get("--dt-composer-ring", "")).strip(), f"{sid}: --dt-composer-ring (identity hue) is not set"
+    hashes = {d["state"]: d["composer"]["rim"]["svg_sha256"] for d in focused.values()}
+    assert {"resting", "needs_you"} <= set(hashes), "the capture must include a focused resting and a focused needs_you dump"
+    assert len(set(hashes.values())) == len(hashes) >= 4, f"the rim's drawing does not tell the states apart: {hashes}"
 
 
 # ---- F4: pixels ------------------------------------------------------------------------------------------------------

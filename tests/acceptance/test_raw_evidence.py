@@ -25,7 +25,8 @@ def good_dump() -> dict:
     row = {"data-cf-session": "S1", "data-cf-state": "resting", "swatch_circles": 12}
     return {"schema": re_.DUMP_SCHEMA, "stored_id": "S1", "state": "resting", "focused": True, "plugin_js_sha256": SHA,
             "captured_at": 1.5, "html": {"data-cf-state": "resting"}, "row": row, "rows": [row, {**row, "data-cf-session": None}],
-            "strip": {"text": ""}, "composer": {"border_color": "rgb(1, 2, 3)", "ring_vars": {"--dt-composer-ring": "x"}},
+            "strip": {"text": ""}, "composer": {"rim": {"data-cf-state": "resting", "svg_sha256": SHA},
+                         "ring_vars": {"--dt-composer-ring": "x"}},
             "transcript_messages": 0}
 
 
@@ -54,7 +55,8 @@ def test_a_good_dump_loads_with_its_rows(tmp_path):
 
 
 @pytest.mark.parametrize("path", ["stored_id", "state", "focused", "plugin_js_sha256", "captured_at", "html", "strip", "composer", "row",
-                                  "rows", "transcript_messages", "strip.text", "composer.border_color", "composer.ring_vars",
+                                  "rows", "transcript_messages", "strip.text", "composer.rim", "composer.rim.data-cf-state",
+                                  "composer.rim.svg_sha256", "composer.ring_vars",
                                   "row.swatch_circles"])
 def test_a_dump_missing_any_field_is_rejected(tmp_path, path):
     d = good_dump()
@@ -70,7 +72,8 @@ def test_a_dump_missing_any_field_is_rejected(tmp_path, path):
 @pytest.mark.parametrize("mutate,why", [
     (lambda d: d.update(state="sulking"), "unknown state"), (lambda d: d.update(plugin_js_sha256="abc"), "sha256"),
     (lambda d: d.update(rows=[1]), "every entry"), (lambda d: d.update(focused=1), "missing or not"),
-    (lambda d: d.update(schema="cf2-dom-dump/0"), "schema")])
+    (lambda d: d.update(schema="cf2-dom-dump/0"), "schema"),
+    (lambda d: d["composer"]["rim"].update(svg_sha256="zz"), "svg_sha256")])
 def test_a_dump_with_a_bad_value_is_rejected(tmp_path, mutate, why):
     d = copy.deepcopy(good_dump())
     mutate(d)

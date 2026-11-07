@@ -61,8 +61,11 @@ def load_dump(p: Path) -> dict:
     _need(d, "strip", dict, where)
     _need(d["strip"], "text", str, where + ".strip")
     comp = _need(d, "composer", dict, where)
-    _need(comp, "border_color", str, where + ".composer")
     _need(comp, "ring_vars", dict, where + ".composer")
+    rim = _need(comp, "rim", dict, where + ".composer")
+    _need(rim, "data-cf-state", str, where + ".composer.rim")
+    if not SHA_RE.fullmatch(_need(rim, "svg_sha256", str, where + ".composer.rim")):
+        raise ValueError(f"{where}: composer.rim.svg_sha256 is not a sha256")
     _need(d, "transcript_messages", int, where)
     d["row"] = _row(_need(d, "row", dict, where), where + ".row")
     rows = _need(d, "rows", list, where)

@@ -56,8 +56,8 @@ field of every DOM dump.
  "row": {"data-cf-session": "…", "data-cf-state": "needs_you", "swatch_circles": 14},   // THIS session's sidebar row
  "rows": [ {"data-cf-session": "…"|null, "data-cf-state": "…"|null, "swatch_circles": 14}, … ],   // EVERY sidebar row
  "strip": {"text": "needs you"},                                            // the words the status strip shows
- "composer": {"border_color": "rgb(90, 140, 190)",                          // getComputedStyle(composer).borderColor
-              "ring_vars": {"--dt-composer-ring": "…", "--composer-ring-strength": "…"}},
+ "composer": {"rim": {"data-cf-state": "needs_you", "svg_sha256": "…"},    // the composer.top contribution's root + sha256 of its serialised <svg>
+              "ring_vars": {"--dt-composer-ring": "…"}},                    // identity hue (R-S1 ruling 3), not a state signal
  "transcript_messages": 0}
 ```
 
@@ -65,8 +65,8 @@ Recomputed: `dom_state` := `row["data-cf-state"]` (must equal the manifest's, an
 `rows_total` := `len(rows)`, `rows_with_swatch` := rows with a session id and `swatch_circles > 0`; all dumps list the
 same rows. Focused dumps (≥ 4 distinct states, incl. resting and needs_you): `html["data-cf-state"] == state`, the strip
 text contains the state's default label (`contract/config-vectors.json`; resting's is `""`), strip texts differ per
-state, `--dt-composer-ring` and `--composer-ring-strength` are set, and the computed `border_color` differs between
-resting and needs_you. A `finished_unseen` session cannot be focused (focusing clears it): its dump is judged by its row.
+state, `--dt-composer-ring` is set, `composer.rim["data-cf-state"] == state`, and the rim's `svg_sha256` differs across the
+focused states (addendum R-S1: core pins the composer border with `!important`, so there is no border colour to record). A `finished_unseen` session cannot be focused (focusing clears it): its dump is judged by its row.
 
 ## Still sidecar — `cf2-still/1` (8-bit, non-interlaced PNG; colour type 0/2/4/6)
 
