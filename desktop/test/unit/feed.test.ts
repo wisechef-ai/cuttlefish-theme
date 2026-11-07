@@ -148,3 +148,69 @@ test('reduceFeed is pure and garbage-tolerant: the model is never mutated, nothi
 test('an unknown session carries no signals at all', () => {
   assert.deepEqual([...signalsOf(initialFeed(), 'nobody')], [])
 })
+
+// fix-m4 D1 — real orderings from the M4 capture (hercules x9.log): on a direct focus switch the runtime-id
+// atom lags the stored-id atom, so the snapshot carries (OLD runtime id, NEW stored id).
+const snap = (rtFocus: string | null, stored: string | null, extra: Record<string, unknown> = {}): FeedInput =>
+  ev('state', rtFocus, { gateway: 'open', ...(rtFocus ? { focused_session_id: rtFocus } : {}), ...(stored ? { focused_stored_session_id: stored } : {}), ...extra })
+
+const twoSessions = (): FeedModel => run([
+  snap('rtA', 'A', { busyBySession: {} }),
+  ev('session.info', 'rtA', { stored_session_id: 'A' }),
+  snap('rtB', 'B', { busyBySession: {} }),
+  ev('session.info', 'rtB', { stored_session_id: 'B' }),
+  // focus B -> A with B mid-turn; the rt atom lags: (rtB, A)
+  snap('rtB', 'B', { busyBySession: { rtB: true } }),
+])
+
+test('D1: a lagging runtime atom (old rt, new stored) never maps the session being LEFT to the one ENTERED', () => {
+  const m = run([snap('rtB', 'A', { busyBySession: { rtB: true } })], twoSessions())
+  assert.equal(m.storedOf.rtB, 'B')
+  assert.ok(sig(m, 'B').includes('busy'), 'B (left, still running) is working')
+  assert.ok(!sig(m, 'A').includes('busy'), 'A (entered) is not working')
+})
+
+test('D1: finished_unseen fires when a turn ends in the session that was left by a direct switch', () => {
+  let m = run([snap('rtB', 'A', { busyBySession: { rtB: true } })], twoSessions())
+  m = run([snap('rtA', 'A', { busyBySession: { rtB: true } })], m) // the atoms settle
+  m = run([ev('message.complete', 'rtB', { status: 'complete' }), snap('rtA', 'A', { busyBySession: {} })], m)
+  assert.ok(sig(m, 'B').includes('unseen'), 'B finished unseen')
+  assert.ok(!sig(m, 'A').includes('unseen'))
+  assert.ok(!sig(m, 'B').includes('busy'))
+})
+
+test('D1: the mirror lag (new rt, old stored) is not learned either', () => {
+  const m = run([snap('rtA', 'B')], run([snap('rtA', 'A'), ev('session.info', 'rtA', { stored_session_id: 'A' }), snap('rtB', 'B'), ev('session.info', 'rtB', { stored_session_id: 'B' })]))
+  assert.equal(m.storedOf.rtA, 'A')
+  assert.equal(m.storedOf.rtB, 'B')
+  const lag = run([snap('rtB', 'A')], run([snap('rtA', 'A'), ev('session.info', 'rtA', { stored_session_id: 'A' }), ev('session.info', 'rtB', { stored_session_id: 'B' })]))
+  assert.equal(lag.storedOf.rtB, 'B')
+})
+
+test('D1: Ctrl+N (new empty chat, no stored id) unfocuses the stored session, so a turn finishing then is unseen', () => {
+  let m = run([
+    snap('rtA', 'A'), ev('session.info', 'rtA', { stored_session_id: 'A' }),
+    snap('rtA', 'A', { busyBySession: { rtA: true } }),
+  ])
+  m = run([ev('state', 'rtN', { gateway: 'open', focused_session_id: 'rtN', focused_stored_session_id: null, busyBySession: { rtA: true } })], m)
+  assert.equal(m.focusedStored, null)
+  m = run([ev('message.complete', 'rtA', { status: 'complete' }), snap('rtN', null, { busyBySession: {} })], m)
+  assert.ok(sig(m, 'A').includes('unseen'))
+})
+
+test('D1: a first-ever focused pair is still learned', () => {
+  const m = run([snap('rtA', 'A')])
+  assert.equal(m.storedOf.rtA, 'A')
+  assert.equal(m.focusedStored, 'A')
+})
+
+test('D1: a mapped runtime is never re-pointed by a focused pair naming a stored id nobody has yet', () => {
+  const m = run([snap('rtB', 'C')], twoSessions())
+  assert.equal(m.storedOf.rtB, 'B')
+})
+
+test('D1: an unmapped new runtime beside the OLD stored id (rt atom ahead) is not learned', () => {
+  const m = run([snap('rtN', 'A')], twoSessions())
+  assert.equal(m.storedOf.rtN, undefined)
+  assert.equal(m.storedOf.rtA, 'A')
+})
