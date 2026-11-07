@@ -215,7 +215,9 @@ async function still(page: Page, state: string, key = state): Promise<Taken> {
 async function darkGround(page: Page, ids: Record<string, string>): Promise<void> {
   try {
     await page.keyboard.press('Control+k'); await sleep(800)
-    await page.keyboard.type('dark'); await sleep(800)
+    await page.keyboard.type('color mode'); await sleep(800)
+    await page.keyboard.press('Enter'); await sleep(800) // opens the Light / Dark / System list
+    await page.keyboard.type('dark'); await sleep(600)
     await page.keyboard.press('Enter'); await sleep(2000)
     const mode = await page.evaluate(() => document.documentElement.getAttribute('data-hermes-mode'))
     if (mode !== 'dark') throw new Error(`colour mode is ${mode}`)
