@@ -201,7 +201,7 @@ async function still(page: Page, state: string): Promise<Taken> {
   const at = now()
   grab(path.join(RAW, png))
   const exclude = clipRects(geo.boxes, region, 6)
-  if (unionCoverage(exclude) > 0.25 * region[2] * region[3]) throw new Error(`${state}: exclusions cover more than 25% of the region`)
+  if (unionCoverage(exclude) > 0.25 * region[2] * region[3]) throw new Error(`${state}: exclusions cover more than 25% of the region: ${JSON.stringify(geo.boxes)} -> ${JSON.stringify(exclude)}`)
   const meta = `stills/${state}.json`
   wj(meta, { schema: 'cf2-still/1', state, png_sha256: sha256Hex(fs.readFileSync(path.join(RAW, png))), taken_at: at, region, exclude })
   return { state, rel: png, png: `evidence/v2/raw/${png}`, meta, region, exclude, at, geo }
