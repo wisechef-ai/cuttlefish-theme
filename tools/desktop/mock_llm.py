@@ -3,7 +3,9 @@
 
 Free, private and reproducible, so a capture never depends on a GPU box or a paid API. The behaviour is chosen by a tag
 in the LAST user message:
-  [work]     stream slowly for CF_MOCK_WORK_S seconds (default 600): the session stays "working"
+  [work]     open the stream, say one short line, then send empty keep-alive chunks for CF_MOCK_WORK_S seconds
+             (default 600): the session stays "working" without the transcript growing
+  [brief]    stream for CF_MOCK_BRIEF_S seconds (default 6), then finish (switch away first: "finished unseen")
   [approve]  call the terminal tool with a command Hermes must ask approval for: the session "needs you"
   [fail]     HTTP 400 invalid_request_error (non-retryable): the turn ends in "error"
   [done]     answer at once (switch away first and the session is "finished unseen")
@@ -19,6 +21,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 WORK_S = float(os.environ.get("CF_MOCK_WORK_S", "600"))
+BRIEF_S = float(os.environ.get("CF_MOCK_BRIEF_S", "6"))
 DANGEROUS = "rm -rf /tmp/cuttlefish-demo-target"
 
 
@@ -70,10 +73,12 @@ class Handler(BaseHTTPRequestHandler):
                     "function": {"name": "terminal", "arguments": json.dumps({"command": DANGEROUS})}}
             return self._reply(model, req, tool_call=call)
         if "[work]" in text and not after_tool:
-            return self._reply(model, req, slow=True)
+            return self._reply(model, req, slow=WORK_S)
+        if "[brief]" in text and not after_tool:
+            return self._reply(model, req, content="Finished.", slow=BRIEF_S)
         return self._reply(model, req, content="Done." if after_tool else "Here you go.")
 
-    def _reply(self, model, req, content="", tool_call=None, slow=False):
+    def _reply(self, model, req, content="", tool_call=None, slow=0.0):
         if not req.get("stream"):
             msg = {"role": "assistant", "content": content or None}
             if tool_call:
@@ -92,13 +97,12 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(_chunk(model, {"tool_calls": [tool_call]}))
                 self.wfile.write(_chunk(model, {}, "tool_calls"))
             elif slow:
-                end = time.time() + WORK_S
-                i = 0
+                self.wfile.write(_chunk(model, {"content": content or "Working on it."}))
+                end = time.time() + slow
                 while time.time() < end:
-                    self.wfile.write(_chunk(model, {"content": ("thinking " if i % 7 else "\n")}))
+                    self.wfile.write(_chunk(model, {"content": ""}))
                     self.wfile.flush()
-                    i += 1
-                    time.sleep(0.8)
+                    time.sleep(1.0)
                 self.wfile.write(_chunk(model, {}, "stop"))
             else:
                 self.wfile.write(_chunk(model, {"content": content}))
