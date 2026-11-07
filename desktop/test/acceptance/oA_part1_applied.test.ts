@@ -39,7 +39,17 @@ test('P3.0 the CSS instrument ignores comments, reads the decoded field, and see
   assert.equal(fieldLayers(`@media (min-width:1px){[data-chat-surface]::before{background-image:${uri(41)}}}`).map(countCircles)[0], 41)
   const b64 = Buffer.from(`<svg>${circles(3)}</svg>`).toString('base64')
   assert.equal(countCircles(svgDataUris(`url(data:image/svg+xml;base64,${b64})`)[0]), 3)
-  assert.equal(parseRules(stripCssComments('a{x:url("data:a;b)");y:1} b{z:2}')).length, 2)
+  assert.deepEqual(parseRules(stripCssComments('a{x:url("data:a;b)");y:1} b{z:2}')).map(r => r.selectors), [['a'], ['b']])
+  assert.deepEqual(parseRules('{color:red}'), [{ selectors: [], decls: [{ prop: 'color', value: 'red' }], at: null }], 'a rule at offset 0')
+  assert.deepEqual(parseRules('x{:v;A-B : W }')[0].decls, [{ prop: '', value: 'v' }, { prop: 'a-b', value: 'W' }], 'colon at 0; props lower-cased; values trimmed')
+  assert.deepEqual(parseRules('x{novalue}')[0].decls, [], 'a declaration without a colon is dropped')
+  assert.deepEqual(svgDataUris('url("data:image/svg+xml,%E0%A4%A")'), ['%E0%A4%A'], 'an undecodable payload is kept raw, not thrown')
+  assert.deepEqual(svgDataUris('url(data:text/plain,hi) url("data:image/svg+xml,%3Csvg%3E%3C/svg%3E")'), ['<svg></svg>'], 'only svg images')
+  assert.equal(fieldLayers(`[data-chat-surface]{background:${uri(5)}}`).length, 1, 'a background shorthand is read as a layer too')
+  assert.deepEqual(fieldLayers(`[data-chat-surface]{mask-image:${uri(5)}}`), [], 'other properties are not field layers')
+  assert.equal(countCircles('<svg><CIRCLE r=1/><circle/></svg>'), 2)
+  assert.equal(countCircles('<svg/>'), 0)
+  assert.throws(() => parseRules('a{b:1'), /unbalanced/)
 })
 
 // ---- the applied field + composer ring ------------------------------------------------------------------------------

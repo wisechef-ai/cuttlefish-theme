@@ -11,17 +11,11 @@ import { expand, walk } from './react.mjs'
 
 export { setReducedMotion, fakeDocument, flush, expand, walk }
 
-const SETTINGS_DEFAULT = { settings: {}, warnings: [], rev: 'a' }
-
 /** Load the shipped plugin.js under the fake host; `settings` is what /config answers (mutable via the returned box). */
-export async function boot(opts = {}) {
+export async function boot({ settings = {}, health = true } = {}) {
   const { h, sdk } = await loadPlugin()
-  const box = { settings: opts.settings ?? {}, mtime: 1, health: opts.health ?? true }
-  h.respondRest(path => {
-    if (path === '/health') { if (!box.health) throw new Error('404'); return { ok: true, version: '2.0.0' } }
-    if (path === '/config') return { settings: box.settings, warnings: [], rev: String(box.mtime) }
-    throw new Error(`unexpected rest ${path}`)
-  })
+  const box = { settings, mtime: 1, health }
+  h.respondRest(path => answerRest(box, path))
   sdk.fake.responder = (method, params) => {
     if (method === 'config.get' && params?.key === 'mtime') return { mtime: box.mtime }
     if (method === 'session.active_list') return { sessions: [] }
@@ -29,6 +23,15 @@ export async function boot(opts = {}) {
   }
   await h.advance(10)
   return { h, sdk, box }
+}
+
+function answerRest(box, path) {
+  if (path === '/health') {
+    if (!box.health) throw new Error('404')
+    return { ok: true, version: '2.0.0' }
+  }
+  if (path === '/config') return { settings: box.settings, warnings: [], rev: String(box.mtime) }
+  throw new Error(`unexpected rest ${path}`)
 }
 
 export function focus(sdk, rt, stored) {
@@ -106,19 +109,22 @@ export class LoopDriver {
   live() { return this.sdk.calls.loops.filter(r => !r.disposed) }
 
   tick() {
-    for (const rec of this.live()) {
-      const s = this.state.get(rec) ?? { dormant: false, seenWakes: 0, lastDraw: -Infinity }
-      this.state.set(rec, s)
-      if (s.dormant && rec.wakes > s.seenWakes) s.dormant = false
-      s.seenWakes = rec.wakes
-      if (s.dormant) continue
-      if (this.t - s.lastDraw >= 1000 / (rec.opts.fps ?? 15)) {
-        rec.draw(this.t)
-        s.lastDraw = this.t
-        this.draws++
-      }
-      if (rec.opts.idleWhen?.()) s.dormant = true
+    for (const rec of this.live()) this.step(rec)
+  }
+
+  /** One rAF tick of one loop, with budgeted-loop.ts semantics: draw (if the fps budget allows), THEN park if idle. */
+  step(rec) {
+    const s = this.state.get(rec) ?? { dormant: false, seenWakes: 0, lastDraw: -Infinity }
+    this.state.set(rec, s)
+    if (s.dormant && rec.wakes > s.seenWakes) s.dormant = false
+    s.seenWakes = rec.wakes
+    if (s.dormant) return
+    if (this.t - s.lastDraw >= 1000 / (rec.opts.fps ?? 15)) {
+      rec.draw(this.t)
+      s.lastDraw = this.t
+      this.draws++
     }
+    if (rec.opts.idleWhen?.()) s.dormant = true
   }
 }
 
@@ -126,34 +132,39 @@ export class LoopDriver {
 
 export const stripCssComments = css => css.replace(/\/\*[\s\S]*?\*\//g, '')
 
-/** Split `a:b;c:d` at top-level semicolons (not inside quotes or parentheses: data URIs carry `;`, `(`, `'`, `"`). */
-function splitDeclarations(body) {
-  const out = []
-  let depth = 0, quote = '', cur = ''
-  for (const ch of body) {
-    if (quote) { cur += ch; if (ch === quote) quote = ''; continue }
-    if (ch === '"' || ch === "'") { quote = ch; cur += ch; continue }
-    if (ch === '(') depth++
-    if (ch === ')') depth--
-    if (ch === ';' && depth === 0) { out.push(cur); cur = ''; continue }
-    cur += ch
-  }
-  if (cur.trim()) out.push(cur)
-  return out
-}
-
-/** Find the `}` that closes the block opened just before `from`, skipping braces inside quotes and parentheses. */
-function matchBrace(text, from) {
-  let depth = 1, quote = '', paren = 0
+/** Indexes of the characters of `text` (from `from`) that sit outside quotes and parentheses: data URIs carry `;` `(` `)` `'` `"`. */
+function* topLevel(text, from = 0) {
+  let depth = 0
+  let quote = ''
   for (let i = from; i < text.length; i++) {
     const ch = text[i]
     if (quote) { if (ch === quote) quote = ''; continue }
     if (ch === '"' || ch === "'") { quote = ch; continue }
-    if (ch === '(') paren++
-    if (ch === ')') paren--
-    if (paren > 0) continue
-    if (ch === '{') depth++
-    if (ch === '}' && --depth === 0) return i
+    if (ch === '(') { depth++; continue }
+    if (ch === ')') { depth--; continue }
+    if (depth === 0) yield i
+  }
+}
+
+/** Split `a:b;c:d` at top-level semicolons. */
+function splitDeclarations(body) {
+  const out = []
+  let start = 0
+  for (const i of topLevel(body)) {
+    if (body[i] !== ';') continue
+    out.push(body.slice(start, i))
+    start = i + 1
+  }
+  if (body.slice(start).trim()) out.push(body.slice(start))
+  return out
+}
+
+/** Find the `}` that closes the block opened just before `from`. */
+function matchBrace(text, from) {
+  let depth = 1
+  for (const i of topLevel(text, from)) {
+    if (text[i] === '{') depth++
+    if (text[i] === '}' && --depth === 0) return i
   }
   throw new Error('unbalanced braces in css')
 }
