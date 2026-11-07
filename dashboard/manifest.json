@@ -1,0 +1,5 @@
+{
+  "name": "cuttlefish-theme",
+  "api": "plugin_api.py",
+  "description": "Cuttlefish backend: live settings (/config) and health (/health) for the desktop half"
+}

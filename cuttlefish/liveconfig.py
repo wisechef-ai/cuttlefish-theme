@@ -1,0 +1,86 @@
+"""Where settings live and how to read them back (SPEC C5: config file only).
+
+Settings sit in ``<hermes home>/config.yaml`` under
+``plugins.entries.cuttlefish-theme.settings``. Reading is always LIVE: the
+dashboard's ``/config`` route re-reads the file on every request, so an edit
+applies without a restart. Core's config module is a public door and resolves
+the home exactly like the running process; without Hermes on the path we fall
+back to ``HERMES_HOME`` and ``~/.hermes``.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import os
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+try:  # the normal case: loaded as part of the cuttlefish package (tests, the CLI)
+    from .settings import resolve_settings
+except ImportError:  # by-path load (the dashboard's plugin_api.py) has no parent package
+
+    def _load_settings() -> Any:
+        spec = importlib.util.spec_from_file_location(
+            "cuttlefish_settings_by_path", Path(__file__).with_name("settings.py"))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    resolve_settings = _load_settings().resolve_settings
+
+#: The catalog name: the key our settings live under in config.yaml.
+PLUGIN_KEY = "cuttlefish-theme"
+
+
+def hermes_home() -> Path:
+    """The Hermes home this process serves (core's resolver, else env/default)."""
+    try:
+        from hermes_cli.config import get_process_hermes_home  # public door, lazy
+        home = get_process_hermes_home()
+        if home:
+            return Path(home)
+    except Exception:
+        pass
+    return Path(os.environ.get("HERMES_HOME") or Path.home() / ".hermes")
+
+
+def config_path(home: Path | None = None) -> Path:
+    return (home or hermes_home()) / "config.yaml"
+
+
+def plugin_version() -> str:
+    """The version from plugin.yaml — the one file both halves report."""
+    data = yaml.safe_load((Path(__file__).resolve().parents[1] / "plugin.yaml").read_text(encoding="utf-8"))
+    return str(data.get("version", ""))
+
+
+def read_raw_settings(home: Path) -> tuple[Any, list[dict[str, str]]]:
+    """The plugin's raw ``settings:`` mapping from ``<home>/config.yaml``.
+
+    Returns ``(None, [])`` when there is nothing to read (no file, no entry):
+    that is not a problem, it is an empty config. Broken YAML degrades to the
+    defaults with a warning instead of an error."""
+    try:
+        text = config_path(home).read_text(encoding="utf-8")
+    except OSError:
+        return None, []
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError:
+        return None, [{"path": "config", "code": "type",
+                       "message": "config.yaml is not valid YAML; using the default settings"}]
+    entry = data.get("plugins") if isinstance(data, dict) else None
+    entry = entry.get("entries") if isinstance(entry, dict) else None
+    entry = entry.get(PLUGIN_KEY) if isinstance(entry, dict) else None
+    raw = entry.get("settings") if isinstance(entry, dict) else None
+    return raw, []
+
+
+def resolve_live(home: Path | None = None) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    """Resolved settings + warnings for the home being served, read fresh."""
+    home = home or hermes_home()
+    raw, load_warnings = read_raw_settings(home)
+    settings, warnings = resolve_settings(raw)
+    return settings, load_warnings + warnings

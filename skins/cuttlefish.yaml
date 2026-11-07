@@ -1,0 +1,23 @@
+# The classic-CLI skin: STATIC colours only (SPEC C10).
+# No background key (a skin background drives OSC-11, a full-terminal repaint);
+# no per-cell `on #bg` art (the TUI parser prints it literally); no customCSS
+# (the desktop half owns the desktop). Install it explicitly:
+#   hermes cuttlefish skin
+# and select it yourself: hermes config set display.skin cuttlefish
+name: cuttlefish
+description: Cuttlefish 2.0 - teal identity skin for the classic CLI (static colours)
+colors:
+  # the session-identity family: one teal, several depths (never core's amber/red alarms)
+  ui_accent: "#2bb3a3"
+  ui_label: "#58c7b8"
+  session_label: "#58c7b8"
+  prompt: "#9adfd4"
+  input_rule: "#35a897"
+  banner_border: "#1f6e64"
+  banner_title: "#7fd8cc"
+  banner_accent: "#46c2b0"
+  banner_dim: "#3f7a72"
+  banner_text: "#d3efea"
+  # alarms keep their meaning: core's own warning/error hues stay
+  ui_warn: "#ffa726"
+  ui_error: "#ef5350"

@@ -1,8 +1,35 @@
 name: cuttlefish-theme
-version: 0.5.0
-description: Animated, pixel-level session identity for Hermes, modelled on cuttlefish skin
+version: "2.0.0"
+description: >-
+  Cuttlefish session skin for Hermes Desktop: each session keeps its own hue,
+  its state speaks the pattern language (mottle, clouds, zebra, blanch,
+  eyespot). This is the Python half - hooks to broadcast_plugin_event, the
+  settings validator, the live-config dashboard API and the classic-CLI skin.
 author: wisechef-ai
 kind: standalone
+requires_hermes: ">=0.22.0"
 provides_hooks:
-  - on_session_start
-  - on_session_end
+  - pre_approval_request
+  - post_approval_response
+  - on_human_input_request
+  - on_human_input_resolved
+  - api_request_error
+config_schema:
+  intensity:
+    type: float
+    default: 1
+    description: "0..2 - how loud the skin is; 0 switches the field off, 1 is near-invisible at rest"
+  motion:
+    type: str
+    default: still
+    description: "still | alive | off (honours prefers-reduced-motion)"
+  states:
+    type: dict
+    description: >-
+      state name -> {when, pattern, priority, label}; the five presets can be
+      remapped and new states added (a signal, a known pattern, a priority)
+  patterns:
+    type: dict
+    description: >-
+      pattern name -> {base, density, contrast, scale}; base one of
+      mottle, clouds, zebra, blanch, eyespot

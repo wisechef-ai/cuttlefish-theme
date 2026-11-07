@@ -1,20 +1,14 @@
-"""cuttlefish-theme — animated, pixel-level session identity for Hermes.
+"""cuttlefish-theme 2.0 — the Python half of the desktop-first plugin.
 
-Modelled on cuttlefish skin, which layers two kinds of pattern: CHRONIC (minutes to
-hours, identity and crypsis) and ACUTE (seconds, communication). Each Hermes session
-gets a unique colour, a near-black mantle of its own, and a pronounceable name that
-persist for its life; when the session needs you, an acute signal layers on top and
-is released again afterwards, leaving the identity intact.
-
-Transitions between those states are ANIMATED along curves measured in the animal
-(Woo et al., Nature 619, 2023) — fast direct blanching, slower staggered recovery —
-and the session is perfectly still in between.
-
-The plugin entrypoint Hermes looks for is `register(ctx)`, re-exported here from
-`cuttlefish_theme.plugin`.
+Hermes loads this directory AS the package (plugins_loader slugifies the
+manifest name to ``cuttlefish_theme``). The v2 entrypoint is ``register(ctx)``
+re-exported from ``cuttlefish.register``: five observer hooks that turn
+approval / human-input / api-error events into ``broadcast_plugin_event`` for
+the desktop half (``desktop/``, the other half of this same plugin), plus the
+settings validator, the live-config dashboard API and the classic-CLI skin.
 """
 
-from .plugin import register
+from .cuttlefish.register import register
 
 __all__ = ["register"]
-__version__ = "0.4.0"
+__version__ = "2.0.0"
