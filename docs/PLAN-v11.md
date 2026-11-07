@@ -1,3 +1,5 @@
+> Historical (v1). The tools named here were removed in 2.0.0; see main@0a33840.
+
 # v11 — make it look like the animal
 
 ## Why the current mantle does not look like a cuttlefish

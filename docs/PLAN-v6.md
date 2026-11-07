@@ -4,6 +4,8 @@ title: "Plan V6 — bioluminescent frame"
 created: 2026-09-10
 ---
 
+> Historical (v1). The tools named here were removed in 2.0.0; see main@0a33840.
+
 # cuttlefish-theme v6 — bioluminescent skin, whole-frame (VTE ceiling)
 
 Status: SPEC LOCKED 2026-09-10 12:50. Impl: gpt-5.6-luna. Review: opus-5 + glm-5.3. Supervisor: Tori.
