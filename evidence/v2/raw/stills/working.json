@@ -1,13 +1,13 @@
 {
   "schema": "cf2-still/1",
   "state": "working",
-  "png_sha256": "14d15dfc178bd85b7c34ff500c7c955e7ae774843726d3b1fec444849d6dfa96",
-  "taken_at": 1794086214.89,
+  "png_sha256": "e7256df081a489b201f5be9fca49d68361eb326177c1c421a71faae183e8433d",
+  "taken_at": 1794086984.074,
   "region": [
     260,
     34,
     1339,
-    854
+    880
   ],
   "exclude": [
     [
@@ -138,7 +138,7 @@
     ],
     [
       865,
-      846,
+      870,
       129,
       36
     ]
