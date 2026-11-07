@@ -205,7 +205,7 @@ test('renderField golden digest: zebra at scale 2 (the band count follows the di
     motion: 'still' as const, reducedMotion: false, tMs: 0, sinceChangeMs: SETTLED_MS,
   }
   assert.equal(Buffer.from(blake2b(utf8(JSON.stringify(renderField(input))), 32)).toString('hex'),
-    '596599d77c26398bacc47fd7eb97e9ce3e3e75caa5f083b4d9b186772d409162')
+    '8cc78f6e239bfd9ed318c2805ee0c1c14c4bb8b10f60e25e924946e095b9c575')
 })
 
 test('renderField golden digest: resting mottle, settled', () => {

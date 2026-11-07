@@ -29,6 +29,9 @@ export const MAX_DL = 0.30
 const FULL_DL = 0.40
 const CHROMA_C = 0.105, BLANCH_C = 0.02, SPOT_C = 0.09
 const TWINKLE_AMP = 0.55, TWINKLE_P_MIN = 7000, TWINKLE_P_SPAN = 5000
+/** Stripe count across the surface. The field's 8 (4 cycles ≈ 2 dot pitches per band) survives the chat region being a
+ *  crop of the window — at 6 the fundamental sat between spectral bins 2 and 3 and read 0.49 in real pixels. */
+const FIELD_BANDS = 8, SWATCH_BANDS = 6
 const CLOUD_TRAVEL_MS = 18000                                  // one band pass across the height
 
 /** Direction the chromatic organs sit relative to the ground: toward white on dark, toward black on light. */
@@ -109,7 +112,7 @@ function cloudRankDl(rank: number, centre: number, sigmaR: number, j: number): n
 const cloudJitter = (seed: string): () => number => seededStream(seed, 'cloud-ink')
 
 function zebraDl(x: number, width: number, u: number, scale: number, small: boolean): number {
-  const bands = Math.min(12, Math.max(3, Math.round(6 * scale)))
+  const bands = Math.min(16, Math.max(3, Math.round((small ? SWATCH_BANDS : FIELD_BANDS) * scale)))
   const bright = small ? SWATCH_ZEBRA_BRIGHT : ZEBRA_BRIGHT
   const dim = small ? SWATCH_ZEBRA_DIM : ZEBRA_DIM
   return Math.floor((x / width) * bands) % 2 === 0 ? bright * jitter(u, 0.14) : dim * (1 + u * 0.5)
