@@ -39,12 +39,15 @@ test('buildManifest refuses missing measurements instead of defaulting them', ()
   assert.throws(() => buildManifest(j), /no CPU window idle_off/)
 })
 
-test('uncovered: a message box inside an exclusion is covered, a box outside is not, boxes off the region are ignored', () => {
+test('uncovered counts the messages that still show a part outside every exclusion', () => {
   const region: [number, number, number, number] = [0, 0, 100, 100]
   const ex: [number, number, number, number][] = [[0, 0, 50, 50]]
-  assert.equal(uncovered([{ x: 5, y: 5, w: 10, h: 10 }], ex, region), 0)
-  assert.equal(uncovered([{ x: 5, y: 5, w: 10, h: 10 }, { x: 60, y: 60, w: 10, h: 10 }], ex, region), 1)
-  assert.equal(uncovered([{ x: 200, y: 5, w: 10, h: 10 }], ex, region), 0)
-  assert.equal(uncovered([{ x: 40, y: 40, w: 30, h: 30 }], ex, region), 1, 'half covered is not covered')
+  const box = (x: number, y: number) => ({ x, y, w: 10, h: 10 })
+  assert.equal(uncovered([[box(5, 5)]], ex, region), 0)
+  assert.equal(uncovered([[box(5, 5)], [box(60, 60)]], ex, region), 1)
+  assert.equal(uncovered([[box(5, 5), box(60, 60)]], ex, region), 1, 'one message counts once however many parts show')
+  assert.equal(uncovered([[box(200, 5)]], ex, region), 0, 'a part off the region is not measured')
+  assert.equal(uncovered([[{ x: 40, y: 40, w: 30, h: 30 }]], ex, region), 1, 'half covered is not covered')
   assert.equal(uncovered([], ex, region), 0)
+  assert.equal(uncovered([[]], ex, region), 0)
 })

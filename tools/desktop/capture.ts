@@ -52,12 +52,12 @@ const portFree = (p: number) => new Promise<boolean>(res => {
 
 function grab(file: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true })
-  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'x11grab', '-video_size', `${SCREEN.w}x${SCREEN.h}`, '-i', DISPLAY, '-frames:v', '1', '-pix_fmt', 'rgb24', file])
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'x11grab', '-draw_mouse', '0', '-video_size', `${SCREEN.w}x${SCREEN.h}`, '-i', DISPLAY, '-frames:v', '1', '-pix_fmt', 'rgb24', file])
 }
 
 function startVideo(file: string): ChildProcess {
   fs.mkdirSync(path.dirname(file), { recursive: true })
-  return spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'x11grab', '-framerate', '10', '-video_size', `${SCREEN.w}x${SCREEN.h}`, '-i', DISPLAY,
+  return spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'x11grab', '-draw_mouse', '0', '-framerate', '10', '-video_size', `${SCREEN.w}x${SCREEN.h}`, '-i', DISPLAY,
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '32', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', file], { stdio: ['pipe', 'ignore', 'inherit'] })
 }
 async function stopVideo(p: ChildProcess): Promise<void> {
@@ -172,13 +172,13 @@ const PLUGIN_SHA = sha256Hex(fs.readFileSync(path.join(REPO, 'desktop', 'plugin.
 
 interface Dump { schema: string; stored_id: string; state: string; focused: boolean; plugin_js_sha256: string; captured_at: number; html: Record<string, string>; row: P.RowInfo | Record<string, unknown>; rows: P.RowInfo[]; strip: { text: string }; composer: { rim: unknown; ring_vars: Record<string, string> }; transcript_messages: number }
 
-async function domDump(page: Page, title: string, stored: string, state: string, focused: boolean, exclude: Rect[], geo: P.Geometry): Promise<Dump> {
+async function domDump(page: Page, title: string, stored: string, state: string, focused: boolean, st: Taken | null, geo: P.Geometry): Promise<Dump> {
   const rows = await page.evaluate(P.readRows)
   const row = rows.find(r => r['data-cf-session'] === stored)
   if (!row) throw new Error(`session ${title} (${stored}) has no sidebar row`)
   const chrome = await page.evaluate(P.readChrome)
   // transcript messages no exclusion rectangle covers: what the measured pixels would still show (L6). Not focused: nothing is measured.
-  const shown = focused ? uncovered(geo.messageBoxes, exclude, [0, 0, SCREEN.w, SCREEN.h]) : 0
+  const shown = focused && st ? uncovered(geo.messages, st.exclude, st.region) : 0
   return {
     schema: 'cf2-dom-dump/1', stored_id: stored, state, focused, plugin_js_sha256: PLUGIN_SHA, captured_at: now(),
     html: await page.evaluate(P.readHtmlAttrs),
@@ -196,11 +196,13 @@ async function still(page: Page, state: string): Promise<Taken> {
   const geo = await page.evaluate(P.readGeometry)
   if (geo.surface === null) throw new Error('no chat surface on screen')
   if (geo.offset[0] !== 0 || geo.offset[1] !== 0) throw new Error(`the window is offset ${geo.offset} on the screen: client pixels are not screen pixels`)
-  const region = geo.surface as Rect
+  // the region is the chat surface above the composer (the composer is excluded by leaving it out of the region, ≥ 50% of the still stays)
+  const [sx, sy, sw, sh] = geo.surface as Rect
+  const region: Rect = [sx, sy, sw, Math.min(sh, Math.max(1, (geo.composerTop ?? sy + sh) - 4 - sy))]
   const png = `stills/${state}.png`
   const at = now()
   grab(path.join(RAW, png))
-  const exclude = clipRects(geo.boxes, region, 6)
+  const exclude = clipRects(geo.boxes, region, 3)
   if (unionCoverage(exclude) > 0.25 * region[2] * region[3]) throw new Error(`${state}: exclusions cover more than 25% of the region: ${JSON.stringify(geo.boxes)} -> ${JSON.stringify(exclude)}`)
   const meta = `stills/${state}.json`
   wj(meta, { schema: 'cf2-still/1', state, png_sha256: sha256Hex(fs.readFileSync(path.join(RAW, png))), taken_at: at, region, exclude })
@@ -283,7 +285,7 @@ async function main(): Promise<void> {
       if (focused) { await focusRow(page, title); await sleep(SETTLE_S * 1000) }
       const geo = await page.evaluate(P.readGeometry)
       const st = measure ? await still(page, state) : null
-      const dump = await domDump(page, title, ids[key], state, focused, st?.exclude ?? [], geo)
+      const dump = await domDump(page, title, ids[key], state, focused, st, geo)
       const rel = `dom/${ids[key]}.${state}.json`
       wj(rel, dump)
       sessions.push({ stored_id: ids[key], expected: state, dom_state: (dump.row as { 'data-cf-state': string })['data-cf-state'], dom_dump: rel, title })
@@ -332,7 +334,7 @@ async function main(): Promise<void> {
     await runWindow('idle_on', 'on', async () => {
       await sleep(20_000)
       idleStill = await still(page, 'resting-idle')
-      const d = await domDump(page, TITLES.r4, ids.r4, 'resting', true, idleStill.exclude, idleStill.geo)
+      const d = await domDump(page, TITLES.r4, ids.r4, 'resting', true, idleStill, idleStill.geo)
       wj('dom/idle-window.json', d)
       stills.push({ state: 'resting-idle', path: idleStill.png, sha256: sha256Hex(fs.readFileSync(path.join(RAW, idleStill.rel))), meta: idleStill.meta, dom_dump: 'dom/idle-window.json' })
     })

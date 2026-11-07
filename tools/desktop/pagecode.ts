@@ -32,24 +32,48 @@ export const cssHash = async (): Promise<string> => {
   return [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text)))].map(b => b.toString(16).padStart(2, '0')).join('')
 }
 
-export interface Geometry { surface: [number, number, number, number] | null; boxes: { x: number; y: number; w: number; h: number }[]; messageBoxes: { x: number; y: number; w: number; h: number }[]; offset: [number, number] }
+export interface Box { x: number; y: number; w: number; h: number }
+export interface Geometry { surface: [number, number, number, number] | null; composerTop: number | null; boxes: Box[]; messages: Box[][]; offset: [number, number] }
 
-/** The chat surface and the boxes that are NOT the field: transcript text, approval cards, composer, timeline, buttons. */
+/**
+ * The chat surface and what on it is NOT the field. Transcript text is excluded as tightly as the text itself: one box per
+ * text line (Range rects) plus every painted element (background, border, shadow, image, control) inside a message / approval card,
+ * so a wide message root does not swallow the field around a short line. `messages` keeps the parts per message root.
+ */
 export const readGeometry = (): Geometry => {
-  const rect = (e: Element) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height } }
-  const surface = document.querySelector('[data-chat-surface]')
-  const sels = [
-    '[data-slot="aui_user-message-root"]', '[data-slot="aui_assistant-message-root"]', '[data-slot="tool-approval-stack"]',
-    '[data-slot="card-stack"]', '[data-slot="thread-timeline"]', '[data-slot="composer-dock"]', '[data-slot="composer-fade"]',
-    '[data-slot="status-drawer-toggle"]',
-  ]
-  const boxes = sels.flatMap(s => [...document.querySelectorAll(s)].map(rect))
-  for (const b of [...document.querySelectorAll('button')]) if ((b.textContent || '').includes('Scroll to bottom')) boxes.push(rect(b))
-  const s = surface ? surface.getBoundingClientRect() : null
+  const rect = (r: DOMRect | DOMRectReadOnly) => ({ x: r.x, y: r.y, w: r.width, h: r.height })
+  const partsOf = (root: Element): Box[] => {
+    const out: Box[] = []
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT)
+    for (let n: Node | null = walker.currentNode; n; n = walker.nextNode()) {
+      if (n.nodeType === 3) {
+        if (!(n.textContent || '').trim()) continue
+        const range = document.createRange()
+        range.selectNodeContents(n)
+        for (const r of range.getClientRects()) out.push(rect(r))
+        continue
+      }
+      const e = n as Element
+      const cs = getComputedStyle(e)
+      const paintedBg = cs.backgroundColor !== 'rgba(0, 0, 0, 0)' && cs.backgroundColor !== 'transparent'
+      const paintedBorder = ['Top', 'Right', 'Bottom', 'Left'].some(s => parseFloat(cs.getPropertyValue(`border-${s.toLowerCase()}-width`)) > 0 && cs.getPropertyValue(`border-${s.toLowerCase()}-style`) !== 'none')
+      const replaced = ['IMG', 'svg', 'SVG', 'CANVAS', 'VIDEO', 'BUTTON', 'INPUT'].includes(e.tagName)
+      if (paintedBg || paintedBorder || replaced || cs.backgroundImage !== 'none' || cs.boxShadow !== 'none') out.push(rect(e.getBoundingClientRect()))
+    }
+    return out
+  }
+  const messages = [...document.querySelectorAll('[data-slot="aui_user-message-root"], [data-slot="aui_assistant-message-root"]')].map(partsOf)
+  const others = ['[data-slot="tool-approval-stack"]', '[data-slot="thread-timeline"]', '[data-slot="status-drawer-toggle"]']
+    .flatMap(s => [...document.querySelectorAll(s)].flatMap(partsOf))
+  for (const b of [...document.querySelectorAll('button')]) if ((b.textContent || '').includes('Scroll to bottom')) others.push(rect(b.getBoundingClientRect()))
+  const s = document.querySelector('[data-chat-surface]')
+  const dock = document.querySelector('[data-slot="composer-dock"]')
+  const sr = s ? s.getBoundingClientRect() : null
   return {
-    surface: s ? [Math.round(s.x), Math.round(s.y), Math.round(s.width), Math.round(s.height)] : null,
-    boxes,
-    messageBoxes: [...document.querySelectorAll('[data-slot="aui_user-message-root"], [data-slot="aui_assistant-message-root"]')].map(rect),
+    surface: sr ? [Math.round(sr.x), Math.round(sr.y), Math.round(sr.width), Math.round(sr.height)] : null,
+    composerTop: dock ? Math.floor(dock.getBoundingClientRect().y) : null,
+    boxes: [...messages.flat(), ...others],
+    messages,
     // the window's offset on the screen: x11grab pixel = client pixel + this (frameless window, no WM: expected [0, 0])
     offset: [window.screenX + (window.outerWidth - window.innerWidth), window.screenY + (window.outerHeight - window.innerHeight)],
   }

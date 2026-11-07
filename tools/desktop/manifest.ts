@@ -61,14 +61,14 @@ export function buildManifest(i: ManifestInput): Record<string, unknown> {
   }
 }
 
-/** Message boxes (clipped to the region) that no exclusion rectangle fully covers: what a measured still would still show. */
-export function uncovered(boxes: Box[], exclude: Rect[], region: Rect): number {
+/** Messages (each a list of painted parts, clipped to the region) with at least one part no exclusion rectangle covers:
+ *  what a measured still would still show of the transcript. */
+export function uncovered(messages: Box[][], exclude: Rect[], region: Rect): number {
   const [rx, ry, rw, rh] = region
-  let n = 0
-  for (const b of boxes) {
+  const shown = (b: Box): boolean => {
     const x0 = Math.max(rx, b.x), y0 = Math.max(ry, b.y), x1 = Math.min(rx + rw, b.x + b.w), y1 = Math.min(ry + rh, b.y + b.h)
-    if (x1 <= x0 || y1 <= y0) continue
-    if (!exclude.some(e => e[0] <= x0 && e[1] <= y0 && e[0] + e[2] >= x1 && e[1] + e[3] >= y1)) n++
+    if (x1 <= x0 || y1 <= y0) return false
+    return !exclude.some(e => e[0] <= x0 && e[1] <= y0 && e[0] + e[2] >= x1 && e[1] + e[3] >= y1)
   }
-  return n
+  return messages.filter(parts => parts.some(shown)).length
 }
