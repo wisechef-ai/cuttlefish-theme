@@ -205,6 +205,41 @@ def test_V4_the_validator_rejects_each_dishonest_cut():
     assert any("start/end" in p for p in mutate(lambda c, m: c["segments"][1].update(start="0")))
 
 
+def test_V4b_validator_edges():
+    def check(f, video_s=69.5):
+        cut, manifest = good()
+        f(cut, manifest)
+        return cut_problems(cut, manifest, video_s)
+    assert check(lambda c, m: None, 70.0) == [], "exactly ±0.5 s is within tolerance"
+    assert any("sum" in p for p in check(lambda c, m: None, 70.01))
+    assert any("sum" in p for p in check(lambda c, m: None, 68.99))
+    assert any("not after" in p for p in check(lambda c, m: c["segments"][-1].update(end=c["segments"][-1]["start"])))
+    assert any("in/out" in p for p in check(lambda c, m: c["segments"][1].update(**{"in": 5.0, "out": 5.0})))
+    assert any("in/out" in p for p in check(lambda c, m: c["segments"][1].update(**{"in": True})))
+    assert any("in/out" in p for p in check(lambda c, m: c["segments"][1].update(**{"in": -0.5, "out": 14.5})))
+    msg = [p for p in check(lambda c, m: c["segments"][2].update(out=40.0)) if "out−in" in p]
+    assert msg and "(30.00)" in msg[0] and "(15.00)" in msg[0], msg
+
+    def opener_to(end):
+        def f(c, m):
+            shift = end - c["segments"][0]["end"]
+            c["segments"][0]["end"] = end
+            for seg in c["segments"][1:]:
+                seg["start"] += shift
+                seg["end"] += shift
+        return f
+    assert check(opener_to(10.0), 70.0) == [], "the legend card may last exactly 10 s"
+    assert any("legend card must occupy" in p for p in check(opener_to(10.01), 70.01))
+    assert any("legend card must occupy" in p for p in check(lambda c, m: c["segments"][0].update(start=0.5)))
+    assert any("legend card must occupy" in p for p in check(lambda c, m: c["segments"][0].update(end="9.5")))
+    assert any("schema" in p for p in check(lambda c, m: c.update(schema="cf2-cut/0")))
+    assert any("schema" in p for p in check(lambda c, m: c.update(segments=[])))
+    assert any("schema" in p for p in check(lambda c, m: c.update(segments="no")))
+    assert any("object" in p for p in check(lambda c, m: c["segments"].append("x")))
+    bad_url = url_problems("https://example.com/not-it\n")
+    assert bad_url and "https://example.com/not-it" in bad_url[0]
+
+
 def test_V5_the_url_validator():
     ok = "https://github.com/NousResearch/hermes-agent/compare/main...someone:hermes-agent:catalog/cuttlefish-theme?expand=1\n"
     assert url_problems(ok) == []
