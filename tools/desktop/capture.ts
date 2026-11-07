@@ -19,7 +19,7 @@ import type { Page } from '@playwright/test'
 
 import { buildManifest, uncovered, type CpuWindowSpec, type SessionSpec, type StillSpec } from './manifest.ts'
 import { clipRects, cpuPct, csvOf, listRawFiles, parseStatTicks, roleOf, sha256Hex, unionCoverage, type Rect, type Role } from './evidence_lib.ts'
-import { createSandbox, launchDesktop, liveHermesPorts, listenNow, send, startXvfb, waitForShell, type Launched } from './harness.ts'
+import { createSandbox, launchDesktop, listenNow, send, startXvfb, waitForShell, type Launched } from './harness.ts'
 import * as P from './pagecode.ts'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
@@ -243,7 +243,7 @@ async function main(): Promise<void> {
     const conn = JSON.stringify(await page.evaluate(() => (window as unknown as { hermesDesktop: { getConnection: () => Promise<unknown> } }).hermesDesktop.getConnection()))
     const gw = [...conn.matchAll(/:(\d{4,5})\b/g)].map(m => Number(m[1])).filter(p => iso.gateway_ports.includes(p))
     const gatewayPort = gw[0] ?? iso.gateway_ports[0]
-    const live = liveHermesPorts()
+    const live = launched.liveAtLaunch // the snapshot taken BEFORE the app started (afterwards our own gateway would be in it)
     if (iso.gateway_ports.some(p => live.some(l => l.port === p))) throw new Error('isolation: a sandbox port collides with a live Hermes port')
     log(`isolation ok: gateway ${gatewayPort}, sandbox ports ${iso.gateway_ports}, live ${live.map(l => l.port)}`)
 
