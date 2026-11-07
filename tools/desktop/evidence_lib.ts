@@ -60,8 +60,8 @@ export function clipRects(boxes: Box[], region: Rect, pad: number): Rect[] {
 
 /** Pixels covered by the union of the rectangles (overlaps counted once). */
 export function unionCoverage(rects: Rect[]): number {
-  const seen = new Set<number>()
-  for (const [x, y, w, h] of rects) for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) seen.add(j * 65536 + i)
+  const seen = new Set<string>()
+  for (const [x, y, w, h] of rects) for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) seen.add(`${i},${j}`)
   return seen.size
 }
 
@@ -74,14 +74,14 @@ export function windowFacts(ts: number[]): { first: number; last: number; span: 
 
 /** Every file under `root` (recursive), relative posix path + sha256 of its bytes, sorted by path. */
 export function listRawFiles(root: string): { path: string; sha256: string }[] {
-  const out: { path: string; sha256: string }[] = []
+  const rels: string[] = []
   const walk = (dir: string) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, e.name)
       if (e.isDirectory()) walk(p)
-      else if (e.isFile()) out.push({ path: path.relative(root, p).split(path.sep).join('/'), sha256: sha256Hex(fs.readFileSync(p)) })
+      else if (e.isFile()) rels.push(path.relative(root, p).split(path.sep).join('/'))
     }
   }
   walk(root)
-  return out.sort((a, b) => (a.path < b.path ? -1 : 1))
+  return rels.sort().map(rel => ({ path: rel, sha256: sha256Hex(fs.readFileSync(path.join(root, rel))) }))
 }

@@ -51,3 +51,69 @@ test('uncovered counts the messages that still show a part outside every exclusi
   assert.equal(uncovered([], ex, region), 0)
   assert.equal(uncovered([[]], ex, region), 0)
 })
+
+test('uncovered: edges are exact — flush with an exclusion is covered, a pixel beyond is shown, touching the region edge shows nothing', () => {
+  const region: [number, number, number, number] = [0, 0, 100, 100]
+  const ex: [number, number, number, number][] = [[10, 10, 20, 20]]
+  const part = (x: number, y: number, w: number, h: number) => [[{ x, y, w, h }]]
+  assert.equal(uncovered(part(10, 10, 20, 20), ex, region), 0, 'exactly the exclusion')
+  assert.equal(uncovered(part(9, 10, 20, 20), ex, region), 1, 'one pixel left of it')
+  assert.equal(uncovered(part(10, 9, 20, 20), ex, region), 1, 'one pixel above it')
+  assert.equal(uncovered(part(11, 10, 20, 20), ex, region), 1, 'one pixel past its right edge')
+  assert.equal(uncovered(part(10, 11, 20, 20), ex, region), 1, 'one pixel past its bottom edge')
+  assert.equal(uncovered(part(12, 12, 5, 5), ex, region), 0)
+  assert.equal(uncovered(part(100, 5, 10, 10), ex, region), 0, 'starts where the region ends')
+  assert.equal(uncovered(part(5, 100, 10, 10), ex, region), 0, 'starts where the region ends (y)')
+  assert.equal(uncovered(part(-10, 5, 10, 10), ex, region), 0, 'ends where the region starts')
+  assert.equal(uncovered(part(5, -10, 10, 10), ex, region), 0, 'ends where the region starts (y)')
+  assert.equal(uncovered(part(10, 10, 20, 40), ex, region), 1, 'covered along x only')
+  assert.equal(uncovered(part(10, 10, 60, 20), ex, region), 1, 'covered along y only')
+  assert.equal(uncovered(part(90, 90, 30, 30), [[90, 90, 10, 10]], region), 0, 'clipped to the region first, then covered')
+})
+
+test('buildManifest: the extra block reports the idle still, bloom stills and both grounds; absent ones are null / omitted', () => {
+  const full = input()
+  full.measured.pixels['resting-idle'] = { ...px(0.02), ground: '#fefefe' }
+  full.measured.pixels['needs_you.bloom'] = px(0.09)
+  full.measured.pixels.resting.ground = '#fefefe'
+  for (const s of ['resting', 'working', 'needs_you', 'error']) full.measured.pixels[`dark.${s}`] = { ...px(0.01), ground: '#141416' }
+  full.measured.pixels['dark.error'] = { ...px(0.03), ground: '#141416' }
+  const x = (buildManifest(full) as Record<string, any>).extra
+  assert.equal(x.resting_idle.mean_dL, 0.02)
+  assert.deepEqual(Object.keys(x.bloom), ['needs_you.bloom'])
+  assert.equal(x.grounds.default.ground, '#fefefe'); assert.equal(x.grounds.dark.ground, '#141416')
+  assert.ok(Math.abs(x.grounds.dark.error_minus_resting_mean_dL - 0.02) < 1e-12, 'error − resting, not resting − error')
+  assert.ok(Math.abs(x.grounds.default.error_minus_resting_mean_dL - 0.002) < 1e-12)
+  assert.deepEqual(Object.keys(x.grounds.dark.mean_dL), ['resting', 'working', 'needs_you', 'error'])
+  const bare = (buildManifest(input()) as Record<string, any>).extra
+  assert.equal(bare.resting_idle, null); assert.deepEqual(bare.bloom, {}); assert.deepEqual(Object.keys(bare.grounds), ['default'])
+  assert.equal(bare.grounds.default.ground, null, 'no ground measured: null, never invented')
+  const partial = input(); partial.measured.pixels['dark.resting'] = px(0.01); partial.measured.pixels['dark.error'] = px(0.02)
+  const p = (buildManifest(partial) as Record<string, any>).extra.grounds.dark
+  assert.equal(p.mean_dL.working, null); assert.equal(p.mean_dL.needs_you, null)
+})
+
+test('buildManifest: a ground with no resting or no error still is not reported', () => {
+  const only = input(); only.measured.pixels['dark.resting'] = px(0.01)
+  assert.deepEqual(Object.keys((buildManifest(only) as Record<string, any>).extra.grounds), ['default'])
+  const other = input(); other.measured.pixels['dark.error'] = px(0.01)
+  assert.deepEqual(Object.keys((buildManifest(other) as Record<string, any>).extra.grounds), ['default'])
+})
+
+test('uncovered reads an exclusion as [x, y, w, h], not symmetrically', () => {
+  const region: [number, number, number, number] = [0, 0, 200, 200]
+  const ex: [number, number, number, number][] = [[10, 40, 20, 30]] // x 10..30, y 40..70
+  const part = (x: number, y: number, w: number, h: number) => [[{ x, y, w, h }]]
+  assert.equal(uncovered(part(10, 40, 20, 30), ex, region), 0)
+  assert.equal(uncovered(part(10, 40, 30, 20), ex, region), 1, 'w and h swapped sticks out to the right')
+  assert.equal(uncovered(part(40, 10, 30, 20), ex, region), 1, 'x and y swapped is somewhere else')
+  assert.equal(uncovered(part(10, 40, 20, 31), ex, region), 1)
+  assert.equal(uncovered(part(10, 20, 20, 10), ex, region), 1, 'above the exclusion, below its x')
+})
+
+test('buildManifest keeps a legitimate zero / empty measurement instead of turning it into null', () => {
+  const m = input(); m.measured.pixels['dark.resting'] = { ...px(0), ground: '' }; m.measured.pixels['dark.error'] = px(0)
+  m.measured.pixels['dark.working'] = px(0)
+  const d = (buildManifest(m) as Record<string, any>).extra.grounds.dark
+  assert.equal(d.ground, ''); assert.equal(d.mean_dL.working, 0); assert.equal(d.mean_dL.resting, 0)
+})
