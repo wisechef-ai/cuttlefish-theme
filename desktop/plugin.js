@@ -913,7 +913,7 @@ const idOk = (v         )              => isStr(v) && !DANGEROUS.has(v)
 
 /** Own-property read: a dangerous name never reaches a prototype through us. */
 function own   (rec                   , key        )                {
-  return DANGEROUS.has(key) ? undefined : rec[key]
+  return DANGEROUS.has(key) || !Object.hasOwn(rec, key) ? undefined : rec[key]
 }
 
 function put   (rec                   , key        , value   )                    {
@@ -921,7 +921,7 @@ function put   (rec                   , key        , value   )                  
   return { ...rec, [key]: value }
 }
 function del   (rec                   , key        )                    {
-  if (DANGEROUS.has(key) || !(key in rec)) return rec
+  if (!Object.hasOwn(rec, key)) return rec
   const out = { ...rec }
   delete out[key]
   return out
@@ -1105,7 +1105,7 @@ const REDUCERS                          = {
 /** One event in. Unknown kinds, missing sessions and garbage payloads are ignored, never thrown. */
 function reduceFeed(model           , input           )            {
   if (!isRec(input)) return model
-  const reducer = typeof input.kind === 'string' ? REDUCERS[input.kind] : undefined
+  const reducer = typeof input.kind === 'string' && Object.hasOwn(REDUCERS, input.kind) ? REDUCERS[input.kind] : undefined
   return reducer ? reducer(model, input, isRec(input.payload) ? input.payload : {}) : model
 }
 
@@ -1191,12 +1191,11 @@ function alphaFor(target        , pigRgb     , plan            , maxDl        ) 
                       
                      
                   
-             
                                                                              
  
 
 function organDots(spec             , core            , seed        , intensity        , bloom        ,
-                   tMs        , motion                           , small         , targets          )        {
+                   tMs        , motion                           , targets          )        {
   const pig = core.pigmentFor(organPigmentOf(spec.base))
   const contracted = spec.base === 'blanch'
   return core.cons.organs.map((o, i)      => ({
@@ -1242,8 +1241,10 @@ function renderField(input            )        {
     tMs: input.tMs, motion: input.motion, reducedMotion: input.reducedMotion, small: false,
   })
   const bloom = bloomFactor(input.sinceChangeMs, input.motion, input.reducedMotion)
-  const core             = { cons, plan, dots: [], pigmentFor: k => pigment(plan, k) }
-  const dots = organDots(input.pattern, core, input.seed, input.intensity, bloom, input.tMs, input.motion, false, targets)
+  const core             = { cons, plan, pigmentFor: k => pigment(plan, k) }
+  // reduced motion is `off` for every time-dependent term (bloom above, twinkle here)
+  const motion = input.reducedMotion ? 'off' : input.motion
+  const dots = organDots(input.pattern, core, input.seed, input.intensity, bloom, input.tMs, motion, targets)
   if (input.pattern.base === 'eyespot') dots.push(eyeDot(core, input.seed, input.width, input.height, input.intensity, bloom, false))
   return dots
 }
@@ -1253,8 +1254,8 @@ function renderSmall(input             , w        , h        , target        , r
   const plan = planGround(input.hueDeg, input.ground)
   const cons = constellation(input.seed, w, h, target, rLo, rHi)
   const targets = inkTargets(input.pattern, cons, w, h, plan, input.seed, { tMs: 0, motion: 'still', reducedMotion: false, small: true })
-  const core             = { cons, plan, dots: [], pigmentFor: k => pigment(plan, k) }
-  const dots = organDots(input.pattern, core, input.seed, input.intensity, 1, 0, 'still', true, targets)
+  const core             = { cons, plan, pigmentFor: k => pigment(plan, k) }
+  const dots = organDots(input.pattern, core, input.seed, input.intensity, 1, 0, 'still', targets)
   if (input.pattern.base === 'eyespot') dots.push(eyeDot(core, input.seed, w, h, input.intensity, 1, true))
   return { dots, width: w, height: h }
 }
@@ -1391,12 +1392,13 @@ const BLOOM_AMP = 1.0
 const TAU_OPEN = 100        // ms; opening is muscular and fast
 const TAU_CLOSE = 550       // ms; closing is elastic and slow
 const T_PEAK = 250          // ms; hand-over from the opening ramp to the closing decay
+const ENV_AT_PEAK = 1 - Math.exp(-T_PEAK / TAU_OPEN)   // the decay starts where the ramp ended: no step
 
 /** How much a state that changed `sinceChangeMs` ago is still blooming. 1 = settled. */
 function bloomFactor(sinceChangeMs        , motion        , reducedMotion         )         {
   if (reducedMotion || motion === 'off' || sinceChangeMs >= BLOOM_MS) return 1
   const s = Math.max(0, sinceChangeMs)
-  const env = s < T_PEAK ? 1 - Math.exp(-s / TAU_OPEN) : Math.exp(-(s - T_PEAK) / TAU_CLOSE)
+  const env = s < T_PEAK ? 1 - Math.exp(-s / TAU_OPEN) : ENV_AT_PEAK * Math.exp(-(s - T_PEAK) / TAU_CLOSE)
   return 1 + BLOOM_AMP * env
 }
 
@@ -1586,7 +1588,7 @@ __cf_defs["src/domain/pattern.ts"] = (exports) => {
 // the same session's resting organs while still visible. The constants were tuned against the
 // locked classifier over 20 identities x 3 grounds (test/unit/language.test.ts measures margins).
 // Pure: time arrives as tMs, entropy only from blake2b.
-const { blake2b, seededStream, utf8 } = __cf_require("src/domain/blake2b.ts");const { bloomFactor } = __cf_require("src/domain/motion.ts");const { hexToLab, hexToRgb, oklchToHex, rgbToOklab } = __cf_require("src/domain/oklch.ts");/** Ink ceilings the contract pins: resting near-invisible (p95 <= 0.05), everything text-safe (p95 <= 0.20). */
+const { blake2b, seededStream, utf8 } = __cf_require("src/domain/blake2b.ts");const { hexToLab, hexToRgb, oklchToHex, rgbToOklab } = __cf_require("src/domain/oklch.ts");/** Ink ceilings the contract pins: resting near-invisible (p95 <= 0.05), everything text-safe (p95 <= 0.20). */
 const REST_LO = 0.012
 const REST_HI = 0.046
 const REST_MEAN = REST_LO + (REST_HI - REST_LO) * 0.4   // E[u^1.5] ~ 0.4
@@ -1602,7 +1604,6 @@ const SWATCH_CLOUD_BASE = 0.040, SWATCH_CLOUD_AMP = 0.135
 /** Ink ceiling (MAX_DL) and the pigment headroom at full alpha (FULL_DL). */
 const MAX_DL = 0.30
 const FULL_DL = 0.40
-const SPOT_DL = 0.156                                          // the ocellus ink
 const CHROMA_C = 0.105, BLANCH_C = 0.02, SPOT_C = 0.09
 const TWINKLE_AMP = 0.55, TWINKLE_P_MIN = 7000, TWINKLE_P_SPAN = 5000
 const CLOUD_TRAVEL_MS = 18000                                  // one band pass across the height
@@ -1622,7 +1623,7 @@ const dirOf = (lg        )         => (lg < 0.5 ? 1 : -1)
  
 
 const planCache = new Map                    ()
-const dlAt = (hex        , rgb     , gl        )         => Math.abs(rgbToOklab(hexToRgb(hex)).L - gl)
+const dlAt = (hex        , gl        )         => Math.abs(rgbToOklab(hexToRgb(hex)).L - gl)
 
 /** Pigments for one (hue, ground): the chromatic pigment lands ~FULL_DL away from the ground at full alpha. */
 function planGround(hueDeg        , ground        )             {
@@ -1635,7 +1636,7 @@ function planGround(hueDeg        , ground        )             {
   let lo = 0.04, hi = 0.97
   for (let i = 0; i < 20; i++) {
     const mid = (lo + hi) / 2
-    const d = dlAt(oklchToHex(mid, CHROMA_C, hueDeg), rgb, gl)
+    const d = dlAt(oklchToHex(mid, CHROMA_C, hueDeg), gl)
     if (dir > 0 ? d < FULL_DL : d > FULL_DL) lo = mid; else hi = mid
   }
   const chroma = oklchToHex((lo + hi) / 2, CHROMA_C, hueDeg)
@@ -1643,7 +1644,7 @@ function planGround(hueDeg        , ground        )             {
   const spot = oklchToHex(Math.min(0.97, Math.max(0.03, gl - 0.30)), SPOT_C, hueDeg)
   const plan             = {
     groundRgb: rgb, groundL: gl, dir, chroma, blanch, spot,
-    chromaMaxDl: dlAt(chroma, rgb, gl), blanchMaxDl: dlAt(blanch, rgb, gl), spotMaxDl: dlAt(spot, rgb, gl),
+    chromaMaxDl: dlAt(chroma, gl), blanchMaxDl: dlAt(blanch, gl), spotMaxDl: dlAt(spot, gl),
   }
   if (planCache.size > 256) planCache.clear()
   planCache.set(key, plan)
@@ -1708,7 +1709,7 @@ function smallCloudInk(cons               , seed        , shape        )        
   const sigmaR = Math.max(1, n / 6)
   const centre = 2 * sigmaR + (n - 1 - 4 * sigmaR) * hashUnit(seed, 'cloudrow')
   const draw = cloudJitter(seed)
-  return cons.organs.map((o, i) => shape(cloudRankDl(rank[i], centre, sigmaR, draw())))
+  return cons.organs.map((_o, i) => shape(cloudRankDl(rank[i], centre, sigmaR, draw())))
 }
 
 /** The passing cloud on the field: one soft band travelling at constant speed (no dead spots). */
@@ -1865,7 +1866,7 @@ function resolvePatterns(raw         , warnings           )                     
   if (raw === undefined) return out
   if (!isRec(raw)) { warn(warnings, 'patterns', 'type', 'patterns must be a mapping'); return out }
   for (const name of ownKeys(raw)) {
-    const spec = name in PATTERNS ? tuneBuiltin(name, raw[name], out[name], warnings) : newUserPattern(name, raw[name], warnings)
+    const spec = Object.hasOwn(PATTERNS, name) ? tuneBuiltin(name, raw[name], out[name], warnings) : newUserPattern(name, raw[name], warnings)
     if (spec) out[name] = spec
   }
   return out
@@ -1925,7 +1926,7 @@ function readPatternRef(warnings           , path        , v         , def      
     return isNew ? missingField(warnings, path, 'pattern', 'a new state needs a pattern', '')
       : { value: def ?? '', fatal: false }
   }
-  if (typeof v !== 'string' || !(v in patterns)) {
+  if (typeof v !== 'string' || !Object.hasOwn(patterns, v)) {
     return badField(warnings, path, 'pattern', 'unknown', `pattern ${JSON.stringify(v)} is not defined`, def ?? '', isNew)
   }
   return { value: v, fatal: false }
@@ -1955,6 +1956,9 @@ function draftState(warnings           , name        , v                        
   }
 }
 
+/** The built-in state of that name, if it is really one (never an inherited prototype member). */
+const presetState = (name        )                        => (Object.hasOwn(STATES, name) ? STATES[name] : undefined)
+
 function resolveStates(raw         , patterns                             , warnings           )                            {
   const out                            = structuredClone(STATES)
   if (raw === undefined) return out
@@ -1970,7 +1974,7 @@ function resolveStates(raw         , patterns                             , warn
       warn(warnings, `states.${name}`, 'type', 'a state must be a mapping or null to remove it')
       continue
     }
-    const draft = draftState(warnings, name, v, STATES[name], patterns)
+    const draft = draftState(warnings, name, v, presetState(name), patterns)
     if (draft && !draft.fatal) out[name] = draft.spec
   }
   return out
@@ -2017,9 +2021,9 @@ function stateFor(settings          , signals                     )         {
 
 /** The pattern a state renders with. Throws on an unknown state (the caller owns the name). */
 function patternOf(settings          , state        )              {
-  const spec = settings.states[state]
+  const spec = Object.hasOwn(settings.states, state) ? settings.states[state] : undefined
   if (!spec) throw new Error(`no such state: ${state}`)
-  const pattern = settings.patterns[spec.pattern]
+  const pattern = Object.hasOwn(settings.patterns, spec.pattern) ? settings.patterns[spec.pattern] : undefined
   if (!pattern) throw new Error(`state ${state} points at unknown pattern ${spec.pattern}`)
   return { ...pattern }
 }
