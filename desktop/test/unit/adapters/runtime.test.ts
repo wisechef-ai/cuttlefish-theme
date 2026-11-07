@@ -411,3 +411,38 @@ test('runtime D3: frameTime puts frames on the 200 ms grid and wraps them at the
   assert.equal(frameTime(10000 + 36000, 'off'), 10000)
   assert.equal(frameTime(46190, 'alive'), 46000, 'alive: grid only, no wrap')
 })
+
+test('runtime D3: between frames the loop PARKS (no 60 Hz rAF spin) and a scoped timer wakes it for the next one (fix-m4)', async () => {
+  const { h, mount } = await boot()
+  mount()
+  await focusSA()
+  working()
+  await flush()
+  const loop = calls.loops[0]
+  assert.equal(loop.opts.idleWhen?.(), false, 'a wanted frame is not yet drawn: not parked')
+  loop.draw(10_000)
+  assert.equal(loop.opts.idleWhen?.(), true, 'right after a frame: parked, zero pending rAF')
+  const wakes = loop.wakes
+  await h.advance(100)
+  assert.equal(loop.wakes, wakes, 'not woken early')
+  assert.equal(loop.opts.idleWhen?.(), true)
+  await h.advance(100)
+  assert.equal(loop.wakes, wakes + 1, 'woken once, ~190 ms after the frame')
+  assert.equal(loop.opts.idleWhen?.(), false, 'ready for the next frame')
+  loop.draw(10_200)
+  loop.draw(10_400) // a second frame arriving while the first timer was pending replaces it, never stacks
+  await h.advance(190)
+  assert.equal(loop.wakes, wakes + 2, 'one timer per frame, never two')
+})
+
+test('runtime D3: dispose cancels the pacing timer — none outlives the plugin', async () => {
+  const { h, mount } = await boot()
+  mount()
+  await focusSA()
+  working()
+  await flush()
+  calls.loops[0].draw(10_000)
+  assert.ok(h.state.timers.some(t => t.live), 'a pacing timer is pending after a frame')
+  h.dispose()
+  assert.ok(h.state.timers.every(t => !t.live), 'no pacing timer outlives the plugin')
+})

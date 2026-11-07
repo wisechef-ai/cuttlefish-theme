@@ -326,7 +326,11 @@ __cf_defs["src/adapters/runtime.ts"] = (exports) => {
 // itself stays straight-line wiring: every decision lives in a named helper.
 const { createBudgetedLoop, host } = __cf_ext("@hermes/plugin-sdk");const { CLOUD_TRAVEL_MS, pollPlan, resolveSettings } = __cf_require("src/domain/index.ts");const { eventToFeed, stateSnapshot } = __cf_require("src/adapters/feedmap.ts");const { parseGround } = __cf_require("src/adapters/ground.ts");const { wireWatch } = __cf_require("src/adapters/configwatch.ts");const { drawClock, idleSince, initialClock, noteStateChange, wantsFrame } = __cf_require("src/adapters/looplogic.ts");const { fieldCss } = __cf_require("src/adapters/painter.ts");const { registerSurfaces } = __cf_require("src/adapters/surfaces.ts");const { applyEnv, applyFeed, applySettings, initialView } = __cf_require("src/adapters/view.ts");const FALLBACK_GROUND = '#141416'
 const REDUCE_QUERY = '(prefers-reduced-motion: reduce)'
-const LOOP_FPS = 4.6
+/** The budgeted loop's OWN budget is set high on purpose: it parks after every frame (its rAF would otherwise spin at
+ *  60 Hz for as long as a session works — measured +2.2 pp of renderer CPU on the real Desktop) and a scoped timer
+ *  wakes it FRAME_GAP_MS later, so the timer paces the frames (~5/s) and the loop never skips one. */
+const LOOP_FPS = 10
+const FRAME_GAP_MS = 190
 /** Frame times sit on this grid (below the loop's frame interval, so no frame is ever dropped), and — outside `alive`,
  *  where time only moves the clouds — wrap at the cloud cycle: the painted text then repeats exactly, and the engine
  *  re-uses the decoded image of a data-URI it has already seen instead of parsing a new SVG at every frame. */
@@ -337,6 +341,10 @@ const FRAME_GRID_MS = 200
                   
                     
                 
+                                                                                           
+                  
+                                 
+                    
  
 
 const isRec = (v         )                               => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -381,6 +389,18 @@ function draw(a          , now        )       {
   a.v.tMs = frameTime(now, a.v.motion)
   a.v.sinceChangeMs = drawClock(a.clock, now)
   paintField(a)
+  restUntilNextFrame(a)
+}
+
+/** Park the loop until the next frame is due; one timer at a time. */
+function restUntilNextFrame(a          )       {
+  a.cancelPace?.()
+  a.resting = true
+  a.cancelPace = a.ctx.setTimeout(() => {
+    a.cancelPace = null
+    a.resting = false
+    if (wantsFrame(a.v, idleSince(a.clock))) a.loop.wake()
+  }, FRAME_GAP_MS)
 }
 
 /** Write the owned <style> only when its text really changed: an identical rewrite still makes the engine
@@ -474,6 +494,8 @@ function wireReduce(v        , repaint            )             {
 
 /** Undo everything: reverse the registrations, drop the style, clear the root attributes. */
 function teardown(a          , offs                )       {
+  a.cancelPace?.()
+  a.cancelPace = null
   a.loop.dispose()
   for (const off of offs.reverse()) off()
   if (a.holder.el !== null) a.holder.el.remove()
@@ -489,11 +511,11 @@ function attach(ctx               )       {
   const v         = initialView(env)
   const clock = initialClock()
   const holder         = { el: null, css: '' }
-  const loop = createBudgetedLoop(
-    now => draw({ v, clock, loop, holder }, now),
-    { fps: LOOP_FPS, idleWhen: () => !wantsFrame(v, idleSince(clock)) },
+  const a = { v, clock, holder, resting: false, cancelPace: null, ctx }                       
+  a.loop = createBudgetedLoop(
+    now => draw(a, now),
+    { fps: LOOP_FPS, idleWhen: () => a.resting || !wantsFrame(v, idleSince(clock)) },
   )
-  const a           = { v, clock, loop, holder }
   const offs                 = []
 
   const atoms             = {
