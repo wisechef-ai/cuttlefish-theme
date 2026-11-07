@@ -93,6 +93,29 @@ def _opener_problems(segs: list[dict]) -> list[str]:
     return bad
 
 
+def _timeline_problems(segs: list[dict], manifest: dict) -> list[str]:
+    bad, prev = [], 0.0
+    for i, s in enumerate(segs):
+        found = _seg_problems(i, s, prev)
+        if found and "numbers" in found[0]:
+            return bad + found
+        bad += found
+        prev = s["end"]
+        if s.get("kind") == "capture":
+            bad += _capture_problems(i, s, manifest)
+    return bad
+
+
+def _spread_problems(segs: list[dict]) -> list[str]:
+    caps = [s for s in segs if s.get("kind") == "capture"]
+    bad = []
+    for what, floor in (("state", MIN_STATES), ("session", MIN_SESSIONS)):
+        n = len({s.get(what) for s in caps})
+        if n < floor:
+            bad.append(f"capture segments show {n} distinct {what}s (< {floor})")
+    return bad
+
+
 def cut_problems(cut: dict, manifest: dict, video_s: float) -> list[str]:
     """Every reason `cut` is not an honest edit decision list of a video that lasts `video_s` seconds."""
     if cut.get("schema") != "cf2-cut/1" or not isinstance(cut.get("segments"), list) or not cut["segments"]:
@@ -100,24 +123,13 @@ def cut_problems(cut: dict, manifest: dict, video_s: float) -> list[str]:
     segs = [s for s in cut["segments"] if isinstance(s, dict)]
     if len(segs) != len(cut["segments"]):
         return ["cut.json: every segment must be an object"]
-    bad, prev = _opener_problems(segs), 0.0
-    for i, s in enumerate(segs):
-        found = _seg_problems(i, s, prev)
-        bad += found
-        if found and "numbers" in found[0]:
-            return bad
-        prev = s["end"]
-        if s.get("kind") == "capture":
-            bad += _capture_problems(i, s, manifest)
+    bad = _opener_problems(segs) + _timeline_problems(segs, manifest)
+    if any("numbers" in p for p in bad):
+        return bad
     total = sum(s["end"] - s["start"] for s in segs)
     if abs(total - video_s) > DURATION_TOL_S:
         bad.append(f"segments sum to {total:.2f} s, the video lasts {video_s:.2f} s (±{DURATION_TOL_S})")
-    caps = [s for s in segs if s.get("kind") == "capture"]
-    if len({s.get("state") for s in caps}) < MIN_STATES:
-        bad.append(f"capture segments show {len({s.get('state') for s in caps})} distinct states (< {MIN_STATES})")
-    if len({s.get("session") for s in caps}) < MIN_SESSIONS:
-        bad.append(f"capture segments show {len({s.get('session') for s in caps})} distinct sessions (< {MIN_SESSIONS})")
-    return bad
+    return bad + _spread_problems(segs)
 
 
 def url_problems(text: str) -> list[str]:
