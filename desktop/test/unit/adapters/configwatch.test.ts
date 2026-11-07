@@ -132,3 +132,64 @@ test('poll: a thrown poll is one missed poll, never a dead watch', async () => {
   assert.equal(f.state.rest.filter(r => r.path === '/config').length >= 1, true, 'the settings watch survived')
   stop()
 })
+
+test('config: a zero mtime is a real token; a non-object answer is no mtime at all', async () => {
+  const f0 = fakeDoors({ mtime: 0 })
+  const s0 = wireWatch(f0.doors, hooks())
+  await f0.advance(FIRST_WATCH_MS)
+  assert.equal(f0.state.rest.filter(r => r.path === '/config').length, 1, 'mtime 0 is a change from never-seen')
+  s0()
+
+  const fx = fakeDoors({})
+  const doors: WatchDoors = { ...fx.doors, request: async method => {
+    if (method === 'config.get') return 'boom'
+    if (method === 'session.active_list') return { sessions: [] }
+    throw new Error('no')
+  } }
+  const feeds: FeedInput[] = []
+  const sx = wireWatch(doors, hooks(feeds))
+  await fx.advance(FIRST_WATCH_MS + WATCH_MS)
+  assert.equal(fx.state.rest.filter(r => r.path === '/config').length, 0, 'a non-object answer carries no mtime')
+  assert.equal(feeds.filter(x => x.kind === 'active_list').length, 0)
+  sx()
+})
+
+test('poll: a non-object active_list is never fed; t is now() verbatim', async () => {
+  const f = fakeDoors({ health: false })
+  const feeds: FeedInput[] = []
+  const doors: WatchDoors = {
+    ...f.doors,
+    now: () => Number.NaN,
+    request: async method => {
+      if (method === 'config.get') return { mtime: 1 }
+      if (method === 'session.active_list') return 'boom'
+      throw new Error('no')
+    },
+  }
+  const stop = wireWatch(doors, hooks(feeds, [], () => true))
+  await f.advance(POLL_INTERVAL_MS)
+  assert.equal(feeds.filter(x => x.kind === 'active_list').length, 0, 'only an object list is fed verbatim')
+  const health = feeds.find(x => x.kind === 'python.health')
+  assert.ok(health && Number.isNaN(health.t), 't is now() verbatim, never normalized')
+  stop()
+})
+
+test('poll: without now() the tick stamps t = 0; stop is idempotent', async () => {
+  const f = fakeDoors({ health: true })
+  const feeds: FeedInput[] = []
+  const stop0 = wireWatch(f.doors, hooks(feeds, [], () => false))
+  await f.advance(POLL_INTERVAL_MS)
+  assert.equal(feeds.find(x => x.kind === 'python.health')?.t, 0, 'no clock door means t = 0')
+  stop0()
+
+  let cancelled = 0
+  const doors: WatchDoors = {
+    ...f.doors,
+    setTimeout: (fn, ms) => { const off = f.doors.setTimeout(fn, ms); return () => { cancelled += 1; off() } },
+    setInterval: (fn, ms) => { const off = f.doors.setInterval(fn, ms); return () => { cancelled += 1; off() } },
+  }
+  const stop = wireWatch(doors, hooks())
+  stop()
+  stop()
+  assert.equal(cancelled, 3, 'every canceller ran exactly once across two stops')
+})

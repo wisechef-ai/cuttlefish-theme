@@ -21,6 +21,9 @@ test('view: initial sight is resting, unblloomed, with the fallback seed', () =>
   assert.equal(s.hueDeg, allocate(NO_FOCUS_SEED, []).hue_deg)
   assert.deepEqual(s.pattern, DEFAULT_SETTINGS.patterns.mottle)
   assert.equal(s.version, 1)
+  assert.equal(s.tMs, 0, 'no frame has been drawn yet')
+  assert.equal(s.sinceChangeMs, 0, 'nothing has changed yet')
+  assert.equal(s.focusedStored === null && s.hueDeg === allocate(NO_FOCUS_SEED, []).hue_deg, true)
 })
 
 test('view: the first focus is not a change; only a state move blooms', () => {
@@ -64,8 +67,30 @@ test('view: env patches repaint inputs without touching the feed', () => {
   applyEnv(s, { ground: '#fbfbfa', width: 800, height: 600, reducedMotion: true })
   assert.equal(s.ground, '#fbfbfa')
   assert.equal(s.width, 800)
+  assert.equal(s.height, 600)
   assert.equal(s.reducedMotion, true)
   assert.equal(s.feed.gateway, null)
+})
+
+test('view: each env field applies alone — a sparse patch touches nothing else', () => {
+  const s = v()
+  applyEnv(s, { width: 640 })
+  assert.equal(s.width, 640)
+  applyEnv(s, { height: 480 })
+  assert.equal(s.height, 480)
+  assert.equal(s.width, 640, 'a later sparse patch keeps the earlier width')
+  applyEnv(s, { ground: '#fbfbfa' })
+  assert.equal(s.ground, '#fbfbfa')
+  assert.equal(s.reducedMotion, false, 'reducedMotion untouched by the others')
+  applyEnv(s, { reducedMotion: true })
+  assert.equal(s.reducedMotion, true)
+})
+
+test('view: safePattern degrades to mottle — unknown state, dangling pattern ref', () => {
+  assert.deepEqual(safePattern(DEFAULT_SETTINGS, 'no_such_state'), DEFAULT_SETTINGS.patterns.mottle)
+  const gap = structuredClone(DEFAULT_SETTINGS)
+  gap.states.ghost = { when: 'idle', pattern: 'no_such_pattern', priority: 10, label: 'dangling' }
+  assert.deepEqual(safePattern(gap, 'ghost'), DEFAULT_SETTINGS.patterns.mottle, 'a dangling ref never reaches patternOf')
 })
 
 test('view: subscribers hear every apply; unsubscribe stops', () => {
@@ -74,6 +99,7 @@ test('view: subscribers hear every apply; unsubscribe stops', () => {
   const off = s.listen(() => seen.push(s.version))
   applyFeed(s, focusSA())
   applyEnv(s, { reducedMotion: true })
+  assert.deepEqual(seen, [2, 3], 'the subscriber really fired, once per apply')
   off()
   const after = seen.length
   applyEnv(s, { reducedMotion: false })

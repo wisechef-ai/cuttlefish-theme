@@ -4,7 +4,7 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 
-import { drawClock, idleSince, noteStateChange, type LoopClock } from '../../../src/adapters/looplogic.ts'
+import { drawClock, idleSince, initialClock, noteStateChange, type LoopClock } from '../../../src/adapters/looplogic.ts'
 import { applyFeed, initialView, type CfView } from '../../../src/adapters/view.ts'
 import { wantsFrame } from '../../../src/adapters/looplogic.ts'
 
@@ -12,6 +12,10 @@ const clock = (): LoopClock => ({ lastNow: 0, changeAt: null, pending: false })
 const view = (): CfView => initialView({ width: 1200, height: 800, ground: '#141416', reducedMotion: false })
 const busy = (v: CfView): boolean =>
   applyFeed(v, { kind: 'state', t: 0, session: 'a', payload: { gateway: 'open', busy: true, focused_session_id: 'a', focused_stored_session_id: 'SA' } })
+
+test('loop: a fresh clock is exactly "no frames yet, nothing pending"', () => {
+  assert.deepEqual(initialClock(), { lastNow: 0, changeAt: null, pending: false })
+})
 
 test('loop: parked at rest from the very first sight (no bloom for the initial state)', () => {
   const c = clock()

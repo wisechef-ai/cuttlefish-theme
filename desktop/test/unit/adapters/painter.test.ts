@@ -4,8 +4,9 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 
+import { renderField, toSvg } from '../../../src/domain/index.ts'
 import { fieldCss, ringOf } from '../../../src/adapters/painter.ts'
-import { applyFeed, initialView, type CfView } from '../../../src/adapters/view.ts'
+import { applyFeed, initialView, NO_FOCUS_SEED, type CfView } from '../../../src/adapters/view.ts'
 
 const view = (over: Partial<Parameters<typeof initialView>[0]> = {}): CfView =>
   initialView({ width: 1200, height: 800, ground: '#141416', reducedMotion: false, ...over })
@@ -46,6 +47,24 @@ test('painter: nothing else is declared (the property allowlist of oA_part5)', (
     const prop = decl.split(':')[0]
     assert.ok(prop.startsWith('--') || prop === 'background', `the surface declares ${decl}`)
   }
+})
+
+test('painter: the field scatters on the focused session, or the shared seed with nobody focused', () => {
+  const oracle = (v: CfView, seed: string): string =>
+    encodeURIComponent(toSvg(renderField({
+      seed, width: v.width, height: v.height, hueDeg: v.hueDeg, ground: v.ground,
+      pattern: v.pattern, intensity: v.settings.intensity, motion: v.motion,
+      reducedMotion: v.reducedMotion, tMs: v.tMs, sinceChangeMs: v.sinceChangeMs,
+    }), v.width, v.height))
+  const none = view()
+  assert.ok(fieldCss(none).includes(oracle(none, NO_FOCUS_SEED)), 'no focus: the shared seed paints the field')
+  const v = view()
+  applyFeed(v, working())
+  v.tMs = 0; v.sinceChangeMs = 10_000
+  const seed = v.focusedStored
+  assert.ok(seed !== null, 'the working input focuses a stored session')
+  assert.ok(fieldCss(v).includes(oracle(v, seed)), 'focused: the stored id is the seed')
+  assert.notEqual(oracle(v, seed), oracle(v, NO_FOCUS_SEED), 'the two seeds paint different fields')
 })
 
 test('painter: the ring is the identity hue, never the state', () => {

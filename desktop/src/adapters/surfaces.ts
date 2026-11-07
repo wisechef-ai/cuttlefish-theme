@@ -13,7 +13,7 @@ import {
 } from '@hermes/plugin-sdk'
 import { allocate, renderStrip, renderSwatch, signalsOf, stateFor } from '../domain/index.ts'
 import { svgElement } from './svg.ts'
-import { NO_FOCUS_SEED, safePattern, type CfView } from './view.ts'
+import { safePattern, seedOfStored, type CfView } from './view.ts'
 
 function useLive(v: CfView): void {
   useSyncExternalStore((cb: () => void) => v.listen(cb), () => v.version)
@@ -33,12 +33,18 @@ function SwatchView({ v, sessionId }: { v: CfView } & SessionRowSlotProps): unkn
   return svgElement(jsx, out, { 'data-cf-session': sessionId, 'data-cf-state': state }, out.dots)
 }
 
+/** The focused state's words, or '' when the settings do not name it — never a throw. */
+function labelOf(v: CfView, state: string): string {
+  const found = v.settings.states[state]?.label
+  return found !== undefined ? found : ''
+}
+
 /** The focused state's words + dots, shared by the status strip and the composer rim. */
 function stateChip(v: CfView, attrs: Record<string, unknown>): unknown {
   const state = v.focusedState
-  const label = v.settings.states[state]?.label ?? ''
+  const label = labelOf(v, state)
   const out = renderStrip({
-    seed: v.focusedStored ?? NO_FOCUS_SEED,
+    seed: seedOfStored(v.focusedStored),
     hueDeg: v.hueDeg,
     ground: v.ground,
     pattern: safePattern(v.settings, state),

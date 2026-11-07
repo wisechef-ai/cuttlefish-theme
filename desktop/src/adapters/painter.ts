@@ -5,7 +5,7 @@
 // never a fill, never a background-color. The ring token carries the identity
 // hue only: the state speaks through pattern and motion, never through the ring.
 import { planGround, renderField, toSvg } from '../domain/index.ts'
-import { NO_FOCUS_SEED, type CfView } from './view.ts'
+import { seedOfStored, type CfView } from './view.ts'
 
 /** The composer ring colour: the identity hue's pigment on this ground — a function of hue, never of state. */
 export function ringOf(hueDeg: number, ground: string): string {
@@ -16,7 +16,7 @@ export function ringOf(hueDeg: number, ground: string): string {
 export function fieldCss(v: CfView): string {
   const svg = toSvg(
     renderField({
-      seed: v.focusedStored ?? NO_FOCUS_SEED,
+      seed: seedOfStored(v.focusedStored),
       width: v.width,
       height: v.height,
       hueDeg: v.hueDeg,

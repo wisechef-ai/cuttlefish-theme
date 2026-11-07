@@ -31,15 +31,19 @@ test('svg: every visible dot becomes a circle with the oracle\'s exact numbers',
   })
 })
 
-test('svg: zero-ink dots are skipped, not drawn hollow', () => {
+test('svg: zero-ink dots are skipped, not drawn hollow; a hairline dot still draws', () => {
   const made: unknown[] = []
   const jsx: Jsx = (type, props) => { made.push([type, props]); return made.at(-1) }
   const dots = [
     { x: 1, y: 2, r: 3, color: '#aabbcc', alpha: 0.5 },
     { x: 1, y: 2, r: 3, color: '#aabbcc', alpha: 0 },
     { x: 1, y: 2, r: 0, color: '#aabbcc', alpha: 0.5 },
+    { x: 5, y: 6, r: 0.5, color: '#aabbcc', alpha: 0.5 },
   ]
-  assert.equal(dotElements(jsx, dots).length, 1)
+  const els = dotElements(jsx, dots)
+  assert.equal(els.length, 2)
+  const hairline = made.at(-1) as [string, Record<string, unknown>]
+  assert.equal(hairline[1].r, 0.5, 'the ink threshold is r > 0 and alpha > 0, nothing higher')
 })
 
 test('svg: the root carries the surface attributes and the viewBox', () => {

@@ -38,7 +38,8 @@ function sampleGround(): string {
   document.body.appendChild(probe)
   const computed = getComputedStyle(probe).getPropertyValue('--ui-chat-surface-background')
   probe.remove()
-  return parseGround(computed) ?? FALLBACK_GROUND
+  const parsed = parseGround(computed)
+  return parsed !== null ? parsed : FALLBACK_GROUND
 }
 
 /** The window the field paints for: the host's viewport atom, window size as the fallback. */
@@ -115,7 +116,8 @@ function wireFeed(ctx: PluginContext, atoms: StateAtoms, onInput: (input: FeedIn
   const offs = Object.values(atoms).map(atom => atom.listen(() => onInput(stateSnapshot(atoms, Date.now()))))
   offs.push(ctx.onEvent('*', event => {
     const input = eventToFeed(event, Date.now())
-    if (input !== null) onInput(input)
+    if (input === null) return
+    onInput(input)
   }))
   return () => { for (const off of offs) off() }
 }
@@ -178,7 +180,7 @@ export function attach(ctx: PluginContext): void {
       setInterval: (fn, ms) => ctx.setInterval(fn, ms),
       now: () => Date.now(),
     },
-    { onFeed: input => applyInput(a, input), onSettings: config => applyConfig(a, config), pollWanted: () => pollPlan(v.feed, 0).pollActiveList },
+    { onFeed: input => applyInput(a, input), onSettings: config => applyConfig(a, config), pollWanted: () => pollPlan(v.feed, Date.now()).pollActiveList },
   ))
 
   offs.push(wireReduce(v, () => paint(a)))

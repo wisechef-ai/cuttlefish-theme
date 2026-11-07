@@ -146,7 +146,10 @@ function eventToFeed(event         , t        )                   {
   return { kind: type, t, session, payload: isRec(payload) ? payload : null }
 }
 
-/** The host.state atoms as one `state` feed input; absent doors stay absent. */
+/** The host.state atoms as one `state` feed input; absent doors stay absent.
+ *  An EMPTY busyBySession map is omitted on purpose: the domain treats a present
+ *  map as "this REPLACES the busy set" and then ignores the plain busy flag, so
+ *  forwarding the host's resting `{}` would permanently silence that flag. */
 function stateSnapshot(atoms            , t        )            {
   const payload                          = {}
   const gateway = atoms.gateway.get()
@@ -154,7 +157,7 @@ function stateSnapshot(atoms            , t        )            {
   const busy = atoms.busy.get()
   if (typeof busy === 'boolean') payload.busy = busy
   const bySession = atoms.busyBySession.get()
-  if (isRec(bySession)) payload.busyBySession = { ...bySession }
+  if (isRec(bySession) && Object.keys(bySession).length > 0) payload.busyBySession = { ...bySession }
   const focused = atoms.focusedSessionId.get()
   if (isStr(focused)) payload.focused_session_id = focused
   const focusedStored = atoms.focusedStoredSessionId.get()
@@ -242,7 +245,7 @@ __cf_defs["src/adapters/painter.ts"] = (exports) => {
 // [data-chat-surface], composited over the user's own ground BY REFERENCE —
 // never a fill, never a background-color. The ring token carries the identity
 // hue only: the state speaks through pattern and motion, never through the ring.
-const { planGround, renderField, toSvg } = __cf_require("src/domain/index.ts");const { NO_FOCUS_SEED } = __cf_require("src/adapters/view.ts");/** The composer ring colour: the identity hue's pigment on this ground — a function of hue, never of state. */
+const { planGround, renderField, toSvg } = __cf_require("src/domain/index.ts");const { seedOfStored } = __cf_require("src/adapters/view.ts");/** The composer ring colour: the identity hue's pigment on this ground — a function of hue, never of state. */
 function ringOf(hueDeg        , ground        )         {
   return planGround(hueDeg, ground).chroma
 }
@@ -250,7 +253,7 @@ function ringOf(hueDeg        , ground        )         {
 function fieldCss(v        )         {
   const svg = toSvg(
     renderField({
-      seed: v.focusedStored ?? NO_FOCUS_SEED,
+      seed: seedOfStored(v.focusedStored),
       width: v.width,
       height: v.height,
       hueDeg: v.hueDeg,
@@ -305,7 +308,8 @@ function sampleGround()         {
   document.body.appendChild(probe)
   const computed = getComputedStyle(probe).getPropertyValue('--ui-chat-surface-background')
   probe.remove()
-  return parseGround(computed) ?? FALLBACK_GROUND
+  const parsed = parseGround(computed)
+  return parsed !== null ? parsed : FALLBACK_GROUND
 }
 
 /** The window the field paints for: the host's viewport atom, window size as the fallback. */
@@ -382,7 +386,8 @@ function wireFeed(ctx               , atoms            , onInput                
   const offs = Object.values(atoms).map(atom => atom.listen(() => onInput(stateSnapshot(atoms, Date.now()))))
   offs.push(ctx.onEvent('*', event => {
     const input = eventToFeed(event, Date.now())
-    if (input !== null) onInput(input)
+    if (input === null) return
+    onInput(input)
   }))
   return () => { for (const off of offs) off() }
 }
@@ -445,7 +450,7 @@ function attach(ctx               )       {
       setInterval: (fn, ms) => ctx.setInterval(fn, ms),
       now: () => Date.now(),
     },
-    { onFeed: input => applyInput(a, input), onSettings: config => applyConfig(a, config), pollWanted: () => pollPlan(v.feed, 0).pollActiveList },
+    { onFeed: input => applyInput(a, input), onSettings: config => applyConfig(a, config), pollWanted: () => pollPlan(v.feed, Date.now()).pollActiveList },
   ))
 
   offs.push(wireReduce(v, () => paint(a)))
@@ -466,7 +471,7 @@ __cf_defs["src/adapters/surfaces.ts"] = (exports) => {
 // view's version (useSyncExternalStore) and re-reads on render, so a render is
 // always pure observation and never wakes the loop (P3.2b). The titlebar mount
 // is the plugin's permanent style owner; it renders nothing itself.
-const { useEffect, useSyncExternalStore } = __cf_ext("react");const { jsx } = __cf_ext("react/jsx-runtime");const { COMPOSER_AREAS, SESSION_ROW_AREAS, STATUSBAR_AREAS, TITLEBAR_AREAS } = __cf_ext("@hermes/plugin-sdk");const { allocate, renderStrip, renderSwatch, signalsOf, stateFor } = __cf_require("src/domain/index.ts");const { svgElement } = __cf_require("src/adapters/svg.ts");const { NO_FOCUS_SEED, safePattern } = __cf_require("src/adapters/view.ts");function useLive(v        )       {
+const { useEffect, useSyncExternalStore } = __cf_ext("react");const { jsx } = __cf_ext("react/jsx-runtime");const { COMPOSER_AREAS, SESSION_ROW_AREAS, STATUSBAR_AREAS, TITLEBAR_AREAS } = __cf_ext("@hermes/plugin-sdk");const { allocate, renderStrip, renderSwatch, signalsOf, stateFor } = __cf_require("src/domain/index.ts");const { svgElement } = __cf_require("src/adapters/svg.ts");const { safePattern, seedOfStored } = __cf_require("src/adapters/view.ts");function useLive(v        )       {
   useSyncExternalStore((cb            ) => v.listen(cb), () => v.version)
 }
 /** The sidebar row swatch: the session's OWN state and identity, never the focused one's. */
@@ -483,12 +488,18 @@ function SwatchView({ v, sessionId }                                     )      
   return svgElement(jsx, out, { 'data-cf-session': sessionId, 'data-cf-state': state }, out.dots)
 }
 
+/** The focused state's words, or '' when the settings do not name it — never a throw. */
+function labelOf(v        , state        )         {
+  const found = v.settings.states[state]?.label
+  return found !== undefined ? found : ''
+}
+
 /** The focused state's words + dots, shared by the status strip and the composer rim. */
 function stateChip(v        , attrs                         )          {
   const state = v.focusedState
-  const label = v.settings.states[state]?.label ?? ''
+  const label = labelOf(v, state)
   const out = renderStrip({
-    seed: v.focusedStored ?? NO_FOCUS_SEED,
+    seed: seedOfStored(v.focusedStored),
     hueDeg: v.hueDeg,
     ground: v.ground,
     pattern: safePattern(v.settings, state),
@@ -587,7 +598,46 @@ __cf_defs["src/adapters/view.ts"] = (exports) => {
 // CHANGES only), and the runtime arms the bloom clock from applyFeed's return.
 const { allocate, DEFAULT_SETTINGS, initialFeed, patternOf, reduceFeed, signalsOf, stateFor } = __cf_require("src/domain/index.ts");/** Seed used while no session is focused: the skin exists before the first focus. */
 const NO_FOCUS_SEED = 'cuttlefish'
+/** The seed the focused surfaces scatter on: the stored id, or the shared one when nobody is focused. */
+function seedOfStored(stored               )         {
+  return stored === null ? NO_FOCUS_SEED : stored
+}
+
+                        
+               
+                
+                
+                        
+ 
+
+                                       
+                                     
+
+                                       
+                
+                 
+                    
+                
+                                                                
+                              
+                      
+                
+                      
+                                                                                  
+             
+                       
+                                             
+                 
+                                      
+ 
+
 const SUBS = new WeakMap                           ()
+
+/** Fan out one version bump to this view's subscribers, if any. */
+function notify(v        )       {
+  const subs = SUBS.get(v)
+  if (subs !== undefined) for (const fn of subs) fn()
+}
 
 /** The pattern a state renders with, never throwing: an unknown state degrades to mottle. */
 function safePattern(settings          , state        )              {
@@ -599,12 +649,13 @@ function safePattern(settings          , state        )              {
 /** Recompute the derived fields from feed + settings, and bump the version. */
 function derive(v        )          {
   const before = v.focusedState
-  v.focusedStored = v.feed.focusedStored ?? null
-  v.hueDeg = allocate(v.focusedStored ?? NO_FOCUS_SEED, []).hue_deg
-  v.focusedState = stateFor(v.settings, signalsOf(v.feed, v.focusedStored ?? ''))
+  const stored = v.feed.focusedStored
+  v.focusedStored = stored
+  v.hueDeg = allocate(seedOfStored(stored), []).hue_deg
+  v.focusedState = stateFor(v.settings, signalsOf(v.feed, stored === null ? '' : stored))
   v.pattern = safePattern(v.settings, v.focusedState)
   v.version += 1
-  for (const fn of SUBS.get(v) ?? []) fn()
+  notify(v)
   return v.focusedState !== before
 }
 
@@ -620,7 +671,7 @@ function initialView(env       )         {
     reducedMotion: env.reducedMotion,
     focusedStored: null,
     focusedState: 'resting',
-    hueDeg: 0,
+    hueDeg: allocate(NO_FOCUS_SEED, []).hue_deg,
     pattern: { ...DEFAULT_SETTINGS.patterns.mottle },
     tMs: 0,
     sinceChangeMs: 0,
@@ -657,10 +708,10 @@ function applyEnv(v        , patch            )       {
   if (patch.ground !== undefined) v.ground = patch.ground
   if (patch.reducedMotion !== undefined) v.reducedMotion = patch.reducedMotion
   v.version += 1
-  for (const fn of SUBS.get(v) ?? []) fn()
+  notify(v)
 }
 
-Object.assign(exports, { NO_FOCUS_SEED, safePattern, initialView, applyFeed, applySettings, applyEnv });
+Object.assign(exports, { NO_FOCUS_SEED, seedOfStored, safePattern, initialView, applyFeed, applySettings, applyEnv });
 };
 
 __cf_defs["src/domain/blake2b.ts"] = (exports) => {

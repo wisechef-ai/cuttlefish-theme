@@ -44,7 +44,7 @@ test('feedmap: the state snapshot carries every documented field, absent doors o
   })
 })
 
-test('feedmap: empty ids stay out of the snapshot (a null focus is not a mapping)', () => {
+test('feedmap: empty ids stay out, and an EMPTY busy map is omitted so the busy flag still speaks', () => {
   const snap = stateSnapshot({
     activeSessionId: atom(null),
     busy: atom(false),
@@ -54,7 +54,7 @@ test('feedmap: empty ids stay out of the snapshot (a null focus is not a mapping
     gateway: atom('connecting'),
   }, 1)
   assert.equal(snap.session, null)
-  assert.deepEqual(snap.payload, { gateway: 'connecting', busy: false, busyBySession: {} })
+  assert.deepEqual(snap.payload, { gateway: 'connecting', busy: false }, 'the domain replaces the busy set on a present map — an empty one must not shadow the flag')
 })
 
 test('feedmap: a non-object busyBySession is omitted, a non-string gateway ignored downstream', () => {

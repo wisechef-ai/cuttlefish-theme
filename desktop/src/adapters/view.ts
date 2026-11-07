@@ -15,6 +15,11 @@ import {
 /** Seed used while no session is focused: the skin exists before the first focus. */
 export const NO_FOCUS_SEED = 'cuttlefish'
 
+/** The seed the focused surfaces scatter on: the stored id, or the shared one when nobody is focused. */
+export function seedOfStored(stored: string | null): string {
+  return stored === null ? NO_FOCUS_SEED : stored
+}
+
 export interface CfEnv {
   width: number
   height: number
@@ -45,6 +50,12 @@ export interface CfView extends CfEnv {
 
 const SUBS = new WeakMap<CfView, Set<ViewListener>>()
 
+/** Fan out one version bump to this view's subscribers, if any. */
+function notify(v: CfView): void {
+  const subs = SUBS.get(v)
+  if (subs !== undefined) for (const fn of subs) fn()
+}
+
 /** The pattern a state renders with, never throwing: an unknown state degrades to mottle. */
 export function safePattern(settings: Settings, state: string): PatternSpec {
   const ref = settings.states[state]?.pattern
@@ -55,12 +66,13 @@ export function safePattern(settings: Settings, state: string): PatternSpec {
 /** Recompute the derived fields from feed + settings, and bump the version. */
 function derive(v: CfView): boolean {
   const before = v.focusedState
-  v.focusedStored = v.feed.focusedStored ?? null
-  v.hueDeg = allocate(v.focusedStored ?? NO_FOCUS_SEED, []).hue_deg
-  v.focusedState = stateFor(v.settings, signalsOf(v.feed, v.focusedStored ?? ''))
+  const stored = v.feed.focusedStored
+  v.focusedStored = stored
+  v.hueDeg = allocate(seedOfStored(stored), []).hue_deg
+  v.focusedState = stateFor(v.settings, signalsOf(v.feed, stored === null ? '' : stored))
   v.pattern = safePattern(v.settings, v.focusedState)
   v.version += 1
-  for (const fn of SUBS.get(v) ?? []) fn()
+  notify(v)
   return v.focusedState !== before
 }
 
@@ -76,7 +88,7 @@ export function initialView(env: CfEnv): CfView {
     reducedMotion: env.reducedMotion,
     focusedStored: null,
     focusedState: 'resting',
-    hueDeg: 0,
+    hueDeg: allocate(NO_FOCUS_SEED, []).hue_deg,
     pattern: { ...DEFAULT_SETTINGS.patterns.mottle },
     tMs: 0,
     sinceChangeMs: 0,
@@ -113,5 +125,5 @@ export function applyEnv(v: CfView, patch: CfEnvPatch): void {
   if (patch.ground !== undefined) v.ground = patch.ground
   if (patch.reducedMotion !== undefined) v.reducedMotion = patch.reducedMotion
   v.version += 1
-  for (const fn of SUBS.get(v) ?? []) fn()
+  notify(v)
 }
