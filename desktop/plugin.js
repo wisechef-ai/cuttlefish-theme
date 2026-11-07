@@ -39,46 +39,56 @@ const FIRST_WATCH_MS = 50
 const WATCH_MS = 2000
 const isRec = (v         )                               => typeof v === 'object' && v !== null && !Array.isArray(v)
 
+/** The mtime an answer carries, or null when the answer is not an object. */
+function mtimeOf(answer         )                         {
+  if (!isRec(answer)) return null
+  return (answer.mtime                                      ) ?? null
+}
+
+/** One mtime sighting: fetch /config exactly when the mtime CHANGED (first sight included). */
+async function mtimeTick(doors            , hooks            , cell                        )                {
+  try {
+    const plan = configPlan(cell.watch, mtimeOf(await doors.request('config.get', { key: 'mtime' })))
+    cell.watch = plan.next
+    if (plan.refetch) hooks.onSettings(await doors.rest('/config'))
+  } catch {
+    // an unreadable mtime or a failed fetch keeps the last settings
+  }
+}
+
+/** Is the Python half's health route answering? A throw means "no", never "stop". */
+async function healthOk(doors            )                   {
+  try {
+    await doors.rest('/health')
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** One poll tick: report the health probe, then ask for the list only while the domain wants it. */
+async function pollTick(doors            , hooks            )                {
+  const t = doors.now?.() ?? 0
+  hooks.onFeed({ kind: 'python.health', t, session: null, payload: { ok: await healthOk(doors) } })
+  try {
+    if (!hooks.pollWanted()) return
+    const list = await doors.request('session.active_list')
+    if (isRec(list)) hooks.onFeed({ kind: 'active_list', t, session: null, payload: list })
+  } catch {
+    // one missed poll never kills the watch
+  }
+}
+
 /** Wire the watch + poll over `doors`. Returns the stop function (idempotent). */
 function wireWatch(doors            , hooks            )             {
-  let watch              = initialConfigWatch()
+  const cell                         = { watch: initialConfigWatch() }
   const stopped                 = []
+  const mtime = ()       => { void mtimeTick(doors, hooks, cell) }
+  const poll = ()       => { void pollTick(doors, hooks) }
+  stopped.push(doors.setTimeout(mtime, FIRST_WATCH_MS))
+  stopped.push(doors.setInterval(mtime, WATCH_MS))
+  stopped.push(doors.setInterval(poll, POLL_INTERVAL_MS))
   let live = true
-
-  const mtimeTick = async () => {
-    try {
-      const answer = await doors.request('config.get', { key: 'mtime' })
-      const plan = configPlan(watch, isRec(answer) ? (answer.mtime                                      ) ?? null : null)
-      watch = plan.next
-      if (plan.refetch) hooks.onSettings(await doors.rest('/config'))
-    } catch {
-      // an unreadable mtime or a failed fetch keeps the last settings
-    }
-  }
-
-  const pollTick = async () => {
-    const t = doors.now?.() ?? 0
-    let ok = false
-    try {
-      await doors.rest('/health')
-      ok = true
-    } catch {
-      ok = false
-    }
-    hooks.onFeed({ kind: 'python.health', t, session: null, payload: { ok } })
-    try {
-      if (!hooks.pollWanted()) return
-      const list = await doors.request('session.active_list')
-      if (isRec(list)) hooks.onFeed({ kind: 'active_list', t, session: null, payload: list })
-    } catch {
-      // one missed poll never kills the watch
-    }
-  }
-
-  stopped.push(doors.setTimeout(() => { void mtimeTick() }, FIRST_WATCH_MS))
-  stopped.push(doors.setInterval(() => { void mtimeTick() }, WATCH_MS))
-  stopped.push(doors.setInterval(() => { void pollTick() }, POLL_INTERVAL_MS))
-
   return () => {
     if (!live) return
     live = false
@@ -274,10 +284,19 @@ __cf_defs["src/adapters/runtime.ts"] = (exports) => {
 // feed, the config watch + poll, the reduced-motion listener and the surfaces —
 // and one disposer that undoes all of it. Eager side effects (style paint, root
 // attributes) happen at apply time so the skin exists even while the loop is
-// parked; the loop only exists to animate (working clouds, the bloom).
+// parked; the loop only exists to animate (working clouds, the bloom). attach
+// itself stays straight-line wiring: every decision lives in a named helper.
 const { createBudgetedLoop, host } = __cf_ext("@hermes/plugin-sdk");const { pollPlan, resolveSettings } = __cf_require("src/domain/index.ts");const { eventToFeed, stateSnapshot } = __cf_require("src/adapters/feedmap.ts");const { parseGround } = __cf_require("src/adapters/ground.ts");const { wireWatch } = __cf_require("src/adapters/configwatch.ts");const { drawClock, idleSince, initialClock, noteStateChange, wantsFrame } = __cf_require("src/adapters/looplogic.ts");const { fieldCss } = __cf_require("src/adapters/painter.ts");const { registerSurfaces } = __cf_require("src/adapters/surfaces.ts");const { applyEnv, applyFeed, applySettings, initialView } = __cf_require("src/adapters/view.ts");const FALLBACK_GROUND = '#141416'
 const REDUCE_QUERY = '(prefers-reduced-motion: reduce)'
 const LOOP_FPS = 8
+/** Everything the paint/teardown helpers need, in one bundle. */
+                    
+           
+                  
+                    
+                
+ 
+
 const isRec = (v         )                               => typeof v === 'object' && v !== null && !Array.isArray(v)
 
 /** The user's own chat-surface ground, read from a thrown-away probe of our own. */
@@ -295,66 +314,114 @@ function viewportOf()                                    {
   return { width: vp.width > 0 ? vp.width : 1200, height: vp.height > 0 ? vp.height : 800 }
 }
 
+/** One animation frame: advance the clock, repaint the field CSS in place. */
+function draw(a          , now        )       {
+  a.v.tMs = now
+  a.v.sinceChangeMs = drawClock(a.clock, now)
+  paintField(a)
+}
+
+function paintField(a          )       {
+  a.holder.css = fieldCss(a.v)
+  if (a.holder.el !== null) a.holder.el.textContent = a.holder.css
+}
+
+function paintRoot(v        )       {
+  const el = document.documentElement
+  el.setAttribute('data-cf-state', v.focusedState)
+  if (v.focusedStored === null) el.removeAttribute('data-cf-session')
+  else el.setAttribute('data-cf-session', v.focusedStored)
+}
+
+function paint(a          )       {
+  paintField(a)
+  paintRoot(a.v)
+}
+
+/**
+ * Create the ONE owned <style> inside the host's head. Called by the title-bar
+ * mount's effect (A4: a host that never mounts us paints nothing); the cleanup
+ * removes the element again. Every paint keeps `holder.css` current so whatever
+ * moment the element appears, the skin is already whole.
+ */
+function mountStyle(a          )             {
+  const el = document.createElement('style')
+  document.head.appendChild(el)
+  el.textContent = a.holder.css
+  a.holder.el = el
+  return () => {
+    el.remove()
+    if (a.holder.el === el) a.holder.el = null
+  }
+}
+
+/** A state change is PENDING until the first frame anchors it: bloom survives long parks. */
+function armBloom(a          )       {
+  noteStateChange(a.clock)
+  a.v.sinceChangeMs = 0
+  a.loop.wake()
+}
+
+function applyInput(a          , input           )       {
+  if (applyFeed(a.v, input)) armBloom(a)
+  paint(a)
+}
+
+/** C5: a config maps to settings via the domain resolver; only a real change blooms. */
+function configSettings(config         )           {
+  return resolveSettings(isRec(config) ? config.settings : undefined).settings
+}
+
+function applyConfig(a          , config         )       {
+  if (applySettings(a.v, configSettings(config))) armBloom(a)
+  paint(a)
+}
+
+/** The host feed: state atoms (first sight included) and every gateway event that is ours. */
+function wireFeed(ctx               , atoms            , onInput                            )             {
+  const offs = Object.values(atoms).map(atom => atom.listen(() => onInput(stateSnapshot(atoms, Date.now()))))
+  offs.push(ctx.onEvent('*', event => {
+    const input = eventToFeed(event, Date.now())
+    if (input !== null) onInput(input)
+  }))
+  return () => { for (const off of offs) off() }
+}
+
+/** C3: the OS reduced-motion switch is honoured live. */
+function wireReduce(v        , repaint            )             {
+  const media = matchMedia(REDUCE_QUERY)
+  const onChange = (event                      )       => {
+    applyEnv(v, { reducedMotion: event.matches })
+    repaint()
+  }
+  media.addEventListener('change', onChange)
+  return () => media.removeEventListener('change', onChange)
+}
+
+/** Undo everything: reverse the registrations, drop the style, clear the root attributes. */
+function teardown(a          , offs                )       {
+  a.loop.dispose()
+  for (const off of offs.reverse()) off()
+  if (a.holder.el !== null) a.holder.el.remove()
+  a.holder.el = null
+  const el = document.documentElement
+  el.removeAttribute('data-cf-state')
+  el.removeAttribute('data-cf-session')
+}
+
 /** Wire the plugin. Idempotent per ctx; every registration flows through ctx so unload cleans up. */
 function attach(ctx               )       {
   const env        = { ...viewportOf(), ground: sampleGround(), reducedMotion: matchMedia(REDUCE_QUERY).matches }
   const v         = initialView(env)
   const clock = initialClock()
-  const offs                 = []
-
-  // The ONE owned <style>, created by the title-bar mount's effect (A4: a host that
-  // never mounts us paints nothing) and kept current by every paint below.
-  const holder                                               = { el: null, css: '' }
-  const paintField = ()       => {
-    holder.css = fieldCss(v)
-    if (holder.el !== null) holder.el.textContent = holder.css
-  }
-  const mountStyle = ()               => {
-    const el = document.createElement('style')
-    document.head.appendChild(el)
-    el.textContent = holder.css
-    holder.el = el
-    return () => {
-      el.remove()
-      if (holder.el === el) holder.el = null
-    }
-  }
-
-  const paintRoot = ()       => {
-    const el = document.documentElement
-    el.setAttribute('data-cf-state', v.focusedState)
-    if (v.focusedStored === null) el.removeAttribute('data-cf-session')
-    else el.setAttribute('data-cf-session', v.focusedStored)
-  }
-  const paint = ()       => {
-    paintField()
-    paintRoot()
-  }
-
+  const holder         = { el: null, css: '' }
   const loop = createBudgetedLoop(
-    now => {
-      v.tMs = now
-      v.sinceChangeMs = drawClock(clock, now)
-      paintField()
-    },
+    now => draw({ v, clock, loop, holder }, now),
     { fps: LOOP_FPS, idleWhen: () => !wantsFrame(v, idleSince(clock)) },
   )
+  const a           = { v, clock, loop, holder }
+  const offs                 = []
 
-  const armBloom = ()       => {
-    noteStateChange(clock)
-    v.sinceChangeMs = 0
-    loop.wake()
-  }
-  const applyInput = (input           )       => {
-    if (applyFeed(v, input)) armBloom()
-    paint()
-  }
-  const applyConfig = (config         )       => {
-    if (applySettings(v, resolveSettings(isRec(config) ? config.settings : undefined).settings)) armBloom()
-    paint()
-  }
-
-  // the host feed: state atoms (initial sight included) and every gateway event that is ours
   const atoms             = {
     activeSessionId: host.state.activeSessionId,
     busy: host.state.busy,
@@ -363,16 +430,10 @@ function attach(ctx               )       {
     focusedStoredSessionId: host.state.focusedStoredSessionId,
     gateway: host.state.gateway,
   }
-  for (const atom of Object.values(atoms)) {
-    offs.push(atom.listen(() => applyInput(stateSnapshot(atoms, Date.now()))))
-  }
+  offs.push(wireFeed(ctx, atoms, input => applyInput(a, input)))
   offs.push(host.state.viewport.listen(vp => {
     applyEnv(v, vp)
-    paint()
-  }))
-  offs.push(ctx.onEvent('*', event => {
-    const input = eventToFeed(event, Date.now())
-    if (input !== null) applyInput(input)
+    paint(a)
   }))
 
   // C5 live config + C9 the Python-half poll, on scoped timers (≥ 2 s apart)
@@ -384,30 +445,14 @@ function attach(ctx               )       {
       setInterval: (fn, ms) => ctx.setInterval(fn, ms),
       now: () => Date.now(),
     },
-    { onFeed: applyInput, onSettings: applyConfig, pollWanted: () => pollPlan(v.feed, 0).pollActiveList },
+    { onFeed: input => applyInput(a, input), onSettings: config => applyConfig(a, config), pollWanted: () => pollPlan(v.feed, 0).pollActiveList },
   ))
 
-  // C3: the OS reduced-motion switch is honoured live
-  const media = matchMedia(REDUCE_QUERY)
-  const onReduce = (event                      )       => {
-    applyEnv(v, { reducedMotion: event.matches })
-    paint()
-  }
-  media.addEventListener('change', onReduce)
+  offs.push(wireReduce(v, () => paint(a)))
+  offs.push(registerSurfaces(ctx, v, () => mountStyle(a)))
+  applyInput(a, stateSnapshot(atoms, Date.now()))
 
-  offs.push(registerSurfaces(ctx, v, mountStyle))
-  applyInput(stateSnapshot(atoms, Date.now()))
-
-  ctx.onDispose(() => {
-    loop.dispose()
-    for (const off of offs.reverse()) off()
-    media.removeEventListener('change', onReduce)
-    if (holder.el !== null) holder.el.remove()
-    holder.el = null
-    const el = document.documentElement
-    el.removeAttribute('data-cf-state')
-    el.removeAttribute('data-cf-session')
-  })
+  ctx.onDispose(() => teardown(a, offs))
 }
 
 Object.assign(exports, { attach });
@@ -452,14 +497,10 @@ function stateChip(v        , attrs                         )          {
   return jsx('div', { 'data-cf-state': state, ...attrs, children: [svgElement(jsx, out, {}, out.dots), label] })
 }
 
-function StripView({ v }               )          {
+/** The chip as a live component: the strip and the rim are the same view at two mounts. */
+function ChipView({ v, attrs }                                               )          {
   useLive(v)
-  return stateChip(v, { 'data-cf-strip': 'cuttlefish' })
-}
-
-function RimView({ v }               )          {
-  useLive(v)
-  return stateChip(v, { 'data-cf-rim': 'cuttlefish' })
+  return stateChip(v, attrs)
 }
 
 /**
@@ -474,6 +515,12 @@ function TitleMount({ v, mountStyle }                                           
   return null
 }
 
+/** The two chip mounts (status strip, composer rim): one component, two areas. */
+const CHIPS                                                                              = [
+  { id: 'strip', area: STATUSBAR_AREAS.right, attrs: { 'data-cf-strip': 'cuttlefish' } },
+  { id: 'rim', area: COMPOSER_AREAS.top, attrs: { 'data-cf-rim': 'cuttlefish' } },
+]
+
 /** Register the surfaces once; the returned disposer removes every contribution. */
 function registerSurfaces(ctx               , v        , mountStyle                  )             {
   const contributions                       = [
@@ -483,8 +530,7 @@ function registerSurfaces(ctx               , v        , mountStyle             
       order: 0,
       data: { render: ({ sessionId }                     ) => jsx(SwatchView, { v, sessionId }) },
     },
-    { id: 'strip', area: STATUSBAR_AREAS.right, order: 0, render: () => jsx(StripView, { v }) },
-    { id: 'rim', area: COMPOSER_AREAS.top, order: 0, render: () => jsx(RimView, { v }) },
+    ...CHIPS.map(c => ({ id: c.id, area: c.area, order: 0, render: () => jsx(ChipView, { v, attrs: c.attrs }) })),
     { id: 'title', area: TITLEBAR_AREAS.center, order: 0, render: () => jsx(TitleMount, { v, mountStyle }) },
   ]
   const offs = contributions.map(c => ctx.register(c))

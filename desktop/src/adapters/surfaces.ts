@@ -47,14 +47,10 @@ function stateChip(v: CfView, attrs: Record<string, unknown>): unknown {
   return jsx('div', { 'data-cf-state': state, ...attrs, children: [svgElement(jsx, out, {}, out.dots), label] })
 }
 
-function StripView({ v }: { v: CfView }): unknown {
+/** The chip as a live component: the strip and the rim are the same view at two mounts. */
+function ChipView({ v, attrs }: { v: CfView; attrs: Record<string, unknown> }): unknown {
   useLive(v)
-  return stateChip(v, { 'data-cf-strip': 'cuttlefish' })
-}
-
-function RimView({ v }: { v: CfView }): unknown {
-  useLive(v)
-  return stateChip(v, { 'data-cf-rim': 'cuttlefish' })
+  return stateChip(v, attrs)
 }
 
 /**
@@ -69,6 +65,12 @@ function TitleMount({ v, mountStyle }: { v: CfView; mountStyle: () => () => void
   return null
 }
 
+/** The two chip mounts (status strip, composer rim): one component, two areas. */
+const CHIPS: ReadonlyArray<{ id: string; area: string; attrs: Record<string, unknown> }> = [
+  { id: 'strip', area: STATUSBAR_AREAS.right, attrs: { 'data-cf-strip': 'cuttlefish' } },
+  { id: 'rim', area: COMPOSER_AREAS.top, attrs: { 'data-cf-rim': 'cuttlefish' } },
+]
+
 /** Register the surfaces once; the returned disposer removes every contribution. */
 export function registerSurfaces(ctx: PluginContext, v: CfView, mountStyle: () => () => void): () => void {
   const contributions: PluginContribution[] = [
@@ -78,8 +80,7 @@ export function registerSurfaces(ctx: PluginContext, v: CfView, mountStyle: () =
       order: 0,
       data: { render: ({ sessionId }: SessionRowSlotProps) => jsx(SwatchView, { v, sessionId }) },
     },
-    { id: 'strip', area: STATUSBAR_AREAS.right, order: 0, render: () => jsx(StripView, { v }) },
-    { id: 'rim', area: COMPOSER_AREAS.top, order: 0, render: () => jsx(RimView, { v }) },
+    ...CHIPS.map(c => ({ id: c.id, area: c.area, order: 0, render: () => jsx(ChipView, { v, attrs: c.attrs }) })),
     { id: 'title', area: TITLEBAR_AREAS.center, order: 0, render: () => jsx(TitleMount, { v, mountStyle }) },
   ]
   const offs = contributions.map(c => ctx.register(c))

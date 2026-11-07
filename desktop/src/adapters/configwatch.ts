@@ -31,46 +31,56 @@ export interface WatchHooks {
 
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
+/** The mtime an answer carries, or null when the answer is not an object. */
+function mtimeOf(answer: unknown): number | string | null {
+  if (!isRec(answer)) return null
+  return (answer.mtime as number | string | null | undefined) ?? null
+}
+
+/** One mtime sighting: fetch /config exactly when the mtime CHANGED (first sight included). */
+async function mtimeTick(doors: WatchDoors, hooks: WatchHooks, cell: { watch: ConfigWatch }): Promise<void> {
+  try {
+    const plan = configPlan(cell.watch, mtimeOf(await doors.request('config.get', { key: 'mtime' })))
+    cell.watch = plan.next
+    if (plan.refetch) hooks.onSettings(await doors.rest('/config'))
+  } catch {
+    // an unreadable mtime or a failed fetch keeps the last settings
+  }
+}
+
+/** Is the Python half's health route answering? A throw means "no", never "stop". */
+async function healthOk(doors: WatchDoors): Promise<boolean> {
+  try {
+    await doors.rest('/health')
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** One poll tick: report the health probe, then ask for the list only while the domain wants it. */
+async function pollTick(doors: WatchDoors, hooks: WatchHooks): Promise<void> {
+  const t = doors.now?.() ?? 0
+  hooks.onFeed({ kind: 'python.health', t, session: null, payload: { ok: await healthOk(doors) } })
+  try {
+    if (!hooks.pollWanted()) return
+    const list = await doors.request('session.active_list')
+    if (isRec(list)) hooks.onFeed({ kind: 'active_list', t, session: null, payload: list })
+  } catch {
+    // one missed poll never kills the watch
+  }
+}
+
 /** Wire the watch + poll over `doors`. Returns the stop function (idempotent). */
 export function wireWatch(doors: WatchDoors, hooks: WatchHooks): () => void {
-  let watch: ConfigWatch = initialConfigWatch()
+  const cell: { watch: ConfigWatch } = { watch: initialConfigWatch() }
   const stopped: (() => void)[] = []
+  const mtime = (): void => { void mtimeTick(doors, hooks, cell) }
+  const poll = (): void => { void pollTick(doors, hooks) }
+  stopped.push(doors.setTimeout(mtime, FIRST_WATCH_MS))
+  stopped.push(doors.setInterval(mtime, WATCH_MS))
+  stopped.push(doors.setInterval(poll, POLL_INTERVAL_MS))
   let live = true
-
-  const mtimeTick = async () => {
-    try {
-      const answer = await doors.request('config.get', { key: 'mtime' })
-      const plan = configPlan(watch, isRec(answer) ? (answer.mtime as number | string | null | undefined) ?? null : null)
-      watch = plan.next
-      if (plan.refetch) hooks.onSettings(await doors.rest('/config'))
-    } catch {
-      // an unreadable mtime or a failed fetch keeps the last settings
-    }
-  }
-
-  const pollTick = async () => {
-    const t = doors.now?.() ?? 0
-    let ok = false
-    try {
-      await doors.rest('/health')
-      ok = true
-    } catch {
-      ok = false
-    }
-    hooks.onFeed({ kind: 'python.health', t, session: null, payload: { ok } })
-    try {
-      if (!hooks.pollWanted()) return
-      const list = await doors.request('session.active_list')
-      if (isRec(list)) hooks.onFeed({ kind: 'active_list', t, session: null, payload: list })
-    } catch {
-      // one missed poll never kills the watch
-    }
-  }
-
-  stopped.push(doors.setTimeout(() => { void mtimeTick() }, FIRST_WATCH_MS))
-  stopped.push(doors.setInterval(() => { void mtimeTick() }, WATCH_MS))
-  stopped.push(doors.setInterval(() => { void pollTick() }, POLL_INTERVAL_MS))
-
   return () => {
     if (!live) return
     live = false
