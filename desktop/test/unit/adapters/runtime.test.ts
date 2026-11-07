@@ -421,11 +421,11 @@ test('runtime D3: between frames the loop PARKS (no 60 Hz rAF spin) and a scoped
   const loop = calls.loops[0]
   assert.equal(loop.opts.idleWhen?.(), false, 'a wanted frame is not yet drawn: not parked')
   loop.draw(10_000)
-  assert.equal(loop.opts.idleWhen?.(), true, 'right after a frame: parked, zero pending rAF')
+  assert.equal(loop.opts.idleWhen?.(), true, 'the loop\'s own check right after a frame: park, zero pending rAF')
+  assert.equal(loop.opts.idleWhen?.(), false, 'and only that one check — any later look says the clouds are wanted')
   const wakes = loop.wakes
   await h.advance(100)
   assert.equal(loop.wakes, wakes, 'not woken early')
-  assert.equal(loop.opts.idleWhen?.(), true)
   await h.advance(100)
   assert.equal(loop.wakes, wakes + 1, 'woken once, ~190 ms after the frame')
   assert.equal(loop.opts.idleWhen?.(), false, 'ready for the next frame')

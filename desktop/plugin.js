@@ -341,8 +341,8 @@ const FRAME_GRID_MS = 200
                   
                     
                 
-                                                                                           
-                  
+                                                                                                                                         
+                   
                                  
                     
  
@@ -392,13 +392,21 @@ function draw(a          , now        )       {
   restUntilNextFrame(a)
 }
 
+/** The loop's idle check: right after a frame it answers "park" once (the timer wakes it), then it reports the state's wants. */
+function idleNow(a          )          {
+  if (a.restOwed) {
+    a.restOwed = false
+    return true
+  }
+  return !wantsFrame(a.v, idleSince(a.clock))
+}
+
 /** Park the loop until the next frame is due; one timer at a time. */
 function restUntilNextFrame(a          )       {
   a.cancelPace?.()
-  a.resting = true
+  a.restOwed = true
   a.cancelPace = a.ctx.setTimeout(() => {
     a.cancelPace = null
-    a.resting = false
     if (wantsFrame(a.v, idleSince(a.clock))) a.loop.wake()
   }, FRAME_GAP_MS)
 }
@@ -511,10 +519,10 @@ function attach(ctx               )       {
   const v         = initialView(env)
   const clock = initialClock()
   const holder         = { el: null, css: '' }
-  const a = { v, clock, holder, resting: false, cancelPace: null, ctx }                       
+  const a = { v, clock, holder, restOwed: false, cancelPace: null, ctx }                       
   a.loop = createBudgetedLoop(
     now => draw(a, now),
-    { fps: LOOP_FPS, idleWhen: () => a.resting || !wantsFrame(v, idleSince(clock)) },
+    { fps: LOOP_FPS, idleWhen: () => idleNow(a) },
   )
   const offs                 = []
 

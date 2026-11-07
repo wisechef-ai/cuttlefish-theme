@@ -36,8 +36,8 @@ interface Attached {
   clock: LoopClock
   loop: BudgetedLoop
   holder: Holder
-  /** True from a frame until the pacing timer fires: the loop is parked between frames. */
-  resting: boolean
+  /** Set by a frame, spent by the loop's own post-draw idle check: that one check says "park", every other says what the state wants. */
+  restOwed: boolean
   cancelPace: (() => void) | null
   ctx: PluginContext
 }
@@ -87,13 +87,21 @@ function draw(a: Attached, now: number): void {
   restUntilNextFrame(a)
 }
 
+/** The loop's idle check: right after a frame it answers "park" once (the timer wakes it), then it reports the state's wants. */
+function idleNow(a: Attached): boolean {
+  if (a.restOwed) {
+    a.restOwed = false
+    return true
+  }
+  return !wantsFrame(a.v, idleSince(a.clock))
+}
+
 /** Park the loop until the next frame is due; one timer at a time. */
 function restUntilNextFrame(a: Attached): void {
   a.cancelPace?.()
-  a.resting = true
+  a.restOwed = true
   a.cancelPace = a.ctx.setTimeout(() => {
     a.cancelPace = null
-    a.resting = false
     if (wantsFrame(a.v, idleSince(a.clock))) a.loop.wake()
   }, FRAME_GAP_MS)
 }
@@ -206,10 +214,10 @@ export function attach(ctx: PluginContext): void {
   const v: CfView = initialView(env)
   const clock = initialClock()
   const holder: Holder = { el: null, css: '' }
-  const a = { v, clock, holder, resting: false, cancelPace: null, ctx } as unknown as Attached
+  const a = { v, clock, holder, restOwed: false, cancelPace: null, ctx } as unknown as Attached
   a.loop = createBudgetedLoop(
     now => draw(a, now),
-    { fps: LOOP_FPS, idleWhen: () => a.resting || !wantsFrame(v, idleSince(clock)) },
+    { fps: LOOP_FPS, idleWhen: () => idleNow(a) },
   )
   const offs: (() => void)[] = []
 
