@@ -14,13 +14,14 @@ RELEASE_ONLY := tests/acceptance/test_o7_desktop_evidence.py tests/acceptance/te
                 tests/acceptance/test_o7_part1_recompute.py tests/acceptance/test_o8_part1_video_provenance.py \
                 tests/acceptance/test_o7_part2_bindings.py tests/acceptance/test_o8_part2_frames.py
 
-.PHONY: help venv build lint unit contract contract-js contract-py test release-check clean
+.PHONY: help venv build lint unit contract contract-js contract-py test release-check evidence clean
 
 help:
 	@echo "make test           THE builder gate: lint + unit + the locked contract (minus release evidence)"
 	@echo "make contract       the whole locked contract, strict (missing Hermes = failure)"
 	@echo "make release-check  O7 real-Desktop evidence + O8 submission kit (lead, before the tag)"
 	@echo "make build          desktop/src -> desktop/plugin.js (deterministic)"
+	@echo "make evidence       real-Desktop capture of HEAD on hercules -> evidence/v2 (HEAD must be pushed; ~12 min)"
 
 venv:
 	uv venv -q --python /usr/bin/python3 .venv && VIRTUAL_ENV=$$PWD/.venv uv pip install -q -r requirements-dev.txt
@@ -54,6 +55,13 @@ test: lint unit contract-js contract-py
 release-check: export CF_STRICT := 1
 release-check: contract
 	$(NICE) $(PY) -m pytest $(RELEASE_ONLY) -q -p no:cacheprovider
+
+# The O7 capture: hercules fetches HEAD from origin, runs the real Desktop, evidence/v2 is copied back here.
+# Three short phases (each < 10 min): see tools/desktop/capture-remote.sh. Re-run on the final head: O7.1 binds plugin.js.
+evidence:
+	tools/desktop/capture-remote.sh start $$(git rev-parse HEAD)
+	until tools/desktop/capture-remote.sh wait; do [ $$? -eq 3 ] || exit 1; done
+	tools/desktop/capture-remote.sh fetch
 
 clean:
 	find . -name '__pycache__' -type d -prune -not -path './.venv/*' -exec rm -rf {} + ; rm -rf .pytest_cache .metrics coverage

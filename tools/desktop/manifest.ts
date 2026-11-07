@@ -4,7 +4,7 @@ import type { Box, Rect } from './evidence_lib.ts'
 export interface SessionSpec { stored_id: string; expected: string; dom_state: string; dom_dump: string; title: string }
 export interface StillSpec { state: string; path: string; sha256: string; meta?: string; dom_dump?: string }
 export interface CpuWindowSpec { file: string; dom_dump: string; roles: Record<string, string> }
-export interface Pixels { organs_detected: number; p95_dL: number; mean_dL: number; lowK: number; highK: number }
+export interface Pixels { organs_detected: number; p95_dL: number; mean_dL: number; lowK: number; highK: number; ground?: string }
 export interface Measured {
   pixels: Record<string, Pixels>
   cpu: Record<string, { mean_pct: number; window_s: number }>
@@ -25,7 +25,8 @@ export function buildManifest(i: ManifestInput): Record<string, unknown> {
   const field_pixels: Record<string, Pixels> = {}
   for (const s of FIELD_STATES) {
     if (!(s in i.measured.pixels)) throw new Error(`no measured pixels for ${s}`)
-    field_pixels[s] = i.measured.pixels[s]
+    const { organs_detected, p95_dL, mean_dL, lowK, highK } = i.measured.pixels[s]
+    field_pixels[s] = { organs_detected, p95_dL, mean_dL, lowK, highK }
   }
   const cpu = (n: string) => {
     if (!(n in i.measured.cpu)) throw new Error(`no CPU window ${n}`)
@@ -47,7 +48,8 @@ export function buildManifest(i: ManifestInput): Record<string, unknown> {
     extra: {
       resting_idle: i.measured.pixels['resting-idle'] ?? null,
       error_vs_resting_mean_dL: i.measured.pixels.error.mean_dL - rest.mean_dL,
-      grounds: { default: { error_minus_resting_mean_dL: i.measured.pixels.error.mean_dL - rest.mean_dL } },
+      grounds: groundsOf(i.measured.pixels),
+      bloom: Object.fromEntries(Object.entries(i.measured.pixels).filter(([k]) => k.endsWith('.bloom'))),
       field_sampler: i.measured.field,
     },
     raw: {
@@ -59,6 +61,21 @@ export function buildManifest(i: ManifestInput): Record<string, unknown> {
       cpu_order: i.order,
     },
   }
+}
+
+/** Per ground: the field states measured on it and error-minus-resting mean ΔL (REPORT ONLY: the conductor watches the margin).
+ *  The first ground is the one the contract stills were taken on; `dark.*` stills are the extra ground when it could be captured. */
+function groundsOf(px: Record<string, Pixels>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  const on = (prefix: string, name: string) => {
+    const get = (s: string) => px[prefix + s]
+    if (!get('resting') || !get('error')) return
+    out[name] = { ground: get('resting').ground ?? null, error_minus_resting_mean_dL: get('error').mean_dL - get('resting').mean_dL,
+      mean_dL: Object.fromEntries(['resting', 'working', 'needs_you', 'error'].map(s => [s, get(s)?.mean_dL ?? null])) }
+  }
+  on('', 'default')
+  on('dark.', 'dark')
+  return out
 }
 
 /** Messages (each a list of painted parts, clipped to the region) with at least one part no exclusion rectangle covers:

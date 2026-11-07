@@ -31,6 +31,7 @@ const DISPLAY = process.env.CF_DISPLAY ?? ':93'
 const MOCK_PORT = Number(process.env.CF_MOCK_PORT ?? 18931)
 const SCREEN = { w: 1600, h: 1000 }
 const WINDOW_S = 62 // each CPU window samples a little over the 60 s the budget names
+const SETTLE_PERF_S = 20 // after a toggle or a focus change, before a CPU window opens
 const SETTLE_S = 8 // a state change blooms for a few seconds; stills are taken after it settled (C7)
 const T0 = Date.now()
 const log = (m: string) => console.log(`[${((Date.now() - T0) / 1000).toFixed(1).padStart(6)}s] ${m}`)
@@ -192,21 +193,40 @@ async function domDump(page: Page, title: string, stored: string, state: string,
 
 interface Taken { state: string; rel: string; png: string; meta: string; region: Rect; exclude: Rect[]; at: number; geo: P.Geometry }
 /** A screen still of the focused session + its sidecar. The PNG comes from the REAL screen (x11grab), not from the page. */
-async function still(page: Page, state: string): Promise<Taken> {
+async function still(page: Page, state: string, key = state): Promise<Taken> {
   const geo = await page.evaluate(P.readGeometry)
   if (geo.surface === null) throw new Error('no chat surface on screen')
   if (geo.offset[0] !== 0 || geo.offset[1] !== 0) throw new Error(`the window is offset ${geo.offset} on the screen: client pixels are not screen pixels`)
   // the region is the chat surface above the composer (the composer is excluded by leaving it out of the region, ≥ 50% of the still stays)
   const [sx, sy, sw, sh] = geo.surface as Rect
   const region: Rect = [sx, sy, sw, Math.min(sh, Math.max(1, (geo.composerTop ?? sy + sh) - 4 - sy))]
-  const png = `stills/${state}.png`
+  const png = `stills/${key}.png`
   const at = now()
   grab(path.join(RAW, png))
   const exclude = clipRects(geo.boxes, region, 3)
-  if (unionCoverage(exclude) > 0.25 * region[2] * region[3]) throw new Error(`${state}: exclusions cover more than 25% of the region: ${JSON.stringify(geo.boxes)} -> ${JSON.stringify(exclude)}`)
-  const meta = `stills/${state}.json`
+  if (unionCoverage(exclude) > 0.25 * region[2] * region[3]) throw new Error(`${key}: exclusions cover more than 25% of the region: ${JSON.stringify(geo.boxes)} -> ${JSON.stringify(exclude)}`)
+  const meta = `stills/${key}.json`
   wj(meta, { schema: 'cf2-still/1', state, png_sha256: sha256Hex(fs.readFileSync(path.join(RAW, png))), taken_at: at, region, exclude })
   return { state, rel: png, png: `evidence/v2/raw/${png}`, meta, region, exclude, at, geo }
+}
+
+/** EXTRA ground (best effort, report only): Desktop colour mode → dark through the command palette, the plugin re-attached so it samples
+ *  the new ground, one still per field state. A failure is recorded in the log; it never fails the capture. */
+async function darkGround(page: Page, ids: Record<string, string>): Promise<void> {
+  try {
+    await page.keyboard.press('Control+k'); await sleep(800)
+    await page.keyboard.type('dark'); await sleep(800)
+    await page.keyboard.press('Enter'); await sleep(2000)
+    const mode = await page.evaluate(() => document.documentElement.getAttribute('data-hermes-mode'))
+    if (mode !== 'dark') throw new Error(`colour mode is ${mode}`)
+    await setPlugin(page, false); await setPlugin(page, true)
+    for (const [key, state] of [['r4', 'resting'], ['b', 'needs_you'], ['c', 'error'], ['a', 'working']]) {
+      await focusRow(page, TITLES[key as keyof typeof TITLES]); await sleep(SETTLE_S * 1000)
+      await still(page, state, `dark.${state}`)
+    }
+    log('dark ground captured')
+  } catch (e) { log(`dark ground skipped: ${String(e).slice(0, 200)}`) }
+  void ids
 }
 
 // ---- main --------------------------------------------------------------------------------------------------------------
@@ -282,7 +302,11 @@ async function main(): Promise<void> {
     const take = async (key: string, state: string, focused: boolean, measure: boolean): Promise<void> => {
       const title = TITLES[key as keyof typeof TITLES]
       const t0 = now()
-      if (focused) { await focusRow(page, title); await sleep(SETTLE_S * 1000) }
+      if (focused) {
+        await focusRow(page, title)
+        // a state change blooms for a few seconds (C7): one extra, unmeasured-by-the-contract still while it blooms, then the settled one
+        if (measure && state !== 'resting') { await sleep(1500); await still(page, state, `${state}.bloom`); await sleep((SETTLE_S - 1.5) * 1000) } else await sleep(SETTLE_S * 1000)
+      }
       const geo = await page.evaluate(P.readGeometry)
       const st = measure ? await still(page, state) : null
       const dump = await domDump(page, title, ids[key], state, focused, st, geo)
@@ -315,7 +339,7 @@ async function main(): Promise<void> {
         rows: (await page.evaluate(P.readRows)).map(r => ({ 'data-cf-session': r['data-cf-session'], 'data-cf-state': r['data-cf-state'], swatch_circles: r.swatch_circles })) })
     }
     const runWindow = async (name: string, plugin: 'on' | 'off', during: () => Promise<void>) => {
-      const run = await cpuWindow(appPid, WINDOW_S, async () => { await winDump(name, plugin); await during() })
+      const run = await cpuWindow(appPid, WINDOW_S, async () => { await sleep(5000); await winDump(name, plugin); await during() })
       const rel = `cpu/${name.replace('_', '.')}.csv`
       w(rel, csvOf(['pid', 'ts', 'cpu_pct'], run.rows))
       windows[name] = { file: rel, dom_dump: `dom/win.${name}.json`, roles: run.roles }
@@ -329,21 +353,26 @@ async function main(): Promise<void> {
       if (rel) w(rel, csvOf(['ts', 'css_sha256'], rows))
     }
 
-    await focusRow(page, TITLES.r4); await sleep(15_000)
+    // Every window must carry the same toggle history: the FIRST switch-off of the plugin leaves the Desktop ~1.5 pp busier for good
+    // (measured separately: ON-without-toggle 1.2-1.5 pp, OFF 3.0, ON again 3.0-4.2), so the plugin goes off and on once BEFORE
+    // the first window, and every window below follows a toggle and a 20 s settle.
+    await setPlugin(page, false); await setPlugin(page, true)
+    await focusRow(page, TITLES.r4); await sleep(SETTLE_PERF_S * 1000)
     let idleStill: Taken | undefined
     await runWindow('idle_on', 'on', async () => {
-      await sleep(20_000)
+      await sleep(15_000)
       idleStill = await still(page, 'resting-idle')
       const d = await domDump(page, TITLES.r4, ids.r4, 'resting', true, idleStill, idleStill.geo)
       wj('dom/idle-window.json', d)
       stills.push({ state: 'resting-idle', path: idleStill.png, sha256: sha256Hex(fs.readFileSync(path.join(RAW, idleStill.rel))), meta: idleStill.meta, dom_dump: 'dom/idle-window.json' })
     })
-    await setPlugin(page, false); await focusRow(page, TITLES.r4); await sleep(15_000)
+    await setPlugin(page, false); await focusRow(page, TITLES.r4); await sleep(SETTLE_PERF_S * 1000)
     await runWindow('idle_off', 'off', async () => undefined)
-    await focusRow(page, TITLES.a); await sleep(12_000)
+    await focusRow(page, TITLES.a); await sleep(SETTLE_PERF_S * 1000)
     await runWindow('working_off', 'off', () => pollCss(null, 40))
-    await setPlugin(page, true); await focusRow(page, TITLES.a); await sleep(12_000)
+    await setPlugin(page, true); await focusRow(page, TITLES.a); await sleep(SETTLE_PERF_S * 1000)
     await runWindow('working_on', 'on', () => pollCss('cpu/working.field.csv', 40))
+    await darkGround(page, ids)
     const order4 = ['idle_on', 'idle_off', 'working_off', 'working_on']
 
     // 4. manifest (numbers come from the contract's own instruments: measure.py recomputes everything from the raw files)

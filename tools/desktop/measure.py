@@ -37,7 +37,9 @@ def pixels(raw: Path, ip, re_) -> dict:
         why = re_.region_ok(meta, img.width, img.height)
         if why:
             raise ValueError(f"{png}: {why}")
-        out[meta["state"]] = ip.field_metrics(img, tuple(meta["region"]), [tuple(r) for r in meta["exclude"]])
+        region, exclude = tuple(meta["region"]), [tuple(r) for r in meta["exclude"]]
+        ground = ip.detect_organs(img, region, exclude)[1]
+        out[meta_path.stem] = {**ip.field_metrics(img, region, exclude), "state": meta["state"], "ground": ground}
     return out
 
 
