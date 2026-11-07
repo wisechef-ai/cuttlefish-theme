@@ -64,7 +64,9 @@ def _number(value: Any, field: str) -> tuple[Any, str | None]:
     lo, hi = RANGES[field]
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None, "type"
-    if not math.isfinite(value) or not lo <= value <= hi:
+    if isinstance(value, float) and not math.isfinite(value):
+        return None, "range"
+    if not lo <= value <= hi:  # exact int/float comparison: a 10**400 int is out of range, not an OverflowError
         return None, "range"
     return value, None
 

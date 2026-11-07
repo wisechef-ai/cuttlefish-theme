@@ -29,6 +29,9 @@ from . import events, pairing
 
 #: The five kwargs the derived approval key is computed over (nothing else).
 KEY_FIELDS = ("session_key", "turn_id", "tool_call_id", "pattern_key", "surface")
+#: The only ``kind`` values that ride the wire (the producers' own literals);
+#: anything else is producer text we must not echo, so it travels as "other".
+KINDS = ("approval", "clarify", "sudo")
 
 
 def _observer(fn: Callable[..., None]) -> Callable[..., None]:
@@ -56,6 +59,14 @@ def _text(kwargs: dict[str, Any], key: str) -> str:
     return value if isinstance(value, str) else ""
 
 
+def _kind(kwargs: dict[str, Any]) -> str:
+    """The wire ``kind``: a known producer literal, "approval" when absent, else "other"."""
+    kind = _text(kwargs, "kind")
+    if not kind:
+        return "approval"
+    return kind if kind in KINDS else "other"
+
+
 def _request_key(kwargs: dict[str, Any]) -> str:
     """The request id the desktop sees for an approval hook call.
 
@@ -78,7 +89,7 @@ def _fire_approval(kwargs: dict[str, Any], active: bool) -> None:
         return  # unattributable, or a follower behind its leader: an alias, never a second count
     key = (_text(kwargs, "session_key"), _request_key(kwargs))
     if active:
-        pairing.approval_open(*key, session_id, _text(kwargs, "kind") or "approval")
+        pairing.approval_open(*key, session_id, _kind(kwargs))
     else:
         pairing.close(*key, hook_side=True)
 
@@ -90,7 +101,7 @@ def _fire_human_input(kwargs: dict[str, Any], active: bool) -> None:
         return
     key = (_text(kwargs, "session_key"), _request_key(kwargs))
     if active:
-        pairing.human_open(*key, session_id, _text(kwargs, "kind") or "approval")
+        pairing.human_open(*key, session_id, _kind(kwargs))
     else:
         pairing.close(*key, hook_side=False)
 

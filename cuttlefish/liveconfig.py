@@ -34,6 +34,10 @@ except ImportError:  # by-path load (the dashboard's plugin_api.py) has no paren
 PLUGIN_KEY = "cuttlefish-theme"
 
 
+_UNREADABLE = {"path": "config", "code": "type",
+               "message": "config.yaml is not valid YAML; using the default settings"}
+
+
 def hermes_home() -> Path:
     """The Hermes home this process serves (core's resolver, else env/default)."""
     try:
@@ -66,11 +70,12 @@ def read_raw_settings(home: Path) -> tuple[Any, list[dict[str, str]]]:
         text = config_path(home).read_text(encoding="utf-8")
     except OSError:
         return None, []
+    except UnicodeDecodeError:
+        return None, [_UNREADABLE]
     try:
         data = yaml.safe_load(text)
-    except yaml.YAMLError:
-        return None, [{"path": "config", "code": "type",
-                       "message": "config.yaml is not valid YAML; using the default settings"}]
+    except (yaml.YAMLError, RecursionError):  # a hostile nesting depth is "not YAML we can read" too
+        return None, [_UNREADABLE]
     entry = data.get("plugins") if isinstance(data, dict) else None
     entry = entry.get("entries") if isinstance(entry, dict) else None
     entry = entry.get(PLUGIN_KEY) if isinstance(entry, dict) else None
