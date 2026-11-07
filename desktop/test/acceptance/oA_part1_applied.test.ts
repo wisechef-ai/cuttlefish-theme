@@ -112,7 +112,8 @@ test('P3.3 the status strip speaks: its words differ across at least 4 presets (
   sdk.fake.emit(failed('SA'))
   await settle(driver, h)
   seen.error = stripText(h)
-  for (const [k, v] of Object.entries(seen)) assert.ok(v.length > 0, `the strip is empty while ${k}`)
+  // resting's default label is "" (contract/config-vectors.json): the strip may say nothing at rest, never while it matters
+  for (const [k, v] of Object.entries(seen)) if (k !== 'resting') assert.ok(v.length > 0, `the strip is empty while ${k}`)
   assert.equal(new Set(Object.values(seen)).size, 4, `strip words are not distinct per preset: ${JSON.stringify(seen)}`)
   assert.match(seen.needs_you, /needs you/i)
   h.dispose()
