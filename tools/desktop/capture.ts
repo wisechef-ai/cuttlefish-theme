@@ -214,6 +214,7 @@ async function still(page: Page, state: string, key = state): Promise<Taken> {
  *  the new ground, one still per field state. A failure is recorded in the log; it never fails the capture. */
 async function darkGround(page: Page, ids: Record<string, string>): Promise<void> {
   try {
+    await page.getByText('New session').first().click(); await sleep(800) // a neutral page: Ctrl+K inside the composer is the editor's
     await page.keyboard.press('Control+k'); await sleep(800)
     await page.keyboard.type('color mode'); await sleep(800)
     await page.keyboard.press('Enter'); await sleep(800) // opens the Light / Dark / System list
