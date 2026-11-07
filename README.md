@@ -41,7 +41,7 @@ The plugin honours `prefers-reduced-motion`: under it, nothing animates regardle
 ## Install
 
 ```bash
-hermes plugins install github.com/wisechef-ai/cuttlefish-theme
+hermes plugins install wisechef-ai/cuttlefish-theme
 ```
 
 1. Enable the Desktop plugin in **Settings → Plugins** (`cuttlefish-theme`).
