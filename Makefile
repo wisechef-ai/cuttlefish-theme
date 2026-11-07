@@ -10,7 +10,8 @@ export TMPDIR := /tmp
 
 CONTRACT_JS := desktop/test/acceptance/*.test.ts
 UNIT_JS := $(wildcard desktop/test/unit/*.test.ts) $(wildcard desktop/test/adapters/*.test.ts)
-RELEASE_ONLY := tests/acceptance/test_o7_desktop_evidence.py tests/acceptance/test_o8_submission_kit.py
+RELEASE_ONLY := tests/acceptance/test_o7_desktop_evidence.py tests/acceptance/test_o8_submission_kit.py \
+                tests/acceptance/test_o7_part1_recompute.py tests/acceptance/test_o8_part1_video_provenance.py
 
 .PHONY: help venv build lint unit contract contract-js contract-py test release-check clean
 
