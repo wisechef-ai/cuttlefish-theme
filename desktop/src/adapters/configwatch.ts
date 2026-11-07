@@ -27,6 +27,8 @@ export interface WatchHooks {
   onFeed(input: FeedInput): void
   onSettings(config: unknown): void
   pollWanted(): boolean
+  /** Called first on every mtime sighting (the existing watch tick); must never throw. */
+  onTick?(): void
 }
 
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -39,6 +41,7 @@ function mtimeOf(answer: unknown): number | string | null {
 
 /** One mtime sighting: fetch /config exactly when the mtime CHANGED (first sight included). */
 async function mtimeTick(doors: WatchDoors, hooks: WatchHooks, cell: { watch: ConfigWatch }): Promise<void> {
+  try { hooks.onTick?.() } catch { /* a failed re-sample never costs the config sighting */ }
   try {
     const plan = configPlan(cell.watch, mtimeOf(await doors.request('config.get', { key: 'mtime' })))
     cell.watch = plan.next

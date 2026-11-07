@@ -47,6 +47,7 @@ function mtimeOf(answer         )                         {
 
 /** One mtime sighting: fetch /config exactly when the mtime CHANGED (first sight included). */
 async function mtimeTick(doors            , hooks            , cell                        )                {
+  try { hooks.onTick?.() } catch { /* a failed re-sample never costs the config sighting */ }
   try {
     const plan = configPlan(cell.watch, mtimeOf(await doors.request('config.get', { key: 'mtime' })))
     cell.watch = plan.next
@@ -335,6 +336,14 @@ function sampleGround()         {
   return parsed !== null ? parsed : FALLBACK_GROUND
 }
 
+/** F8: a live theme switch. Re-sample on the config tick; only a CHANGED ground re-renders. */
+function resampleGround(a          )       {
+  const ground = sampleGround()
+  if (ground === a.v.ground) return
+  applyEnv(a.v, { ground })
+  paint(a)
+}
+
 /** The window the field paints for: the host's viewport atom, window size as the fallback. */
 function viewportOf(vp                                    = host.state.viewport.get())                                    {
   return { width: vp.width > 0 ? vp.width : 1200, height: vp.height > 0 ? vp.height : 800 }
@@ -478,7 +487,7 @@ function attach(ctx               )       {
       setInterval: (fn, ms) => ctx.setInterval(fn, ms),
       now: () => Date.now(),
     },
-    { onFeed: input => applyInput(a, input), onSettings: config => applyConfig(a, config), pollWanted: () => pollPlan(v.feed, Date.now()).pollActiveList },
+    { onFeed: input => applyInput(a, input), onSettings: config => applyConfig(a, config), onTick: () => resampleGround(a), pollWanted: () => pollPlan(v.feed, Date.now()).pollActiveList },
   ))
 
   offs.push(wireReduce(v, () => paint(a)))

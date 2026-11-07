@@ -193,3 +193,21 @@ test('poll: without now() the tick stamps t = 0; stop is idempotent', async () =
   stop()
   assert.equal(cancelled, 3, 'every canceller ran exactly once across two stops')
 })
+
+test('configwatch: a throwing onTick never costs the config sighting (F8)', async () => {
+  const requests: string[] = []
+  let tick: () => void = () => {}
+  const { wireWatch } = await import('../../../src/adapters/configwatch.ts')
+  const settings: unknown[] = []
+  const stop = wireWatch({
+    request: async (m: string) => { requests.push(m); return { mtime: 5 } },
+    rest: async () => ({ settings: {} }),
+    setTimeout: (fn: () => void) => { tick = fn; return () => {} },
+    setInterval: () => () => {},
+  }, { onFeed: () => {}, onSettings: c => settings.push(c), pollWanted: () => false, onTick: () => { throw new Error('boom') } })
+  tick()
+  await new Promise(r => setImmediate(r))
+  assert.deepEqual(requests, ['config.get'])
+  assert.equal(settings.length, 1)
+  stop()
+})

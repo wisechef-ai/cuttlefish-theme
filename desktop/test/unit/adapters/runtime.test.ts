@@ -328,3 +328,43 @@ test('runtime: dispose leaves no style, attribute, timer, listener, loop or live
   gone(await life(), 1)
   gone(await life(), 1) // boot() resets the recorder: the second life has exactly ONE loop of its own, again
 })
+
+// ---- F8: a live light/dark switch --------------------------------------------------------------
+
+test('runtime: the ground is re-sampled on the config tick — a theme switch re-renders field and rim, no change re-renders nothing (F8)', async () => {
+  const real = globalThis.getComputedStyle
+  const host_ = { ground: 'rgb(20, 20, 22)' }
+  ;(globalThis as unknown as { getComputedStyle: unknown }).getComputedStyle = () => ({
+    getPropertyValue: () => '', backgroundColor: host_.ground,
+  })
+  try {
+    const { h, mount } = await boot()
+    h.respondRest((path: string) => (path === '/config' ? { settings: {}, warnings: [], rev: 'r' } : path === '/health' ? { ok: true } : { mtime: 1 }))
+    fake.responder = (method: string): unknown => (method === 'config.get' ? { mtime: 1 } : { sessions: [] })
+    const { el } = mount()
+    await h.advance(50) // the kick: first config sight
+    let writes = 0
+    let text = el.textContent
+    Object.defineProperty(el, 'textContent', { get: () => text, set: (x: string) => { writes += 1; text = x } })
+    const rim = (): string => JSON.stringify(expand((h.state.contributions.find(c => c.id === 'rim') as { render: () => unknown }).render()).tree)
+    const dark = text
+    const darkRim = rim()
+    const wakes = calls.loops[0].wakes
+
+    await h.advance(2000) // a tick, ground unchanged
+    assert.equal(writes, 0, 'no change ⇒ not one re-render')
+    assert.equal(calls.loops[0].wakes, wakes)
+    assert.equal(calls.loops[0].opts.idleWhen?.(), true, 'the loop stays parked')
+
+    host_.ground = 'rgb(250, 249, 247)' // the user flips to a light theme
+    await h.advance(2000)
+    assert.equal(text, fieldCss(initialView({ ...ENV, ground: '#faf9f7' })), 'the field is tuned to the new ground')
+    assert.notEqual(text, dark)
+    assert.notEqual(rim(), darkRim, 'the rim follows')
+    const settled = text
+    await h.advance(2000)
+    assert.equal(text, settled, 'and settles: the same ground again changes nothing')
+  } finally {
+    ;(globalThis as unknown as { getComputedStyle: unknown }).getComputedStyle = real
+  }
+})

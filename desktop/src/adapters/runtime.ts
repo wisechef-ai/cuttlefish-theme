@@ -48,6 +48,14 @@ function sampleGround(): string {
   return parsed !== null ? parsed : FALLBACK_GROUND
 }
 
+/** F8: a live theme switch. Re-sample on the config tick; only a CHANGED ground re-renders. */
+function resampleGround(a: Attached): void {
+  const ground = sampleGround()
+  if (ground === a.v.ground) return
+  applyEnv(a.v, { ground })
+  paint(a)
+}
+
 /** The window the field paints for: the host's viewport atom, window size as the fallback. */
 function viewportOf(vp: { width: number; height: number } = host.state.viewport.get()): { width: number; height: number } {
   return { width: vp.width > 0 ? vp.width : 1200, height: vp.height > 0 ? vp.height : 800 }
@@ -191,7 +199,7 @@ export function attach(ctx: PluginContext): void {
       setInterval: (fn, ms) => ctx.setInterval(fn, ms),
       now: () => Date.now(),
     },
-    { onFeed: input => applyInput(a, input), onSettings: config => applyConfig(a, config), pollWanted: () => pollPlan(v.feed, Date.now()).pollActiveList },
+    { onFeed: input => applyInput(a, input), onSettings: config => applyConfig(a, config), onTick: () => resampleGround(a), pollWanted: () => pollPlan(v.feed, Date.now()).pollActiveList },
   ))
 
   offs.push(wireReduce(v, () => paint(a)))

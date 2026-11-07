@@ -68,7 +68,7 @@ Gaps between fake and real (the findings):
 | F5 | fixed (test) | no prod bug; new test pins the ring across working/needs_you/error | `runtime: the composer ring is the identity hue in EVERY state` — fails against the F5 mutant | ring + 30° in error → test fails (it survived 30 acceptance + 45 unit before) |
 | F6 | fixed | `TitleMount`: no `useLive`, `useEffect(…, [mountStyle])` (stable fn) | no test: the fake ignores effect deps and never re-renders — behaviour is real-React-only; covered by the A4/oA suites staying green | — |
 | F7 | fixed | live viewport goes through the same 0 → window-size fallback | `runtime: a live viewport of 0 keeps…` | raw `applyEnv(v, vp)` → fails |
-| F8 | OPEN (minor) | ground sampled once at attach; theme switch needs reload | — | — |
+| F8 | fixed (conductor ruling) | `runtime.ts` `resampleGround` runs from a new optional `onTick` hook on the EXISTING mtime tick in `configwatch.ts` (no new timer/observer/rAF); re-renders only when the sampled ground changed; a throwing hook never costs the config sighting | `runtime: the ground is re-sampled on the config tick…` (RED at `1aec8ab`: field stayed on the dark ground; asserts rendered field + rim, 0 writes and parked loop when unchanged), `configwatch: a throwing onTick…` | `if (false) return` → fails; hook removed → fails |
 | F9 | info | bundle 103 028 B; whole domain ships (~70 KB TS source); acceptable | — | — |
 
 Plus the conductor's asks:
