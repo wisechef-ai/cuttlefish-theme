@@ -161,16 +161,21 @@ function busySnapshot(current: Record<string, boolean>, input: FeedInput, p: Rec
   return current
 }
 
+/** The stored id a snapshot names as focused: its own, else the focused runtime's mapped one. */
+function focusedStoredOf(m: FeedModel, p: Record<string, unknown>): string | null {
+  if (idOk(p.focused_stored_session_id)) return p.focused_stored_session_id
+  return idOk(p.focused_session_id) ? own(m.storedOf, p.focused_session_id) ?? null : null
+}
+
+/** Ctrl+N: a focused runtime with an explicit null stored id and no mapping is a new empty chat. */
+const isNewEmptyChat = (p: Record<string, unknown>): boolean =>
+  p.focused_stored_session_id === null && idOk(p.focused_session_id)
+
 /** Resolve the focused session of a state snapshot; focusing a session clears its `unseen`. */
 function focus(m: FeedModel, p: Record<string, unknown>): FeedModel {
-  let stored: string | null = null
-  if (idOk(p.focused_stored_session_id)) stored = p.focused_stored_session_id
-  else if (idOk(p.focused_session_id)) stored = own(m.storedOf, p.focused_session_id) ?? null
-  // Ctrl+N: a focused runtime with an explicit null stored id and no mapping is a new empty chat — nothing stored is focused.
-  if (stored === null && p.focused_stored_session_id === null && idOk(p.focused_session_id)) {
-    return m.focusedStored === null ? m : { ...m, focusedStored: null }
-  }
-  if (stored === null || m.focusedStored === stored) return m
+  const stored = focusedStoredOf(m, p)
+  if (stored === null) return isNewEmptyChat(p) && m.focusedStored !== null ? { ...m, focusedStored: null } : m
+  if (m.focusedStored === stored) return m
   const rec = session(m, stored)
   return { ...m, focusedStored: stored, sessions: put(m.sessions, stored, { ...rec, unseen: false }) }
 }
