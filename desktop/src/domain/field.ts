@@ -33,12 +33,11 @@ export function alphaFor(target: number, pigRgb: Rgb, plan: GroundPlan, maxDl: n
 interface RenderCore {
   cons: Constellation
   plan: GroundPlan
-  dots: Dot[]
   pigmentFor: (kind: PigmentKind) => { hex: string; rgb: Rgb; maxDl: number }
 }
 
 function organDots(spec: PatternSpec, core: RenderCore, seed: string, intensity: number, bloom: number,
-                   tMs: number, motion: 'still' | 'alive' | 'off', small: boolean, targets: number[]): Dot[] {
+                   tMs: number, motion: 'still' | 'alive' | 'off', targets: number[]): Dot[] {
   const pig = core.pigmentFor(organPigmentOf(spec.base))
   const contracted = spec.base === 'blanch'
   return core.cons.organs.map((o, i): Dot => ({
@@ -84,8 +83,10 @@ export function renderField(input: FieldInput): Dot[] {
     tMs: input.tMs, motion: input.motion, reducedMotion: input.reducedMotion, small: false,
   })
   const bloom = bloomFactor(input.sinceChangeMs, input.motion, input.reducedMotion)
-  const core: RenderCore = { cons, plan, dots: [], pigmentFor: k => pigment(plan, k) }
-  const dots = organDots(input.pattern, core, input.seed, input.intensity, bloom, input.tMs, input.motion, false, targets)
+  const core: RenderCore = { cons, plan, pigmentFor: k => pigment(plan, k) }
+  // reduced motion is `off` for every time-dependent term (bloom above, twinkle here)
+  const motion = input.reducedMotion ? 'off' : input.motion
+  const dots = organDots(input.pattern, core, input.seed, input.intensity, bloom, input.tMs, motion, targets)
   if (input.pattern.base === 'eyespot') dots.push(eyeDot(core, input.seed, input.width, input.height, input.intensity, bloom, false))
   return dots
 }
@@ -95,8 +96,8 @@ function renderSmall(input: SwatchInput, w: number, h: number, target: number, r
   const plan = planGround(input.hueDeg, input.ground)
   const cons = constellation(input.seed, w, h, target, rLo, rHi)
   const targets = inkTargets(input.pattern, cons, w, h, plan, input.seed, { tMs: 0, motion: 'still', reducedMotion: false, small: true })
-  const core: RenderCore = { cons, plan, dots: [], pigmentFor: k => pigment(plan, k) }
-  const dots = organDots(input.pattern, core, input.seed, input.intensity, 1, 0, 'still', true, targets)
+  const core: RenderCore = { cons, plan, pigmentFor: k => pigment(plan, k) }
+  const dots = organDots(input.pattern, core, input.seed, input.intensity, 1, 0, 'still', targets)
   if (input.pattern.base === 'eyespot') dots.push(eyeDot(core, input.seed, w, h, input.intensity, 1, true))
   return { dots, width: w, height: h }
 }

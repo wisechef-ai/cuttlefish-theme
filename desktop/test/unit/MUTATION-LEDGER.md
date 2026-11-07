@@ -13,12 +13,13 @@ survivor exposed a behaviour no earlier test could distinguish from a near-miss.
 
 ### blake2b.ts — 4
 
-- `G` carry ternaries `lo < vl[a]` -> `lo <= vl[a]` (three sites): differ only when the
-  working low word `vl[b]` is exactly 0. Every digest the domain produces is pinned
-  byte-exact (RFC 7693 vectors, the seededStream eight-draw pin, eight golden render
-  digests); the mutants match them all, so no zero word occurs at these positions for any
-  hashed input. Divergence needs 4 aligned zero bytes inside a hashed string — the domain's
-  seeds/domains (gateway ids, fixed labels) cannot contain them.
+- `G` carry ternaries `lo < vl[a]` -> `lo <= vl[a]` (the three/four `v[x] + v[y]` sites, not the
+  `+ message word` sites, which ARE killed because zero padding words occur routinely): they
+  differ only when the working-state word added (`vl[b]` / `vl[d]`) is exactly 0 mod 2^32.
+  Those words are pseudo-random mixing state, so this is a probabilistic equivalent (~2^-32 per
+  operation), not a structural one; every digest the domain produces is pinned byte-exact (RFC 7693
+  vectors, the seededStream pin, golden render digests) and the mutants match them all.
+  (Corrected in review: the earlier text blamed zero bytes in the hashed string.)
 - `digestOf` `i < 8` -> `i <= 8`: the ninth iteration writes past the end of the 64-byte
   Uint8Array; out-of-bounds typed-array writes are discarded by spec. Identical output.
 

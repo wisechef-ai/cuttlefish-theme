@@ -7,7 +7,6 @@
 // locked classifier over 20 identities x 3 grounds (test/unit/language.test.ts measures margins).
 // Pure: time arrives as tMs, entropy only from blake2b.
 import { blake2b, seededStream, utf8 } from './blake2b.ts'
-import { bloomFactor } from './motion.ts'
 import { hexToLab, hexToRgb, oklchToHex, rgbToOklab, type Rgb } from './oklch.ts'
 import type { Constellation, Organ } from './organs.ts'
 import type { Motion, PatternSpec } from './types.ts'
@@ -28,7 +27,6 @@ const SWATCH_CLOUD_BASE = 0.040, SWATCH_CLOUD_AMP = 0.135
 /** Ink ceiling (MAX_DL) and the pigment headroom at full alpha (FULL_DL). */
 export const MAX_DL = 0.30
 const FULL_DL = 0.40
-const SPOT_DL = 0.156                                          // the ocellus ink
 const CHROMA_C = 0.105, BLANCH_C = 0.02, SPOT_C = 0.09
 const TWINKLE_AMP = 0.55, TWINKLE_P_MIN = 7000, TWINKLE_P_SPAN = 5000
 const CLOUD_TRAVEL_MS = 18000                                  // one band pass across the height
@@ -49,7 +47,7 @@ export interface GroundPlan {
 }
 
 const planCache = new Map<string, GroundPlan>()
-const dlAt = (hex: string, rgb: Rgb, gl: number): number => Math.abs(rgbToOklab(hexToRgb(hex)).L - gl)
+const dlAt = (hex: string, gl: number): number => Math.abs(rgbToOklab(hexToRgb(hex)).L - gl)
 
 /** Pigments for one (hue, ground): the chromatic pigment lands ~FULL_DL away from the ground at full alpha. */
 export function planGround(hueDeg: number, ground: string): GroundPlan {
@@ -62,7 +60,7 @@ export function planGround(hueDeg: number, ground: string): GroundPlan {
   let lo = 0.04, hi = 0.97
   for (let i = 0; i < 20; i++) {
     const mid = (lo + hi) / 2
-    const d = dlAt(oklchToHex(mid, CHROMA_C, hueDeg), rgb, gl)
+    const d = dlAt(oklchToHex(mid, CHROMA_C, hueDeg), gl)
     if (dir > 0 ? d < FULL_DL : d > FULL_DL) lo = mid; else hi = mid
   }
   const chroma = oklchToHex((lo + hi) / 2, CHROMA_C, hueDeg)
@@ -70,7 +68,7 @@ export function planGround(hueDeg: number, ground: string): GroundPlan {
   const spot = oklchToHex(Math.min(0.97, Math.max(0.03, gl - 0.30)), SPOT_C, hueDeg)
   const plan: GroundPlan = {
     groundRgb: rgb, groundL: gl, dir, chroma, blanch, spot,
-    chromaMaxDl: dlAt(chroma, rgb, gl), blanchMaxDl: dlAt(blanch, rgb, gl), spotMaxDl: dlAt(spot, rgb, gl),
+    chromaMaxDl: dlAt(chroma, gl), blanchMaxDl: dlAt(blanch, gl), spotMaxDl: dlAt(spot, gl),
   }
   if (planCache.size > 256) planCache.clear()
   planCache.set(key, plan)
@@ -135,7 +133,7 @@ function smallCloudInk(cons: Constellation, seed: string, shape: Shaper): number
   const sigmaR = Math.max(1, n / 6)
   const centre = 2 * sigmaR + (n - 1 - 4 * sigmaR) * hashUnit(seed, 'cloudrow')
   const draw = cloudJitter(seed)
-  return cons.organs.map((o, i) => shape(cloudRankDl(rank[i], centre, sigmaR, draw())))
+  return cons.organs.map((_o, i) => shape(cloudRankDl(rank[i], centre, sigmaR, draw())))
 }
 
 /** The passing cloud on the field: one soft band travelling at constant speed (no dead spots). */

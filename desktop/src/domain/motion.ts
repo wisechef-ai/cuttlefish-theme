@@ -14,12 +14,13 @@ const BLOOM_AMP = 1.0
 const TAU_OPEN = 100        // ms; opening is muscular and fast
 const TAU_CLOSE = 550       // ms; closing is elastic and slow
 const T_PEAK = 250          // ms; hand-over from the opening ramp to the closing decay
+const ENV_AT_PEAK = 1 - Math.exp(-T_PEAK / TAU_OPEN)   // the decay starts where the ramp ended: no step
 
 /** How much a state that changed `sinceChangeMs` ago is still blooming. 1 = settled. */
 export function bloomFactor(sinceChangeMs: number, motion: Motion, reducedMotion: boolean): number {
   if (reducedMotion || motion === 'off' || sinceChangeMs >= BLOOM_MS) return 1
   const s = Math.max(0, sinceChangeMs)
-  const env = s < T_PEAK ? 1 - Math.exp(-s / TAU_OPEN) : Math.exp(-(s - T_PEAK) / TAU_CLOSE)
+  const env = s < T_PEAK ? 1 - Math.exp(-s / TAU_OPEN) : ENV_AT_PEAK * Math.exp(-(s - T_PEAK) / TAU_CLOSE)
   return 1 + BLOOM_AMP * env
 }
 
