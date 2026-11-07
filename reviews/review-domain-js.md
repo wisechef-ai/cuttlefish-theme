@@ -61,3 +61,24 @@ Contract diff: `git diff --exit-code 5358f8c -- contract tests/acceptance deskto
 | F7 | MINOR | pattern.ts:55 | error organs on light grounds are *fainter* (dL 0.0136) than resting (0.0268): contract-allowed, but "blanching" there is near-invisible; headroom 0.0016 to the 0.012 floor. |
 | F8 | MINOR | feed.ts `pollPlan` | `void nowMs`: parameter required by contract, intentionally unused (no cadence state). Documented, not a lie. |
 | F9 | MINOR | MUTATION-LEDGER.md | wrong reason for the blanket blake2b carry equivalence (see ask 4). |
+
+## Fix round (same branch)
+Tests: `desktop/test/unit/review-fixes.test.ts` (F1, F2, F3 RED at 4d7433d on behaviour; F4 is a guard that was green
+but unpinned; F6 RED at 4d7433d). Mutants (old line restored in a scratch copy, a test fails each time):
+M1 twinkle ignores reduced -> F1; M2 REDUCERS inherited, M3 own() inherited -> F2; M4 pattern ref `in`, M5 STATES lookup,
+M6 PATTERNS `in` -> F3; M7 blanch hue +40, M8 spot hue +40, M9 chroma hue +40 -> F4; old bloom envelope -> F6 + golden.
+
+| id | status | change |
+|---|---|---|
+| F1 | fixed | field.ts: reduced motion is `off` for the twinkle too |
+| F2 | fixed | feed.ts: `Object.hasOwn` in `own()`, `del()` and the REDUCERS lookup |
+| F3 | fixed | settings.ts: `Object.hasOwn` for pattern refs, STATES, PATTERNS, `patternOf` (helper `presetState` keeps CC 9) |
+| F4 | fixed (guard added) | hue-per-state test over 20x3x5; pigments with L < 0.1 or C < 0.012 exempt (8-bit hue is noise there: the ocellus on a dark ground deviates 14 deg, invisible) |
+| F5 | fixed | dead import/const/params removed; `tsc --noUnusedLocals --noUnusedParameters` clean. (`cloudDl`'s `small` branch left: harmless) |
+| F6 | fixed | motion.ts: decay starts at the ramp's end value. Golden digest "alive clouds, dials off unity" re-pinned (it sampled the closing phase). |
+| F7 | open (MINOR) | contract-allowed; light-ground error is faint by construction |
+| F8 | open (MINOR) | contract signature |
+| F9 | fixed | ledger reason corrected |
+
+Final: unit 81/81, 7 acceptance files green (81 tests), S1/S2 2 passed, tsc strict + unused clean, crapper 116 fns max CC 9,
+dryer 0 candidates, contract diff vs 5358f8c empty.

@@ -91,7 +91,7 @@ function resolvePatterns(raw: unknown, warnings: Warning[]): Record<string, Patt
   if (raw === undefined) return out
   if (!isRec(raw)) { warn(warnings, 'patterns', 'type', 'patterns must be a mapping'); return out }
   for (const name of ownKeys(raw)) {
-    const spec = name in PATTERNS ? tuneBuiltin(name, raw[name], out[name], warnings) : newUserPattern(name, raw[name], warnings)
+    const spec = Object.hasOwn(PATTERNS, name) ? tuneBuiltin(name, raw[name], out[name], warnings) : newUserPattern(name, raw[name], warnings)
     if (spec) out[name] = spec
   }
   return out
@@ -151,7 +151,7 @@ function readPatternRef(warnings: Warning[], path: string, v: unknown, def: stri
     return isNew ? missingField(warnings, path, 'pattern', 'a new state needs a pattern', '')
       : { value: def ?? '', fatal: false }
   }
-  if (typeof v !== 'string' || !(v in patterns)) {
+  if (typeof v !== 'string' || !Object.hasOwn(patterns, v)) {
     return badField(warnings, path, 'pattern', 'unknown', `pattern ${JSON.stringify(v)} is not defined`, def ?? '', isNew)
   }
   return { value: v, fatal: false }
@@ -181,6 +181,9 @@ function draftState(warnings: Warning[], name: string, v: Record<string, unknown
   }
 }
 
+/** The built-in state of that name, if it is really one (never an inherited prototype member). */
+const presetState = (name: string): StateSpec | undefined => (Object.hasOwn(STATES, name) ? STATES[name] : undefined)
+
 function resolveStates(raw: unknown, patterns: Record<string, PatternSpec>, warnings: Warning[]): Record<string, StateSpec> {
   const out: Record<string, StateSpec> = structuredClone(STATES)
   if (raw === undefined) return out
@@ -196,7 +199,7 @@ function resolveStates(raw: unknown, patterns: Record<string, PatternSpec>, warn
       warn(warnings, `states.${name}`, 'type', 'a state must be a mapping or null to remove it')
       continue
     }
-    const draft = draftState(warnings, name, v, STATES[name], patterns)
+    const draft = draftState(warnings, name, v, presetState(name), patterns)
     if (draft && !draft.fatal) out[name] = draft.spec
   }
   return out
@@ -243,9 +246,9 @@ export function stateFor(settings: Settings, signals: ReadonlySet<Signal>): stri
 
 /** The pattern a state renders with. Throws on an unknown state (the caller owns the name). */
 export function patternOf(settings: Settings, state: string): PatternSpec {
-  const spec = settings.states[state]
+  const spec = Object.hasOwn(settings.states, state) ? settings.states[state] : undefined
   if (!spec) throw new Error(`no such state: ${state}`)
-  const pattern = settings.patterns[spec.pattern]
+  const pattern = Object.hasOwn(settings.patterns, spec.pattern) ? settings.patterns[spec.pattern] : undefined
   if (!pattern) throw new Error(`state ${state} points at unknown pattern ${spec.pattern}`)
   return { ...pattern }
 }

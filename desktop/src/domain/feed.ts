@@ -63,7 +63,7 @@ const idOk = (v: unknown): v is string => isStr(v) && !DANGEROUS.has(v)
 
 /** Own-property read: a dangerous name never reaches a prototype through us. */
 function own<V>(rec: Record<string, V>, key: string): V | undefined {
-  return DANGEROUS.has(key) ? undefined : rec[key]
+  return DANGEROUS.has(key) || !Object.hasOwn(rec, key) ? undefined : rec[key]
 }
 
 function put<V>(rec: Record<string, V>, key: string, value: V): Record<string, V> {
@@ -71,7 +71,7 @@ function put<V>(rec: Record<string, V>, key: string, value: V): Record<string, V
   return { ...rec, [key]: value }
 }
 function del<V>(rec: Record<string, V>, key: string): Record<string, V> {
-  if (DANGEROUS.has(key) || !(key in rec)) return rec
+  if (!Object.hasOwn(rec, key)) return rec
   const out = { ...rec }
   delete out[key]
   return out
@@ -255,7 +255,7 @@ const REDUCERS: Record<string, Reducer> = {
 /** One event in. Unknown kinds, missing sessions and garbage payloads are ignored, never thrown. */
 export function reduceFeed(model: FeedModel, input: FeedInput): FeedModel {
   if (!isRec(input)) return model
-  const reducer = typeof input.kind === 'string' ? REDUCERS[input.kind] : undefined
+  const reducer = typeof input.kind === 'string' && Object.hasOwn(REDUCERS, input.kind) ? REDUCERS[input.kind] : undefined
   return reducer ? reducer(model, input, isRec(input.payload) ? input.payload : {}) : model
 }
 

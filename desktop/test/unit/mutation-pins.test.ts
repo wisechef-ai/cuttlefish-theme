@@ -225,7 +225,7 @@ test('renderField golden digest: alive clouds with every dial off unity', () => 
     motion: 'alive' as const, reducedMotion: false, tMs: 4321, sinceChangeMs: Math.floor(BLOOM_MS / 3),
   }
   assert.equal(Buffer.from(blake2b(utf8(JSON.stringify(renderField(input))), 32)).toString('hex'),
-    '1c9789d4cf8e7e2f1c1feafbea0495f0ee622c99487f4f3dfdc74fbe534e66d0')
+    '87dfccf60608eed42ea5b44e07aa21bdaf19b3ccf887990b02772c20023404c9')
 })
 
 test('renderSwatch golden digests: working clouds and resting mottle', () => {
