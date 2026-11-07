@@ -42,29 +42,23 @@ _clock: Callable[[], float] = time.time
 
 
 @dataclass(eq=False)
-class _Member:
-    """One open request on one side (an approval-hook open or a human input)."""
+class _Slot:
+    """One question as the desktop sees it: the identity its ``active:true`` was
+    emitted under and how many open requests still share it. ``active:false``
+    goes out (under that same identity) only when ``open`` returns to 0."""
 
     rid: str
     session_id: str
     kind: str
-    pair: "_Pair | None" = None
-    t: float = field(default_factory=lambda: _clock())
+    open: int = 0
 
 
 @dataclass(eq=False)
-class _Pair:
-    """A human input and an approval hook counting as ONE question.
+class _Member:
+    """One open request on one side (an approval-hook open or a human input)."""
 
-    ``rid``/``session_id``/``kind`` are the FIRST-opened member's: it already
-    emitted the pair's ``active:true``, so the ``active:false`` must match it.
-    """
-
-    rid: str
-    session_id: str
-    kind: str
-    hook_closed: bool = False
-    human_closed: bool = False
+    slot: _Slot
+    t: float = field(default_factory=lambda: _clock())
 
 
 _hooks: dict[tuple[str, str], deque[_Member]] = {}    # approval side, per (session_key, rid)
@@ -112,67 +106,58 @@ def _discard(mapping: dict[Any, deque[_Member]], key: Any, member: _Member) -> N
             del mapping[key]
 
 
-def _emit(active: bool, member: _Member | _Pair, session_key: str) -> None:
+def _emit(active: bool, slot: _Slot, session_key: str) -> None:
     events.emit("needs_you", {
-        "session_id": member.session_id,
+        "session_id": slot.session_id,
         "session_key": session_key,
-        "request_id": member.rid,
-        "kind": member.kind,
+        "request_id": slot.rid,
+        "kind": slot.kind,
         "active": active,
     })
 
 
-def _close_counted(registry: dict, waiting: dict, session_key: str, rid: str, hook_side: bool) -> None:
-    """One counted close: consume the oldest open member behind the key.
-
-    Unpaired: the desktop's ``active:false`` comes when the LAST open request
-    with this key closes (the multiset). Paired: only when both halves of the
-    pair have closed — and then with the pair's (first-opened) identity.
-    """
+def _close_counted(registry: dict, waiting: dict, session_key: str, rid: str) -> None:
+    """One counted close: consume the oldest open member behind the key and
+    release its slot; the slot's ``active:false`` comes when the LAST request
+    sharing it (a colliding key, a paired partner) has closed."""
     member = _pop_oldest(registry, (session_key, rid))
     if member is None:
         return  # a close with nothing open: emit nothing, never go negative
     _discard(waiting, session_key, member)
-    pair = member.pair
-    if pair is None:
-        if (session_key, rid) not in registry:
-            _emit(False, member, session_key)
-        return
-    if hook_side:
-        pair.hook_closed = True
-    else:
-        pair.human_closed = True
-    if pair.hook_closed and pair.human_closed:
-        _emit(False, pair, session_key)
+    member.slot.open -= 1
+    if member.slot.open == 0:
+        _emit(False, member.slot, session_key)
 
 
-def _pair_up(member: _Member, partner: _Member) -> None:
-    """Join two open requests into one counted question (both stay closable)."""
-    pair = _Pair(rid=partner.rid, session_id=partner.session_id, kind=partner.kind)
-    partner.pair = pair
-    member.pair = pair
+def _slot_for(registry: dict, other_waiting: dict, session_key: str, rid: str,
+              session_id: str, kind: str, pairable: bool) -> tuple[_Slot, bool, bool]:
+    """The slot a new open joins, whether it is a NEW question (0→1), whether it paired.
+
+    The oldest unpaired partner from the OTHER side wins (a pair is one
+    question, its ``active:true`` was the partner's); else a colliding open of
+    the same key shares that open's slot; else a fresh slot."""
+    partner = _pop_oldest(other_waiting, session_key) if pairable else None
+    if partner is not None:
+        return partner.slot, False, True
+    colliding = registry.get((session_key, rid))
+    if colliding:
+        return colliding[0].slot, False, False
+    return _Slot(rid=rid, session_id=session_id, kind=kind), True, False
 
 
 def _open_counted(registry: dict, waiting: dict, other_waiting: dict, session_key: str, rid: str,
                   session_id: str, kind: str, pairable: bool) -> None:
-    """One counted open, on either side. Both sides open the same way: append a
-    member to the key's multiset, pair with the oldest unpaired partner from the
-    OTHER side when one waits (the pair's ``active:true`` was the partner's, so
-    nothing is emitted), else wait yourself; only the first member with this key
-    is a NEW question (0→1)."""
+    """One counted open, on either side: join (or start) a slot, wait for a
+    partner when pairable, and emit ``active:true`` only for a new question."""
     _prune(_clock())
-    member = _Member(rid=rid, session_id=session_id, kind=kind)
-    queue = registry.setdefault((session_key, rid), deque())
-    first = not queue
-    queue.append(member)
-    partner = _pop_oldest(other_waiting, session_key) if pairable else None
-    if partner is not None:
-        _pair_up(member, partner)
-        return
-    if pairable:
+    slot, new, paired = _slot_for(registry, other_waiting, session_key, rid, session_id, kind, pairable)
+    slot.open += 1
+    member = _Member(slot=slot)
+    registry.setdefault((session_key, rid), deque()).append(member)
+    if pairable and not paired:
         waiting.setdefault(session_key, deque()).append(member)
-    if first:
-        _emit(True, member, session_key)
+    if new:
+        _emit(True, slot, session_key)
 
 
 def approval_open(session_key: str, rid: str, session_id: str, kind: str) -> None:
@@ -190,14 +175,12 @@ def close(session_key: str, rid: str, hook_side: bool) -> None:
     """A counted close on one side of the wire.
 
     ``hook_side=True``: an approval-hook request (``pre``/``post``); ``False``:
-    a human input (``request``/``resolved``). One shared shape — the only
-    differences are which registry holds the member and which half of a pair
-    it closes.
+    a human input (``request``/``resolved``): which registry holds the member.
     """
     _prune(_clock())
     registry = _hooks if hook_side else _humans
     waiting = _waiting_hooks if hook_side else _waiting_humans
-    _close_counted(registry, waiting, session_key, rid, hook_side)
+    _close_counted(registry, waiting, session_key, rid)
 
 
 _reset()

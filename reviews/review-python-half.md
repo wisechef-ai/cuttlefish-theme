@@ -50,14 +50,20 @@ Note: crapper reports 0 % coverage in this environment (no coverage report wired
   ("never raises"), `/config` and `hermes cuttlefish doctor`. FIXED: `isfinite` only for floats; ints compare exactly.
 - **F3 MAJOR** `cuttlefish/liveconfig.py` `read_raw_settings`: a non-UTF-8 `config.yaml` raised `UnicodeDecodeError`, and a deeply nested one `RecursionError`
   (neither is `OSError`/`YAMLError`) → `/config` 500 on every poll. Brief ask 4 ("never crashes on bad YAML"). FIXED: both degrade to defaults + one `config` warning.
-- **F4 MINOR (open)** `pairing.py`: a pair whose member shares its derived key with a second, unpaired hook open emits `active:false` when the pair closes although the
+- **F4 MINOR → ruled MUST-FIX by the conductor — FIXED (see commit below)** `pairing.py`: a pair whose member shares its derived key with a second, unpaired hook open emits `active:false` when the pair closes although the
   second is still open (L1 multiset violated in the pairing+collision corner). Needs identical-key non-coalesced hooks in one session; not reachable from the
   producers' normal flows. Probe: human h1 open, hook K open (pairs), hook K open again, close hook K + h1 → `false` emitted with one still open.
-- **F5 MINOR (open)** `pairing.py` TTL: after the 24 h drop, a late genuine close finds nothing and emits nothing, so the desktop's `active:true` is never cleared by
+- **F5 MINOR (accepted by conductor: desktop reducer clears needs-you on message.complete)** `pairing.py` TTL: after the 24 h drop, a late genuine close finds nothing and emits nothing, so the desktop's `active:true` is never cleared by
   the plugin (desktop must expire it). Design choice ("pruning never emits"), consistent with the brief's bound.
-- **F6 MINOR (open)** `request_id`/`session_key` are echoed as given (identifiers by the producers' contract, not text); a hostile producer could still put text there. Not changed.
+- **F6 MINOR (accepted by conductor)** `request_id`/`session_key` are echoed as given (identifiers by the producers' contract, not text); a hostile producer could still put text there. Not changed.
 - Builder's report discrepancies: none material. Its claim 15/15 hooks mutants vs my 14 after the fix is a site-count difference (the `_text(…) or` expression was replaced by `_kind`).
 
 ## Verdict
 Three MAJORs found and fixed with behaviour tests that fail at e07b558 (`tests/unit/test_review_fixes.py`, 9 RED of 15 on first run; the other 6 are positive controls and rejection inputs that already held).
 No BLOCKER. Three MINORs open.
+
+## Round 2 — F4 fix
+`pairing.py` now models a question as a `_Slot` (identity of the one `active:true` + count of open requests sharing it). An open joins the oldest unpaired
+partner's slot, else a colliding open's slot, else starts a new one (emits true); a close decrements and emits `active:false` (slot identity) only at 0.
+Tests `tests/unit/test_pairing_collision.py`: 3 of 4 RED at a7d6020 (human-first, mirror, hooks-close-first); GREEN now (5 tests incl. pairable-after-collision).
+Mutants: `if colliding:`→`if False:` (4 fail), `open == 0`→`True` (10 fail); mutator on pairing.py 24/24; dryer 0 duplicates; worst CC 8.
