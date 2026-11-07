@@ -87,6 +87,19 @@ export function stripMarkup(h) {
   return h.live(a => a.startsWith('statusBar.')).map(s => JSON.stringify(expand(s.render ? s.render() : s.data).tree)).join('')
 }
 
+/** The composer.top contributions (COMPOSER_AREAS.top, exported by the locked fake sdk): the plugin's rim. */
+export function rimItems(h) { return h.live(a => a === 'composer.top') }
+
+/** The rim's rendered root: the first host element carrying data-cf-state, plus its serialised markup. */
+export function rimRoot(h) {
+  const items = rimItems(h)
+  if (items.length < 1) throw new Error('no contribution in COMPOSER_AREAS.top (composer.top)')
+  const tree = expand(items[0].render ? items[0].render({}) : items[0].data).tree
+  const root = walk(tree).find(e => e.props?.['data-cf-state'] !== undefined)
+  if (!root) throw new Error('the rim root carries no data-cf-state')
+  return { root, state: root.props['data-cf-state'], markup: JSON.stringify(root), drawsSvg: /"type":"svg"|data:image\/svg|<svg/.test(JSON.stringify(root)) }
+}
+
 // ---- frames --------------------------------------------------------------------------------------------------------
 
 export class LoopDriver {
@@ -203,6 +216,29 @@ export function svgDataUris(value) {
     const payload = uri.slice(head[0].length)
     try { out.push(/;base64/i.test(head[1]) ? Buffer.from(payload, 'base64').toString('utf8') : decodeURIComponent(payload)) }
     catch { out.push(payload) }
+  }
+  return out
+}
+
+/** Split a declaration value at top-level commas (background layers). */
+export function splitLayers(value) {
+  const out = []
+  let start = 0
+  for (const i of topLevel(value)) {
+    if (value[i] !== ',') continue
+    out.push(value.slice(start, i).trim())
+    start = i + 1
+  }
+  out.push(value.slice(start).trim())
+  return out
+}
+
+/** Decoded SVGs of the `background` shorthand (only) on rules that target [data-chat-surface]. */
+export function backgroundLayers(css) {
+  const out = []
+  for (const r of parseRules(stripCssComments(css))) {
+    if (!r.selectors.some(s => s.includes('[data-chat-surface]'))) continue
+    for (const d of r.decls) if (d.prop === 'background') out.push(...svgDataUris(d.value))
   }
   return out
 }

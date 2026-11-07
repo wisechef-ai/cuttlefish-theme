@@ -1,14 +1,15 @@
 // @ts-nocheck — exercises the JS fakes under ./fake; behaviour, not types, is the contract here.
 // ACCEPTANCE CONTRACT PART 1 — oA: what the shipped plugin APPLIES, not what its text mentions (closes luna F3, F5-loop).
 // Locked A4/A10 regex-match tokens in raw CSS / the serialised strip: a token inside a /* comment */ or an inert rule passes.
-// Here the CSS is comment-stripped and PARSED, the field data-URI is DECODED and its circles counted, the composer-ring
-// VALUES must differ between states, the strip's words must differ across presets, and the budgeted loop must actually
+// ADDENDUM R-S1: the composer ring VARIABLE route is dead on v0.22.7 (core pins the composer border with !important); the composer speaks
+// through a plugin-owned RIM in COMPOSER_AREAS.top. Here the CSS is comment-stripped and PARSED, the field data-URI is DECODED and its circles counted, the composer-ring
+// rim (composer.top) must carry the state, the strip's words must differ across presets, and the budgeted loop must actually
 // run frames that change the field while the focused session works (A5 only inspected `idleWhen`).
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 
 import {
-  boot, busy, countCircles, currentCss, declarations, fieldLayers, flush, focus, LoopDriver, mountTitlebar, ownStyles,
+  backgroundLayers, boot, busy, countCircles, currentCss, declarations, fieldLayers, flush, focus, LoopDriver, mountTitlebar, ownStyles, rimRoot,
   parseRules, setReducedMotion, stripCssComments, stripText, svgDataUris,
 } from './fake/part1_probe.mjs'
 
@@ -49,6 +50,9 @@ test('P3.0 the CSS instrument ignores comments, reads the decoded field, and see
   assert.deepEqual(fieldLayers(`[data-chat-surface]{mask-image:${uri(5)}}`), [], 'other properties are not field layers')
   assert.equal(countCircles('<svg><CIRCLE r=1/><circle/></svg>'), 2)
   assert.equal(countCircles('<svg/>'), 0)
+  assert.equal(backgroundLayers(`[data-chat-surface]{background-image:${uri(5)}}`).length, 0, 'R-S1: the field is the `background` declaration')
+  assert.equal(backgroundLayers(`[data-chat-surface]{background:${uri(5)}, var(--cf-ground)}`).length, 1)
+  assert.equal(backgroundLayers(`.x{background:${uri(5)}}`).length, 0)
   assert.throws(() => parseRules('a{b:1'), /unbalanced/)
 })
 
@@ -63,41 +67,64 @@ test('P3.1 the field is APPLIED: a [data-chat-surface] rule paints a decoded SVG
   await settle(new LoopDriver(sdk), h)
   assert.equal(ownStyles().length, 1, 'exactly one owned <style>')
   const css = currentCss()
-  const layers = fieldLayers(css)
-  assert.ok(layers.length >= 1, 'no [data-chat-surface] rule paints an svg data-URI background-image (tokens in comments do not count)')
+  const layers = backgroundLayers(css)
+  assert.ok(layers.length >= 1, 'no [data-chat-surface] rule sets an svg data-URI in its `background` declaration (R-S1; tokens in comments do not count)')
   const n = Math.max(...layers.map(countCircles))
   assert.ok(n >= 40, `the applied field holds ${n} organs (< 40): a sparse scatter of at least 40 is the field`)
   for (const r of parseRules(stripCssComments(css))) {
     if (!r.selectors.some(s => s.includes('[data-chat-surface]'))) continue
     for (const d of r.decls) {
       assert.notEqual(d.prop, 'background-color', 'the user\'s own ground stays')
-      assert.notEqual(d.prop, 'background', 'a background shorthand would reset the user\'s own ground')
     }
   }
   assert.doesNotMatch(layers.join(''), /<script|href=|on\w+=/i, 'an svg background must be inert')
   h.dispose()
 })
 
-test('P3.2 the composer ring is APPLIED and state-dependent: its custom-property VALUES differ resting → needs you', async () => {
+test('P3.2 the composer speaks through a plugin-owned rim in COMPOSER_AREAS.top: data-cf-state = the focused state, an SVG, ≥ 4 presets differ', async () => {
   const { h, sdk } = await boot()
   focus(sdk, 'a', 'SA')
   mountTitlebar(h)
   const driver = new LoopDriver(sdk)
   await settle(driver, h)
-  const read = () => ['--dt-composer-ring', '--composer-ring-strength'].map(p => {
-    const v = declarations(currentCss(), p)
-    return { p, v: v.length ? v[v.length - 1] : null }
-  })
-  const rest = read()
-  for (const { p, v } of rest) assert.ok(v && v.length > 0, `${p} is not declared with a value in the applied CSS`)
+  const seen = {}
+  const take = name => { const r = rimRoot(h); assert.ok(r.drawsSvg, `${name}: the rim draws no SVG`); seen[name] = r }
+  take('resting')
+  assert.equal(seen.resting.state, 'resting', 'the rim names the focused state at rest')
+  busy(sdk, { a: true })
+  sdk.fake.emit({ type: 'message.start', session_id: 'a', payload: {} })
+  await settle(driver, h)
+  take('working')
+  busy(sdk, {})
+  sdk.fake.emit({ type: 'message.complete', session_id: 'a', payload: { status: 'complete' } })
   sdk.fake.emit(needsYou('SA', true))
   await settle(driver, h)
-  const need = read()
-  for (const { p, v } of need) assert.ok(v && v.length > 0, `${p} vanished while needing you`)
-  assert.notDeepEqual(need, rest, `focused needs-you leaves the composer ring unchanged: ${JSON.stringify(need)}`)
+  take('needs_you')
   sdk.fake.emit(needsYou('SA', false))
+  sdk.fake.emit(failed('SA'))
   await settle(driver, h)
-  assert.deepEqual(read(), rest, 'the ring returns to its resting values when the request is resolved')
+  take('error')
+  for (const [name, r] of Object.entries(seen)) assert.equal(r.state, name, `the rim's data-cf-state is ${r.state} while ${name}`)
+  assert.equal(new Set(Object.values(seen).map(r => r.markup)).size, 4, 'the rim\'s markup does not tell 4 presets apart')
+  h.dispose()
+})
+
+test('P3.2b the rim is static (rendering it never wakes the loop) and the ring variable is identity, not state', async () => {
+  const { h, sdk } = await boot()
+  focus(sdk, 'a', 'SA')
+  mountTitlebar(h)
+  const driver = new LoopDriver(sdk)
+  await settle(driver, h)
+  const wakes = () => sdk.calls.loops.reduce((n, l) => n + l.wakes, 0)
+  const before = wakes()
+  for (let i = 0; i < 5; i++) rimRoot(h)
+  assert.equal(wakes(), before, 'rendering the rim woke the budgeted loop: the rim must never animate')
+  const ring = () => declarations(currentCss(), '--dt-composer-ring', s => s.includes('[data-chat-surface]'))
+  const rest = ring()
+  assert.ok(rest.length >= 1 && rest[rest.length - 1].length > 0, '--dt-composer-ring is set on [data-chat-surface] (R-S1 ruling 3)')
+  sdk.fake.emit(needsYou('SA', true))
+  await settle(driver, h)
+  assert.deepEqual(ring(), rest, 'the ring variable is the session\'s identity hue, never a state signal')
   h.dispose()
 })
 
