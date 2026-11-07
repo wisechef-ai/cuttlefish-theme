@@ -73,6 +73,28 @@ test('surfaces: the chip speaks the state\'s own words, and says nothing for an 
   ghost.focusedState = 'a_state_no_settings_name'
   const h2 = fakeCtx()
   registerSurfaces(h2.ctx, ghost, () => () => {})
-  const mute = expand((h2.contributions.get('rim')!.render as () => unknown)()).tree as { props: { children: unknown[] } }
+  const mute = expand((h2.contributions.get('strip')!.render as () => unknown)()).tree as { props: { children: unknown[] } }
   assert.equal(mute.props.children[1], '', 'an unnamed state falls back to silence, never a throw')
+})
+
+test('surfaces: the composer rim is a 4–6 px full-width band of dots with no words, tiled whole (F4)', () => {
+  const h = fakeCtx()
+  const v = view()
+  registerSurfaces(h.ctx, v, () => () => {})
+  const rim = expand((h.contributions.get('rim')!.render as () => unknown)()).tree as
+    { type: string; props: { style: { height: number; width: string; lineHeight: number; overflow: string; pointerEvents: string }; children: unknown; 'data-cf-state': string; 'data-cf-rim': string } }
+  assert.equal(rim.props['data-cf-state'], 'resting')
+  assert.equal(rim.props['data-cf-rim'], 'cuttlefish')
+  assert.ok(rim.props.style.height >= 4 && rim.props.style.height <= 6, `rim is ${rim.props.style.height}px tall`)
+  assert.equal(rim.props.style.width, '100%', 'full width')
+  assert.equal(rim.props.style.lineHeight, 0, 'no inline baseline gap can grow the band')
+  assert.equal(rim.props.style.overflow, 'hidden')
+  assert.equal(rim.props.style.pointerEvents, 'none', 'a decoration never eats a click')
+  const json = JSON.stringify(rim.props.children)
+  const kids = ([] as unknown[]).concat(rim.props.children)
+  assert.ok(kids.every(k => typeof k === 'object' && k !== null), 'no label text node in the rim')
+  assert.ok(json.includes('"type":"circle"'), 'it still draws the dots')
+  assert.ok(json.includes('"type":"pattern"'), 'tiled across the full width, whole tile visible')
+  const strip = JSON.stringify(expand((h.contributions.get('strip')!.render as () => unknown)()).tree)
+  assert.ok(!strip.includes('"type":"pattern"'), 'the status strip keeps its own look')
 })

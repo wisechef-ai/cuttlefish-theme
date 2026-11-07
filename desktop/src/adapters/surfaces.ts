@@ -12,8 +12,11 @@ import {
   type PluginContribution, type PluginContext, type SessionRowSlotProps,
 } from '@hermes/plugin-sdk'
 import { allocate, renderStrip, renderSwatch, signalsOf, stateFor } from '../domain/index.ts'
-import { svgElement } from './svg.ts'
+import { bandElement, svgElement } from './svg.ts'
 import { safePattern, seedOfStored, type CfView } from './view.ts'
+
+/** The composer rim's height in px (brief: a 4–6 px band). */
+const RIM_HEIGHT = 5
 
 function useLive(v: CfView): void {
   useSyncExternalStore((cb: () => void) => v.listen(cb), () => v.version)
@@ -39,24 +42,36 @@ function labelOf(v: CfView, state: string): string {
   return found !== undefined ? found : ''
 }
 
-/** The focused state's words + dots, shared by the status strip and the composer rim. */
-function stateChip(v: CfView, attrs: Record<string, unknown>): unknown {
+/** The focused state's strip dots (the status strip's and the rim's one source). */
+function focusedStrip(v: CfView): { strip: ReturnType<typeof renderStrip>; state: string } {
   const state = v.focusedState
-  const label = labelOf(v, state)
-  const out = renderStrip({
+  const strip = renderStrip({
     seed: seedOfStored(v.focusedStored),
     hueDeg: v.hueDeg,
     ground: v.ground,
     pattern: safePattern(v.settings, state),
     intensity: v.settings.intensity,
   })
-  return jsx('div', { 'data-cf-state': state, ...attrs, children: [svgElement(jsx, out, {}, out.dots), label] })
+  return { strip, state }
 }
 
-/** The chip as a live component: the strip and the rim are the same view at two mounts. */
-function ChipView({ v, attrs }: { v: CfView; attrs: Record<string, unknown> }): unknown {
+/** The status strip: the focused state's dots and its words. */
+function StripView({ v }: { v: CfView }): unknown {
   useLive(v)
-  return stateChip(v, attrs)
+  const { strip, state } = focusedStrip(v)
+  return jsx('div', { 'data-cf-state': state, 'data-cf-strip': 'cuttlefish', children: [svgElement(jsx, strip, {}, strip.dots), labelOf(v, state)] })
+}
+
+/** The composer rim: a 5 px full-width band of the same dots, no words, static. */
+function RimView({ v }: { v: CfView }): unknown {
+  useLive(v)
+  const { strip, state } = focusedStrip(v)
+  return jsx('div', {
+    'data-cf-state': state,
+    'data-cf-rim': 'cuttlefish',
+    style: { width: '100%', height: RIM_HEIGHT, overflow: 'hidden', lineHeight: 0, pointerEvents: 'none' },
+    children: bandElement(jsx, strip, RIM_HEIGHT, strip.dots),
+  })
 }
 
 /**
@@ -65,17 +80,10 @@ function ChipView({ v, attrs }: { v: CfView; attrs: Record<string, unknown> }): 
  * and unmount removes it), and the runtime keeps the current CSS ready for
  * whenever the element exists. Renders nothing itself.
  */
-function TitleMount({ v, mountStyle }: { v: CfView; mountStyle: () => () => void }): unknown {
-  useLive(v)
-  useEffect(() => mountStyle())
+function TitleMount({ mountStyle }: { mountStyle: () => () => void }): unknown {
+  useEffect(() => mountStyle(), [mountStyle])
   return null
 }
-
-/** The two chip mounts (status strip, composer rim): one component, two areas. */
-const CHIPS: ReadonlyArray<{ id: string; area: string; attrs: Record<string, unknown> }> = [
-  { id: 'strip', area: STATUSBAR_AREAS.right, attrs: { 'data-cf-strip': 'cuttlefish' } },
-  { id: 'rim', area: COMPOSER_AREAS.top, attrs: { 'data-cf-rim': 'cuttlefish' } },
-]
 
 /** Register the surfaces once; the returned disposer removes every contribution. */
 export function registerSurfaces(ctx: PluginContext, v: CfView, mountStyle: () => () => void): () => void {
@@ -86,8 +94,9 @@ export function registerSurfaces(ctx: PluginContext, v: CfView, mountStyle: () =
       order: 0,
       data: { render: ({ sessionId }: SessionRowSlotProps) => jsx(SwatchView, { v, sessionId }) },
     },
-    ...CHIPS.map(c => ({ id: c.id, area: c.area, order: 0, render: () => jsx(ChipView, { v, attrs: c.attrs }) })),
-    { id: 'title', area: TITLEBAR_AREAS.center, order: 0, render: () => jsx(TitleMount, { v, mountStyle }) },
+    { id: 'strip', area: STATUSBAR_AREAS.right, order: 0, render: () => jsx(StripView, { v }) },
+    { id: 'rim', area: COMPOSER_AREAS.top, order: 0, render: () => jsx(RimView, { v }) },
+    { id: 'title', area: TITLEBAR_AREAS.center, order: 0, render: () => jsx(TitleMount, { mountStyle }) },
   ]
   const offs = contributions.map(c => ctx.register(c))
   return () => { for (const off of offs) off() }

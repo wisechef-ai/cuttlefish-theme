@@ -55,3 +55,28 @@ Gaps between fake and real (the findings):
 - Motion under off/reduced: parked correctly (A5, M2 RED-proof) — except the resume bug F3.
 - Dead modules: none; every adapter module is imported by `runtime.ts`/`surfaces.ts`.
 - Duplicates: `dryer --threshold 0.8` run in the fix round (below).
+
+---
+# Fix round (same branch)
+
+| id | status | fix | failing-first test (RED at `7a1bdda` on behaviour) | mutant (old line restored → test fails) |
+|---|---|---|---|---|
+| F1 | fixed | `runtime.ts` `sampleGround` resolves via a probe's `background-color: var(--ui-chat-surface-background)`; `ground.ts` parses `rgb()`/`rgba()`/space `rgb(r g b / a)`/`color(srgb …)`, rejects translucent | `runtime: the ground is what the engine RESOLVES…`, `feedmap: parseGround understands…`, `…percentage alpha…` | `getPropertyValue` back → runtime test fails |
+| F2 | fixed | `feedmap.ts` forwards the authoritative empty map unless the flag is true (flag-only sources) | `feedmap: a present-but-emptied busyBySession map clears…` (+ corrected the old test that pinned the bug) | `Object.keys(...)>0` only → 2 tests fail |
+| F3 | fixed | `runtime.ts` `paint()` ends with `wakeIfWanted` (reduce, config, feed, viewport) | `leaving reduced motion while working wakes…`, `a refetched config that re-enables motion wakes…` | remove call → both fail |
+| F4 | fixed | `svg.ts` `bandElement` (pattern tile scaled uniformly 5/12, full width), `surfaces.ts` `RimView` 5 px, no words; strip keeps its look | `surfaces: the composer rim is a 4–6 px full-width band…`, `svg: the band tiles the WHOLE strip…` | height 12 / width 64px → test fails |
+| F5 | fixed (test) | no prod bug; new test pins the ring across working/needs_you/error | `runtime: the composer ring is the identity hue in EVERY state` — fails against the F5 mutant | ring + 30° in error → test fails (it survived 30 acceptance + 45 unit before) |
+| F6 | fixed | `TitleMount`: no `useLive`, `useEffect(…, [mountStyle])` (stable fn) | no test: the fake ignores effect deps and never re-renders — behaviour is real-React-only; covered by the A4/oA suites staying green | — |
+| F7 | fixed | live viewport goes through the same 0 → window-size fallback | `runtime: a live viewport of 0 keeps…` | raw `applyEnv(v, vp)` → fails |
+| F8 | OPEN (minor) | ground sampled once at attach; theme switch needs reload | — | — |
+| F9 | info | bundle 103 028 B; whole domain ships (~70 KB TS source); acceptable | — | — |
+
+Plus the conductor's asks:
+- Dispose/hot-reload: `runtime: dispose leaves no style, attribute, timer, listener, loop or live contribution; a second life never doubles` (passes at `7a1bdda` too — it is a proof, not a fix): after dispose, 0 owned styles, 0 root attributes, 0 live timers, 0 event listeners, 0 matchMedia listeners, 0 listeners on every `host.state` atom, 0 live contributions, every loop disposed; two consecutive lives each have exactly one loop and one style.
+- busyBySession deviation: judged **adapter bug, not a domain defect** (domain correct: present map replaces, empty map = nobody busy; probe in F2). No `contract_findings`.
+- Bundle: only the three specifiers; see F9.
+
+## Gates after the fixes
+`make test` (lint + tsc + unit + contract-js + contract-py): rc 0 — 116 acceptance, 198 Python; unit (domain + adapters) 137 pass / 0 fail; `build.mjs --check` rc 0 (103 028 B);
+contract-unchanged diff vs `5358f8c` empty. crapper: max CC 9 (`stateSnapshot`, < 10); dryer `--threshold 0.8`: no duplicates;
+mutator (one file at a time, `--no-coverage`, unit + oA acceptance as the test command): ground 11/11, feedmap 22/22, svg 9/9, runtime 17/17, surfaces 7/7 killed.

@@ -38,3 +38,27 @@ export function svgElement(
     children: dotElements(jsx, dots),
   })
 }
+
+/** The thinnest readable band: the whole tile, scaled to `height`, repeated across the full width. */
+export function bandElement(
+  jsx: Jsx,
+  box: { width: number; height: number },
+  height: number,
+  dots: readonly DotLike[],
+): unknown {
+  const id = 'cf-rim-tile'
+  const tile = jsx('pattern', {
+    id,
+    width: box.width,
+    height: box.height,
+    patternUnits: 'userSpaceOnUse',
+    patternTransform: `scale(${height / box.height})`,
+    children: dotElements(jsx, dots),
+  })
+  return jsx('svg', {
+    width: '100%',
+    height,
+    'aria-hidden': true,
+    children: [jsx('defs', { children: tile }), jsx('rect', { width: '100%', height: '100%', fill: `url(#${id})` })],
+  })
+}

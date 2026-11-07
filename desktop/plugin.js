@@ -147,9 +147,12 @@ function eventToFeed(event         , t        )                   {
 }
 
 /** The host.state atoms as one `state` feed input; absent doors stay absent.
- *  An EMPTY busyBySession map is omitted on purpose: the domain treats a present
- *  map as "this REPLACES the busy set" and then ignores the plain busy flag, so
- *  forwarding the host's resting `{}` would permanently silence that flag. */
+ *  The host's `busyBySession` is authoritative — a present map REPLACES the busy
+ *  set in the domain, and an EMPTY one legitimately means "nobody is busy", so it
+ *  is forwarded (else a dropped session entry would leave a stale "working").
+ *  The one exception: an empty map beside a busy plain flag cannot come from the
+ *  real host (its `busy` is a subset of the map) — only from a flag-only source —
+ *  so the map is withheld there and the flag speaks. */
 function stateSnapshot(atoms            , t        )            {
   const payload                          = {}
   const gateway = atoms.gateway.get()
@@ -157,7 +160,7 @@ function stateSnapshot(atoms            , t        )            {
   const busy = atoms.busy.get()
   if (typeof busy === 'boolean') payload.busy = busy
   const bySession = atoms.busyBySession.get()
-  if (isRec(bySession) && Object.keys(bySession).length > 0) payload.busyBySession = { ...bySession }
+  if (isRec(bySession) && (busy !== true || Object.keys(bySession).length > 0)) payload.busyBySession = { ...bySession }
   const focused = atoms.focusedSessionId.get()
   if (isStr(focused)) payload.focused_session_id = focused
   const focusedStored = atoms.focusedStoredSessionId.get()
@@ -171,21 +174,35 @@ Object.assign(exports, { FEED_EVENT_KINDS, eventToFeed, stateSnapshot });
 
 __cf_defs["src/adapters/ground.ts"] = (exports) => {
 // The ground the field paints on: the user's own chat-surface background, READ
-// (never overridden). parseGround turns whatever getComputedStyle reports into
-// the '#rrggbb' the domain speaks; anything else (oklch(), named colours, empty)
-// is null and the caller keeps its last known ground. Pure: a string in, a
-// string out.
-const { rgbToHex } = __cf_require("src/domain/index.ts");/** `rgb(1, 2, 3)` / `rgba(1, 2, 3, …)` — what a resolved CSS colour usually reports as. */
-const FUNC_RGB = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,[^)]*)?\)$/
+// (never overridden). parseGround turns what getComputedStyle resolves a colour
+// to into the '#rrggbb' the domain speaks. Engines resolve a colour to
+// `rgb(r, g, b)` / `rgba(…)`, the space form `rgb(r g b / a)`, or — for
+// color-mix(in srgb) — `color(srgb r g b / a)` (components 0..1). Anything else
+// (oklch(), an unresolved token stream, empty), or any colour that is not fully
+// opaque, is null and the caller keeps its fallback. Pure: a string in, a string out.
+const { rgbToHex } = __cf_require("src/domain/index.ts");const NUM = '(\\d*\\.?\\d+)'
+const ALPHA = `(?:\\s*[,/]\\s*(\\d*\\.?\\d+%?))?`
+/** `rgb(1, 2, 3)` / `rgba(1, 2, 3, a)` / `rgb(1 2 3 / a)` (0..255). */
+const FUNC_RGB = new RegExp(`^rgba?\\(\\s*${NUM}\\s*[,\\s]\\s*${NUM}\\s*[,\\s]\\s*${NUM}${ALPHA}\\s*\\)$`)
+/** `color(srgb 0.1 0.2 0.3 / a)` (0..1). */
+const COLOR_SRGB = new RegExp(`^color\\(\\s*srgb\\s+${NUM}\\s+${NUM}\\s+${NUM}${ALPHA}\\s*\\)$`)
 const HEX_RGB = /^#[0-9a-f]{6}$/i
+/** The alpha group as a number: absent means opaque. */
+function opaque(alpha                    )          {
+  if (alpha === undefined) return true
+  return alpha.endsWith('%') ? parseFloat(alpha) >= 100 : Number(alpha) >= 1
+}
+
 /** A computed colour to a '#rrggbb' ground, or null when it is not one we can paint on. */
 function parseGround(computed        )                {
   if (typeof computed !== 'string') return null
   const s = computed.trim()
   if (HEX_RGB.test(s)) return s.toLowerCase()
-  const m = FUNC_RGB.exec(s)
-  if (!m) return null
-  return rgbToHex({ r: Number(m[1]), g: Number(m[2]), b: Number(m[3]) })
+  const f = FUNC_RGB.exec(s)
+  if (f) return opaque(f[4]) ? rgbToHex({ r: Number(f[1]), g: Number(f[2]), b: Number(f[3]) }) : null
+  const c = COLOR_SRGB.exec(s)
+  if (c) return opaque(c[4]) ? rgbToHex({ r: Number(c[1]) * 255, g: Number(c[2]) * 255, b: Number(c[3]) * 255 }) : null
+  return null
 }
 
 Object.assign(exports, { parseGround });
@@ -302,19 +319,24 @@ const LOOP_FPS = 8
 
 const isRec = (v         )                               => typeof v === 'object' && v !== null && !Array.isArray(v)
 
-/** The user's own chat-surface ground, read from a thrown-away probe of our own. */
+/**
+ * The user's own chat-surface ground, as the engine RESOLVES it on a thrown-away
+ * probe of our own. The custom property itself reads back as its authored token
+ * stream (core: var(--ui-bg-chrome) → color-mix(…)), which no parser should
+ * guess at; a probe's background-color is the used colour.
+ */
 function sampleGround()         {
   const probe = document.createElement('div')
+  probe.style.setProperty('background-color', 'var(--ui-chat-surface-background)')
   document.body.appendChild(probe)
-  const computed = getComputedStyle(probe).getPropertyValue('--ui-chat-surface-background')
+  const computed = getComputedStyle(probe).backgroundColor
   probe.remove()
   const parsed = parseGround(computed)
   return parsed !== null ? parsed : FALLBACK_GROUND
 }
 
 /** The window the field paints for: the host's viewport atom, window size as the fallback. */
-function viewportOf()                                    {
-  const vp = host.state.viewport.get()
+function viewportOf(vp                                    = host.state.viewport.get())                                    {
   return { width: vp.width > 0 ? vp.width : 1200, height: vp.height > 0 ? vp.height : 800 }
 }
 
@@ -337,9 +359,15 @@ function paintRoot(v        )       {
   else el.setAttribute('data-cf-session', v.focusedStored)
 }
 
+/** Whatever just changed (settings, reduced motion, feed): a parked loop that is wanted again runs again. */
+function wakeIfWanted(a          )       {
+  if (wantsFrame(a.v, idleSince(a.clock))) a.loop.wake()
+}
+
 function paint(a          )       {
   paintField(a)
   paintRoot(a.v)
+  wakeIfWanted(a)
 }
 
 /**
@@ -437,7 +465,7 @@ function attach(ctx               )       {
   }
   offs.push(wireFeed(ctx, atoms, input => applyInput(a, input)))
   offs.push(host.state.viewport.listen(vp => {
-    applyEnv(v, vp)
+    applyEnv(v, viewportOf(vp))
     paint(a)
   }))
 
@@ -471,9 +499,12 @@ __cf_defs["src/adapters/surfaces.ts"] = (exports) => {
 // view's version (useSyncExternalStore) and re-reads on render, so a render is
 // always pure observation and never wakes the loop (P3.2b). The titlebar mount
 // is the plugin's permanent style owner; it renders nothing itself.
-const { useEffect, useSyncExternalStore } = __cf_ext("react");const { jsx } = __cf_ext("react/jsx-runtime");const { COMPOSER_AREAS, SESSION_ROW_AREAS, STATUSBAR_AREAS, TITLEBAR_AREAS } = __cf_ext("@hermes/plugin-sdk");const { allocate, renderStrip, renderSwatch, signalsOf, stateFor } = __cf_require("src/domain/index.ts");const { svgElement } = __cf_require("src/adapters/svg.ts");const { safePattern, seedOfStored } = __cf_require("src/adapters/view.ts");function useLive(v        )       {
+const { useEffect, useSyncExternalStore } = __cf_ext("react");const { jsx } = __cf_ext("react/jsx-runtime");const { COMPOSER_AREAS, SESSION_ROW_AREAS, STATUSBAR_AREAS, TITLEBAR_AREAS } = __cf_ext("@hermes/plugin-sdk");const { allocate, renderStrip, renderSwatch, signalsOf, stateFor } = __cf_require("src/domain/index.ts");const { bandElement, svgElement } = __cf_require("src/adapters/svg.ts");const { safePattern, seedOfStored } = __cf_require("src/adapters/view.ts");/** The composer rim's height in px (brief: a 4–6 px band). */
+const RIM_HEIGHT = 5
+function useLive(v        )       {
   useSyncExternalStore((cb            ) => v.listen(cb), () => v.version)
 }
+
 /** The sidebar row swatch: the session's OWN state and identity, never the focused one's. */
 function SwatchView({ v, sessionId }                                     )          {
   useLive(v)
@@ -494,24 +525,36 @@ function labelOf(v        , state        )         {
   return found !== undefined ? found : ''
 }
 
-/** The focused state's words + dots, shared by the status strip and the composer rim. */
-function stateChip(v        , attrs                         )          {
+/** The focused state's strip dots (the status strip's and the rim's one source). */
+function focusedStrip(v        )                                                           {
   const state = v.focusedState
-  const label = labelOf(v, state)
-  const out = renderStrip({
+  const strip = renderStrip({
     seed: seedOfStored(v.focusedStored),
     hueDeg: v.hueDeg,
     ground: v.ground,
     pattern: safePattern(v.settings, state),
     intensity: v.settings.intensity,
   })
-  return jsx('div', { 'data-cf-state': state, ...attrs, children: [svgElement(jsx, out, {}, out.dots), label] })
+  return { strip, state }
 }
 
-/** The chip as a live component: the strip and the rim are the same view at two mounts. */
-function ChipView({ v, attrs }                                               )          {
+/** The status strip: the focused state's dots and its words. */
+function StripView({ v }               )          {
   useLive(v)
-  return stateChip(v, attrs)
+  const { strip, state } = focusedStrip(v)
+  return jsx('div', { 'data-cf-state': state, 'data-cf-strip': 'cuttlefish', children: [svgElement(jsx, strip, {}, strip.dots), labelOf(v, state)] })
+}
+
+/** The composer rim: a 5 px full-width band of the same dots, no words, static. */
+function RimView({ v }               )          {
+  useLive(v)
+  const { strip, state } = focusedStrip(v)
+  return jsx('div', {
+    'data-cf-state': state,
+    'data-cf-rim': 'cuttlefish',
+    style: { width: '100%', height: RIM_HEIGHT, overflow: 'hidden', lineHeight: 0, pointerEvents: 'none' },
+    children: bandElement(jsx, strip, RIM_HEIGHT, strip.dots),
+  })
 }
 
 /**
@@ -520,17 +563,10 @@ function ChipView({ v, attrs }                                               )  
  * and unmount removes it), and the runtime keeps the current CSS ready for
  * whenever the element exists. Renders nothing itself.
  */
-function TitleMount({ v, mountStyle }                                             )          {
-  useLive(v)
-  useEffect(() => mountStyle())
+function TitleMount({ mountStyle }                                  )          {
+  useEffect(() => mountStyle(), [mountStyle])
   return null
 }
-
-/** The two chip mounts (status strip, composer rim): one component, two areas. */
-const CHIPS                                                                              = [
-  { id: 'strip', area: STATUSBAR_AREAS.right, attrs: { 'data-cf-strip': 'cuttlefish' } },
-  { id: 'rim', area: COMPOSER_AREAS.top, attrs: { 'data-cf-rim': 'cuttlefish' } },
-]
 
 /** Register the surfaces once; the returned disposer removes every contribution. */
 function registerSurfaces(ctx               , v        , mountStyle                  )             {
@@ -541,8 +577,9 @@ function registerSurfaces(ctx               , v        , mountStyle             
       order: 0,
       data: { render: ({ sessionId }                     ) => jsx(SwatchView, { v, sessionId }) },
     },
-    ...CHIPS.map(c => ({ id: c.id, area: c.area, order: 0, render: () => jsx(ChipView, { v, attrs: c.attrs }) })),
-    { id: 'title', area: TITLEBAR_AREAS.center, order: 0, render: () => jsx(TitleMount, { v, mountStyle }) },
+    { id: 'strip', area: STATUSBAR_AREAS.right, order: 0, render: () => jsx(StripView, { v }) },
+    { id: 'rim', area: COMPOSER_AREAS.top, order: 0, render: () => jsx(RimView, { v }) },
+    { id: 'title', area: TITLEBAR_AREAS.center, order: 0, render: () => jsx(TitleMount, { mountStyle }) },
   ]
   const offs = contributions.map(c => ctx.register(c))
   return () => { for (const off of offs) off() }
@@ -583,7 +620,31 @@ function svgElement(
   })
 }
 
-Object.assign(exports, { dotElements, svgElement });
+/** The thinnest readable band: the whole tile, scaled to `height`, repeated across the full width. */
+function bandElement(
+  jsx     ,
+  box                                   ,
+  height        ,
+  dots                    ,
+)          {
+  const id = 'cf-rim-tile'
+  const tile = jsx('pattern', {
+    id,
+    width: box.width,
+    height: box.height,
+    patternUnits: 'userSpaceOnUse',
+    patternTransform: `scale(${height / box.height})`,
+    children: dotElements(jsx, dots),
+  })
+  return jsx('svg', {
+    width: '100%',
+    height,
+    'aria-hidden': true,
+    children: [jsx('defs', { children: tile }), jsx('rect', { width: '100%', height: '100%', fill: `url(#${id})` })],
+  })
+}
+
+Object.assign(exports, { dotElements, svgElement, bandElement });
 };
 
 __cf_defs["src/adapters/view.ts"] = (exports) => {

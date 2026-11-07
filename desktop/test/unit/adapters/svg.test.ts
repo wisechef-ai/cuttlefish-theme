@@ -5,7 +5,7 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 
 import { allocate, patternOf, renderSwatch, resolveSettings } from '../../../src/domain/index.ts'
-import { dotElements, svgElement, type Jsx } from '../../../src/adapters/svg.ts'
+import { bandElement, dotElements, svgElement, type Jsx } from '../../../src/adapters/svg.ts'
 
 const raw = {
   states: { compacting_seen: { when: 'compacting', pattern: 'ripple', priority: 70, label: 'tidying up' } },
@@ -57,4 +57,20 @@ test('svg: the root carries the surface attributes and the viewBox', () => {
   assert.equal(root.props.viewBox, '0 0 24 12')
   assert.equal(root.props.width, 24)
   assert.ok(Array.isArray(root.props.children) && root.props.children.length === 1)
+})
+
+test('svg: the band tiles the WHOLE strip uniformly into `height` px, full width, hidden from assistive tech (F4)', () => {
+  const made: { type: string; props: Record<string, unknown> }[] = []
+  const jsx: Jsx = (type, props) => { made.push({ type: String(type), props }); return made.at(-1) }
+  const root = bandElement(jsx, { width: 64, height: 12 }, 6, [{ x: 1, y: 2, r: 1, color: '#fff', alpha: 0.5 }]) as { props: Record<string, unknown> }
+  assert.equal(root.props.width, '100%')
+  assert.equal(root.props.height, 6)
+  assert.equal(root.props['aria-hidden'], true)
+  const tile = made.find(m => m.type === 'pattern')!.props
+  assert.equal(tile.patternTransform, 'scale(0.5)', '6 / 12 — one uniform scale, never a stretch')
+  assert.equal(tile.width, 64)
+  assert.equal(tile.height, 12)
+  assert.equal(tile.patternUnits, 'userSpaceOnUse')
+  assert.equal(made.filter(m => m.type === 'circle').length, 1)
+  assert.equal(made.find(m => m.type === 'rect')!.props.fill, `url(#${tile.id})`, 'the rect paints the tile it names')
 })
