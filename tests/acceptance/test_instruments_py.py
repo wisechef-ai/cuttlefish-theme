@@ -252,7 +252,7 @@ def test_detector_honours_region_and_exclusions_and_ignores_specks():
 
 def test_detector_rejects_a_bad_region_and_a_fully_excluded_one():
     img = ip.Image(10, 10, [bytes(30)] * 10)
-    for region in ((0, 0, 11, 10), (-1, 0, 5, 5), (0, 0, 0, 5)):
+    for region in ((0, 0, 11, 10), (-1, 0, 5, 5), (0, -1, 5, 5), (0, 0, 0, 5), (0, 0, 5, 0), (0, 6, 5, 5), (6, 0, 5, 5)):
         with pytest.raises(ValueError, match="outside"):
             ip.detect_organs(img, region)
     with pytest.raises(ValueError, match="excluded"):
@@ -547,9 +547,24 @@ def test_detector_accepts_regions_that_touch_the_image_edges():
 def test_field_metrics_and_dot_geometry_on_a_small_known_picture():
     g = "#141416"
     img = blocks(60, 40, g, [(10, 10, 4, 4, "#303030"), (30, 10, 6, 6, "#202022")])
-    dots, _ = ip.detect_organs(img, (5, 5, 50, 30))
-    assert [(d.x, d.y) for d in dots] == [(6.5, 6.5), (27.5, 7.5)], "centroids are relative to the region"
+    dots, _ = ip.detect_organs(img, (7, 4, 50, 30))
+    assert [(d.x, d.y) for d in dots] == [(4.5, 7.5), (25.5, 8.5)], "centroids are relative to the region's origin (x AND y)"
     assert dots[0].r == pytest.approx(math.sqrt(16 / math.pi)) and dots[1].r == pytest.approx(math.sqrt(36 / math.pi))
-    m = ip.field_metrics(img, (5, 5, 50, 30))
+    m = ip.field_metrics(img, (7, 4, 50, 30))
     d1, d2 = (ip.dot_delta_l(d, g) for d in dots)
     assert m["organs_detected"] == 2 and m["mean_dL"] == pytest.approx((d1 + d2) / 2) and m["p95_dL"] == pytest.approx(max(d1, d2))
+
+
+def test_ground_is_the_modal_colour_even_when_the_first_pixel_is_something_else():
+    img = blocks(60, 20, "#141416", [(0, 0, 2, 2, "#303030")])
+    dots, ground = ip.detect_organs(img, (0, 0, 60, 20))
+    assert ground == "#141416" and [d.color for d in dots] == ["#303030"]
+
+
+def test_unfilter_uses_the_pixel_up_and_left_only_where_they_exist():
+    # Paeth on the first pixel of a row has no left and no up-left neighbour: predictor(0, up, 0). up = 1 → b (1), not a (0).
+    assert ip._unfilter_row(4, bytearray([5, 5, 5]), bytearray([1, 1, 1]), 3) == bytearray([6, 6, 6])
+    # second pixel: left = line[0], up-left = prev[0]
+    second = ip._unfilter_row(4, bytearray([0, 0, 0, 0, 0, 0]), bytearray([9, 9, 9, 3, 3, 3]), 3)
+    assert second[3:] == bytearray([reference_paeth(9, 3, 9)] * 3)
+    assert ip._unfilter_row(0, bytearray([1, 2]), bytearray([9, 9]), 1) == bytearray([1, 2])

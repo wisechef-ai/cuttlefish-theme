@@ -298,8 +298,9 @@ def write_png(path: Path, width: int, height: int, rows: list[bytes]) -> None:
     def chunk(kind: bytes, body: bytes) -> bytes:
         return struct.pack(">I", len(body)) + kind + body + struct.pack(">I", zlib.crc32(kind + body) & 0xFFFFFFFF)
     raw = b"".join(b"\x00" + r for r in rows)
-    Path(path).write_bytes(PNG_SIG + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
-                           + chunk(b"IDAT", zlib.compress(raw, 6)) + chunk(b"IEND", b""))
+    header = chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+    data = chunk(b"IDAT", zlib.compress(raw, 6))
+    Path(path).write_bytes(PNG_SIG + header + data + chunk(b"IEND", b""))
 
 
 # ---- pixels → dots --------------------------------------------------------------------------------------------------
