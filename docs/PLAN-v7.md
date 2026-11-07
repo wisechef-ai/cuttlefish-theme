@@ -1,3 +1,5 @@
+> Historical (v1). The tools named here were removed in 2.0.0; see main@0a33840.
+
 # v7 — the rule becomes skin, and identity survives the scroll
 
 ## Why
