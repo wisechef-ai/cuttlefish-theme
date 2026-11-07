@@ -7,7 +7,7 @@ description: >-
   settings validator, the live-config dashboard API and the classic-CLI skin.
 author: wisechef-ai
 kind: standalone
-requires_hermes: ">=0.22.0"
+requires_hermes: ">=0.21.6"
 provides_hooks:
   - pre_approval_request
   - post_approval_response

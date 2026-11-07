@@ -34,7 +34,7 @@ Also one mutant per fix below (all killed).
 - dead modules/no-ops: none; every cuttlefish module is reachable from `register.py`/`plugin_api.py`.
 - duplicates: `dryer --threshold 0.8 cuttlefish dashboard` → "No duplicate candidates found."
 - producer ORDERS replayed against hermes-core v0.22.7 sources: gateway (human open → pre → post → human resolved) counts once; transport the same; MCP elicitation (pre/post, no wrapper) counts alone; coalesced follower (pre and post both carry `coalesced=True`) emits nothing; two concurrent approvals count 2. Correct.
-- `requires_hermes ">=0.22.0"`: all four files are added in v0.22.0 (`git tag --contains` lists v0.22.0 as the lowest 0.22 tag for each of d109785b, 585e296d, 8034d493, 72f55062) → floor is truthful.
+- `requires_hermes ">=0.22.0"`: all four files are added in v0.22.0 (`git tag --contains` lists v0.22.0 as the lowest 0.22 tag for each of d109785b, 585e296d, 8034d493, 72f55062) → floor is truthful. **Superseded (cf2 floor probe, 2026-11-07):** that check only listed *0.22* tags; `git tag --contains` actually lists **v0.21.6** as the earliest release for all four commits, so the truthful floor is `>=0.21.6` — plugin.yaml now says so.
 - skin install: one file (`skins/cuttlefish.yaml`, temp+`os.replace`), never edits config.yaml, never selects the skin. OK.
 
 ## Mutation (every survivor accounted)

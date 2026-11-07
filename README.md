@@ -89,7 +89,7 @@ The rules are the same in both halves (they share one set of test vectors): a re
 
 ## Requirements
 
-- Hermes `>= 0.22.0` (`requires_hermes` in [plugin.yaml](plugin.yaml)); built and tested against Hermes v0.22.7.
+- Hermes `>= 0.21.6` (`requires_hermes` in [plugin.yaml](plugin.yaml)); built and tested on v0.22.7 (real Desktop evidence) and running on a v0.23.0 gateway; v0.21.6–0.21.7 are supported by source (every API it uses is present there), not by a test run.
 - The Desktop surfaces need the Hermes Desktop; the classic-CLI skin works everywhere else.
 
 ## Tests

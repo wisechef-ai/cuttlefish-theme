@@ -9,6 +9,7 @@ v2 moves the skin to the Hermes Desktop. One plugin, two halves.
 - **Live config.** Everything sits under `plugins.entries.cuttlefish-theme.settings` in `config.yaml`: `intensity`, `motion`, and `states`/`patterns` mappings that remap the presets or add your own. Edits apply without a restart; a rejected value keeps its default and produces a warning, never a crash.
 - **Classic CLI: a static colour skin.** `hermes cuttlefish skin` installs it (explicit, never auto-selected); `hermes cuttlefish doctor` reports the resolved config and skin state; `hermes cuttlefish legend` prints the vocabulary.
 - **Removed: the v1 terminal engine.** The live terminal repaint depended on core hooks that never merged, so it is gone from what ships. The history stays on `main` at `0a33840`.
+- Requires Hermes `>= 0.21.6`.
 
 ## 0.5.0 — bioluminescent frame
 
