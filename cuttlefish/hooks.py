@@ -14,7 +14,9 @@ elicitation paths carry none, so one is derived — deterministically, across
 processes — over exactly ``(session_key, turn_id, tool_call_id, pattern_key,
 surface)``, blind to the command text. A coalesced follower (``coalesced=True``)
 sits behind its leader and emits nothing: not a second request, and never a
-close of what the leader still holds.
+close of what the leader still holds. Whether an open/close is EMITTED is
+``pairing``'s ruling (part 2): a multiset per request key, and one human
+question counting once however the producers interleave.
 """
 
 from __future__ import annotations
@@ -23,7 +25,7 @@ import functools
 import hashlib
 from typing import Any, Callable
 
-from . import events
+from . import events, pairing
 
 #: The five kwargs the derived approval key is computed over (nothing else).
 KEY_FIELDS = ("session_key", "turn_id", "tool_call_id", "pattern_key", "surface")
@@ -69,29 +71,28 @@ def _request_key(kwargs: dict[str, Any]) -> str:
     return "cf-" + hashlib.sha256(joined.encode("utf-8")).hexdigest()
 
 
-def _needs_you(session_id: str, kwargs: dict[str, Any], request_id: str, active: bool) -> None:
-    events.emit("needs_you", {
-        "session_id": session_id,
-        "session_key": _text(kwargs, "session_key"),
-        "request_id": request_id,
-        "kind": _text(kwargs, "kind") or "approval",
-        "active": active,
-    })
-
-
 def _fire_approval(kwargs: dict[str, Any], active: bool) -> None:
-    """pre/post of an approval request → needs_you on/off."""
-    if _session_id(kwargs) is None or kwargs.get("coalesced"):
-        return  # unattributable, or a follower behind its leader: not a separate request
-    _needs_you(_session_id(kwargs), kwargs, _request_key(kwargs), active)
+    """pre/post of an approval request → needs_you on/off (counted, paired)."""
+    session_id = _session_id(kwargs)
+    if session_id is None or kwargs.get("coalesced"):
+        return  # unattributable, or a follower behind its leader: an alias, never a second count
+    key = (_text(kwargs, "session_key"), _request_key(kwargs))
+    if active:
+        pairing.approval_open(*key, session_id, _text(kwargs, "kind") or "approval")
+    else:
+        pairing.close(*key, hook_side=True)
 
 
 def _fire_human_input(kwargs: dict[str, Any], active: bool) -> None:
-    """request/resolved of the human-input wrapper → needs_you on/off."""
+    """request/resolved of the human-input wrapper → needs_you on/off (counted, paired)."""
     session_id = _session_id(kwargs)
     if session_id is None:
         return
-    _needs_you(session_id, kwargs, _request_key(kwargs), active)
+    key = (_text(kwargs, "session_key"), _request_key(kwargs))
+    if active:
+        pairing.human_open(*key, session_id, _text(kwargs, "kind") or "approval")
+    else:
+        pairing.close(*key, hook_side=False)
 
 
 @_observer

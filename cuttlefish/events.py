@@ -22,11 +22,27 @@ Broadcaster = Callable[[str, str, "dict[str, Any] | None"], None]
 
 _override: Broadcaster | None = None
 
+#: Told whenever the broadcaster is (re)attached. Observer-owned state (the
+#: pairing windows) registers here, so every observer starts from a clean
+#: slate; production attaches once (or never) and never resets.
+_change_listeners: list[Any] = []
+
+
+def on_broadcaster_change(listener: Any) -> None:
+    """Register a zero-arg callback run on every broadcaster (re)attach."""
+    _change_listeners.append(listener)
+
 
 def set_broadcaster(fn: Broadcaster | None) -> None:
-    """Test seam: swap the door (``None`` restores the public core default)."""
+    """Test seam: swap the door (``None`` restores the public core default).
+    A re-attach also starts a fresh slate for observer-owned state."""
     global _override
     _override = fn
+    for listener in tuple(_change_listeners):
+        try:
+            listener()
+        except Exception:
+            pass
 
 
 def _core_door(plugin_id: str, event: str, payload: dict[str, Any] | None = None) -> None:

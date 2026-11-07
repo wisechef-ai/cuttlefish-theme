@@ -34,12 +34,17 @@ APPROVAL = dict(command="rm -rf /tmp/secret", description="d", pattern_key="rm_r
                 session_key=SK, surface="gateway", turn_id="t1", tool_call_id="c1", session_id=SID)
 
 
-def test_repeated_opens_are_idempotent_on_the_wire(sent):
+def test_repeated_opens_share_one_count_on_the_wire(sent):
+    """Two colliding opens are ONE question (multiset): one true, one false at the end."""
     h = hooks()
     h.pre_approval_request(**APPROVAL)
     h.pre_approval_request(**APPROVAL)
     ids = [p["request_id"] for e, p in sent if e == "needs_you"]
-    assert len(ids) == 2 and ids[0] == ids[1], "the same request must keep the same key"
+    assert ids and len(ids) == 1, "the same request seen twice opens one question, not two"
+    h.post_approval_response(**APPROVAL, choice="once")
+    assert [p["active"] for e, p in sent if e == "needs_you"] == [True], "one close leaves the twin open"
+    h.post_approval_response(**APPROVAL, choice="once")
+    assert [p["active"] for e, p in sent if e == "needs_you"] == [True, False]
 
 
 def test_odd_types_never_raise_and_never_emit(sent):
@@ -63,7 +68,11 @@ def test_derived_key_ignores_unstable_fields_but_keeps_the_five(sent):
     first = sent[-1][1]["request_id"]
     h.pre_approval_request(**{**APPROVAL, "command": "other", "choice": "x", "request_digest": "zz",
                               "pattern_keys": ["a", "b"], "timeout_s": 9})
-    assert sent[-1][1]["request_id"] == first
+    assert len(sent) == 1, "same five key fields: not a new question, just the same one counted twice"
+    h.post_approval_response(**APPROVAL, choice="once")
+    assert len(sent) == 1, "one of the two colliding opens still holds the request open"
+    h.post_approval_response(**{**APPROVAL, "command": "other"}, choice="once")
+    assert sent[-1][1]["request_id"] == first and sent[-1][1]["active"] is False
     h.pre_approval_request(**{**APPROVAL, "surface": "cli"})
     assert sent[-1][1]["request_id"] != first
 
