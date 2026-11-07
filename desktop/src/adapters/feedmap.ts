@@ -47,9 +47,12 @@ export function eventToFeed(event: unknown, t: number): FeedInput | null {
 }
 
 /** The host.state atoms as one `state` feed input; absent doors stay absent.
- *  An EMPTY busyBySession map is omitted on purpose: the domain treats a present
- *  map as "this REPLACES the busy set" and then ignores the plain busy flag, so
- *  forwarding the host's resting `{}` would permanently silence that flag. */
+ *  The host's `busyBySession` is authoritative — a present map REPLACES the busy
+ *  set in the domain, and an EMPTY one legitimately means "nobody is busy", so it
+ *  is forwarded (else a dropped session entry would leave a stale "working").
+ *  The one exception: an empty map beside a busy plain flag cannot come from the
+ *  real host (its `busy` is a subset of the map) — only from a flag-only source —
+ *  so the map is withheld there and the flag speaks. */
 export function stateSnapshot(atoms: StateAtoms, t: number): FeedInput {
   const payload: Record<string, unknown> = {}
   const gateway = atoms.gateway.get()
@@ -57,7 +60,7 @@ export function stateSnapshot(atoms: StateAtoms, t: number): FeedInput {
   const busy = atoms.busy.get()
   if (typeof busy === 'boolean') payload.busy = busy
   const bySession = atoms.busyBySession.get()
-  if (isRec(bySession) && Object.keys(bySession).length > 0) payload.busyBySession = { ...bySession }
+  if (isRec(bySession) && (busy !== true || Object.keys(bySession).length > 0)) payload.busyBySession = { ...bySession }
   const focused = atoms.focusedSessionId.get()
   if (isStr(focused)) payload.focused_session_id = focused
   const focusedStored = atoms.focusedStoredSessionId.get()

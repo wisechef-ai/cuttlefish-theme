@@ -31,7 +31,7 @@ interface FakeSdk {
 }
 interface FakeCtx {
   ctx: PluginContext
-  state: { contributions: Array<{ id: string; area: string; render?: () => unknown }> }
+  state: { contributions: Array<{ id: string; area: string; render?: () => unknown }>; timers: Array<{ live: boolean }> }
   respondRest(fn: (path: string) => unknown): void
   advance(ms: number): Promise<void>
   dispose(): void
@@ -197,4 +197,174 @@ test('runtime: a foreign event is ignored; dispose removes the style and the roo
   assert.equal(document.documentElement.getAttribute('data-cf-state'), null)
   assert.equal(document.documentElement.getAttribute('data-cf-session'), null)
   assert.equal(calls.loops[0].disposed, true, 'the loop is disposed')
+})
+
+// ---- review round (F1, F3, F5, F7) -------------------------------------------------------------
+
+const ringOfCss = (css: string): string => /--dt-composer-ring:([^;}]+)/.exec(css)?.[1] ?? ''
+
+test('runtime: the ground is what the engine RESOLVES, not the custom property\'s token stream (F1)', async () => {
+  const real = globalThis.getComputedStyle
+  // v0.22.7: --ui-chat-surface-background is var(--ui-bg-chrome) = color-mix(…); a probe's background-color resolves it
+  ;(globalThis as unknown as { getComputedStyle: unknown }).getComputedStyle = () => ({
+    getPropertyValue: () => 'color-mix(in srgb, #fbfbfa 92%, #ffffff)',
+    backgroundColor: 'color(srgb 0.980392 0.976471 0.968627)',
+  })
+  try {
+    const { mount } = await boot()
+    const { el } = mount()
+    const light = initialView({ ...ENV, ground: '#faf9f7' })
+    assert.equal(el.textContent, fieldCss(light), 'painted on the light theme\'s ground, not the dark fallback')
+  } finally {
+    ;(globalThis as unknown as { getComputedStyle: unknown }).getComputedStyle = real
+  }
+})
+
+test('runtime: the composer ring is the identity hue in EVERY state (F5)', async () => {
+  const { mount } = await boot()
+  const { el } = mount()
+  await focusSA()
+  const rest = ringOfCss(el.textContent)
+  assert.ok(rest.length > 0)
+  working()
+  await flush()
+  assert.equal(document.documentElement.getAttribute('data-cf-state'), 'working')
+  assert.equal(ringOfCss(el.textContent), rest, 'working')
+  host.state.busy.set(false)
+  fake.emit({ type: 'plugin.cuttlefish-theme.needs_you', session_id: 'a',
+    payload: { session_id: 'SA', session_key: 'SA', request_id: 'r1', kind: 'approval', active: true } })
+  await flush()
+  assert.equal(ringOfCss(el.textContent), rest, 'needs you')
+  fake.emit({ type: 'plugin.cuttlefish-theme.needs_you', session_id: 'a',
+    payload: { session_id: 'SA', session_key: 'SA', request_id: 'r1', kind: 'approval', active: false } })
+  fake.emit({ type: 'plugin.cuttlefish-theme.error', session_id: '', payload: { session_id: 'SA', session_key: 'SA', retryable: false } })
+  await flush()
+  assert.equal(document.documentElement.getAttribute('data-cf-state'), 'error')
+  assert.equal(ringOfCss(el.textContent), rest, 'error')
+})
+
+test('runtime: leaving reduced motion while working wakes the parked loop (F3)', async () => {
+  const { mount } = await boot()
+  mount()
+  await focusSA()
+  working()
+  await flush()
+  const idle = (): boolean => calls.loops[0].opts.idleWhen?.() ?? false
+  assert.equal(idle(), false)
+  const fire = (matches: boolean): void => { for (const fn of (dom as unknown as { mediaListeners: Set<(e: { matches: boolean }) => void> }).mediaListeners) fn({ matches }) }
+  fire(true)
+  assert.equal(idle(), true, 'reduced motion parks')
+  const wakes = calls.loops[0].wakes
+  fire(false)
+  assert.equal(idle(), false, 'clouds are wanted again')
+  assert.ok(calls.loops[0].wakes > wakes, 'and the parked loop is woken — no state change needed')
+})
+
+test('runtime: a refetched config that re-enables motion wakes the loop while working (F3)', async () => {
+  const { h, mount } = await boot()
+  mount()
+  await focusSA()
+  working()
+  await flush()
+  let mtime = 1
+  let configs = 0
+  fake.responder = (method: string): unknown => (method === 'config.get' ? { mtime } : { sessions: [] })
+  h.respondRest((path: string) => {
+    if (path === '/config') { configs += 1; return { settings: { motion: configs === 1 ? 'off' : 'still' }, warnings: [], rev: 'r' } }
+    if (path === '/health') return { ok: true }
+    return { mtime }
+  })
+  await h.advance(50)
+  assert.equal(calls.loops[0].opts.idleWhen?.(), true, 'motion off parks')
+  const wakes = calls.loops[0].wakes
+  mtime = 2
+  await h.advance(2000)
+  assert.equal(calls.loops[0].opts.idleWhen?.(), false)
+  assert.ok(calls.loops[0].wakes > wakes, 'motion back on wakes it')
+})
+
+test('runtime: a live viewport of 0 keeps the window-size fallback, like the first sight (F7)', async () => {
+  const { mount } = await boot()
+  const { el } = mount()
+  host.state.viewport.set({ width: 0, height: 0 })
+  await flush()
+  assert.ok(el.textContent.includes('1200px 800px'), 'not a 0px field')
+  host.state.viewport.set({ width: 900, height: 700 })
+  await flush()
+  assert.ok(el.textContent.includes('900px 700px'))
+})
+
+test('runtime: dispose leaves no style, attribute, timer, listener, loop or live contribution; a second life never doubles (hot reload)', async () => {
+  const fakeSdk = sdk as unknown as { fake: { listenerCount(): number }; host: { state: Record<string, { lc: number }> } }
+  const media = (dom as unknown as { mediaListeners: Set<unknown> }).mediaListeners
+  const styles = (): number => document.head.children.filter(c => (c as unknown as { tagName: string }).tagName === 'STYLE').length
+  const base = styles()
+  const mediaBase = media.size
+  const atomBase = Object.fromEntries(Object.entries(fakeSdk.host.state).map(([k, a]) => [k, a.lc]))
+  const life = async (): Promise<FakeCtx> => {
+    const { h, mount } = await boot()
+    mount()
+    assert.equal(styles(), base + 1, 'exactly ONE owned style in a life')
+    await focusSA()
+    assert.equal(fakeSdk.fake.listenerCount(), 1, 'one event listener')
+    assert.equal(media.size, mediaBase + 1, 'one matchMedia listener in a life')
+    assert.equal(h.state.contributions.filter(c => (c as { live?: boolean }).live).length, 4, 'four live contributions')
+    assert.equal(h.state.timers.filter(t => t.live).length, 3, 'one kick, one watch, one poll')
+    return h
+  }
+  const gone = (h: FakeCtx, loops: number): void => {
+    h.dispose()
+    assert.equal(styles(), base, 'no style of ours')
+    assert.equal(document.documentElement.getAttribute('data-cf-state'), null)
+    assert.equal(document.documentElement.getAttribute('data-cf-session'), null)
+    assert.equal(h.state.timers.filter(t => t.live).length, 0, 'no timer')
+    assert.equal(fakeSdk.fake.listenerCount(), 0, 'no event listener')
+    assert.equal(media.size, mediaBase, 'no matchMedia listener of ours')
+    for (const [name, atom] of Object.entries(fakeSdk.host.state)) assert.equal(atom.lc, atomBase[name], `no listener of ours left on host.state.${name}`)
+    assert.equal(h.state.contributions.filter(c => (c as { live?: boolean }).live).length, 0, 'no contribution')
+    assert.equal(calls.loops.length, loops)
+    assert.ok(calls.loops.every(l => l.disposed), 'every loop disposed')
+  }
+  gone(await life(), 1)
+  gone(await life(), 1) // boot() resets the recorder: the second life has exactly ONE loop of its own, again
+})
+
+// ---- F8: a live light/dark switch --------------------------------------------------------------
+
+test('runtime: the ground is re-sampled on the config tick — a theme switch re-renders field and rim, no change re-renders nothing (F8)', async () => {
+  const real = globalThis.getComputedStyle
+  const host_ = { ground: 'rgb(20, 20, 22)' }
+  ;(globalThis as unknown as { getComputedStyle: unknown }).getComputedStyle = () => ({
+    getPropertyValue: () => '', backgroundColor: host_.ground,
+  })
+  try {
+    const { h, mount } = await boot()
+    h.respondRest((path: string) => (path === '/config' ? { settings: {}, warnings: [], rev: 'r' } : path === '/health' ? { ok: true } : { mtime: 1 }))
+    fake.responder = (method: string): unknown => (method === 'config.get' ? { mtime: 1 } : { sessions: [] })
+    const { el } = mount()
+    await h.advance(50) // the kick: first config sight
+    let writes = 0
+    let text = el.textContent
+    Object.defineProperty(el, 'textContent', { get: () => text, set: (x: string) => { writes += 1; text = x } })
+    const rim = (): string => JSON.stringify(expand((h.state.contributions.find(c => c.id === 'rim') as { render: () => unknown }).render()).tree)
+    const dark = text
+    const darkRim = rim()
+    const wakes = calls.loops[0].wakes
+
+    await h.advance(2000) // a tick, ground unchanged
+    assert.equal(writes, 0, 'no change ⇒ not one re-render')
+    assert.equal(calls.loops[0].wakes, wakes)
+    assert.equal(calls.loops[0].opts.idleWhen?.(), true, 'the loop stays parked')
+
+    host_.ground = 'rgb(250, 249, 247)' // the user flips to a light theme
+    await h.advance(2000)
+    assert.equal(text, fieldCss(initialView({ ...ENV, ground: '#faf9f7' })), 'the field is tuned to the new ground')
+    assert.notEqual(text, dark)
+    assert.notEqual(rim(), darkRim, 'the rim follows')
+    const settled = text
+    await h.advance(2000)
+    assert.equal(text, settled, 'and settles: the same ground again changes nothing')
+  } finally {
+    ;(globalThis as unknown as { getComputedStyle: unknown }).getComputedStyle = real
+  }
 })

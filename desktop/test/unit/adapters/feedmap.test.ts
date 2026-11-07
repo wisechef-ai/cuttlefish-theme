@@ -44,7 +44,7 @@ test('feedmap: the state snapshot carries every documented field, absent doors o
   })
 })
 
-test('feedmap: empty ids stay out, and an EMPTY busy map is omitted so the busy flag still speaks', () => {
+test('feedmap: empty ids stay out, and an EMPTY busy map is forwarded while the flag is false (F2)', () => {
   const snap = stateSnapshot({
     activeSessionId: atom(null),
     busy: atom(false),
@@ -54,7 +54,7 @@ test('feedmap: empty ids stay out, and an EMPTY busy map is omitted so the busy 
     gateway: atom('connecting'),
   }, 1)
   assert.equal(snap.session, null)
-  assert.deepEqual(snap.payload, { gateway: 'connecting', busy: false }, 'the domain replaces the busy set on a present map — an empty one must not shadow the flag')
+  assert.deepEqual(snap.payload, { gateway: 'connecting', busy: false, busyBySession: {} }, 'an empty map with a quiet flag is the authoritative "nobody busy"')
 })
 
 test('feedmap: a non-object busyBySession is omitted, a non-string gateway ignored downstream', () => {
@@ -76,4 +76,40 @@ test('feedmap: parseGround reads the computed ground of the fake host exactly', 
   assert.equal(parseGround('#2E3440'), '#2e3440')
   assert.equal(parseGround('oklch(0.2 0 0)'), null)
   assert.equal(parseGround(''), null)
+})
+
+test('feedmap: parseGround understands what a real engine resolves a colour to (F1)', async () => {
+  const { parseGround } = await import('../../../src/adapters/ground.ts')
+  assert.equal(parseGround('color(srgb 0.980392 0.976471 0.968627)'), '#faf9f7', 'color-mix(in srgb) resolves to color(srgb …)')
+  assert.equal(parseGround('color(srgb 0.078 0.078 0.086 / 1)'), '#141416')
+  assert.equal(parseGround('rgb(250 249 247)'), '#faf9f7', 'space-separated rgb()')
+  assert.equal(parseGround('rgb(250 249 247 / 0.5)'), null, 'a translucent ground is not a ground we can paint on')
+  assert.equal(parseGround('rgba(0, 0, 0, 0)'), null, 'transparent (an unresolved var()) is no ground')
+  assert.equal(parseGround('color-mix(in srgb, #fff 90%, transparent)'), null, 'an unresolved token stream is no ground')
+})
+
+test('feedmap: a present-but-emptied busyBySession map clears the busy set; the fake-only {} + busy:true keeps the flag (F2)', async () => {
+  const { initialFeed, reduceFeed, signalsOf } = await import('../../../src/domain/index.ts')
+  const mk = (map: Record<string, boolean>, busy: boolean): StateAtoms => ({
+    activeSessionId: atom<string | null>('a'), busy: atom(busy), busyBySession: atom(map),
+    focusedSessionId: atom<string | null>('a'), focusedStoredSessionId: atom<string | null>('SA'), gateway: atom('open'),
+  })
+  let feed = reduceFeed(initialFeed(), { kind: 'session.info', t: 0, session: 'a', payload: { stored_session_id: 'SA' } })
+  feed = reduceFeed(feed, stateSnapshot(mk({ a: true, b: true }, true), 1))
+  assert.ok(signalsOf(feed, 'SA').has('busy'))
+  // the host drops the session's state entry: map {} and the focused chat is not busy
+  const emptied = stateSnapshot(mk({}, false), 2)
+  assert.deepEqual(emptied.payload?.busyBySession, {}, 'the authoritative empty map is forwarded')
+  feed = reduceFeed(feed, emptied)
+  assert.ok(!signalsOf(feed, 'SA').has('busy'), 'nobody is busy any more — no stale working')
+  // the shape the contract fakes produce (flag only, map resting {}) still reads busy
+  const flagOnly = stateSnapshot(mk({}, true), 3)
+  assert.equal('busyBySession' in (flagOnly.payload ?? {}), false)
+  assert.ok(signalsOf(reduceFeed(feed, flagOnly), 'SA').has('busy'))
+})
+
+test('feedmap: a percentage alpha is judged as a percentage', async () => {
+  const { parseGround } = await import('../../../src/adapters/ground.ts')
+  assert.equal(parseGround('rgb(1 2 3 / 50%)'), null)
+  assert.equal(parseGround('rgb(1 2 3 / 100%)'), '#010203')
 })

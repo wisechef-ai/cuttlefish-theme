@@ -32,19 +32,32 @@ interface Attached {
 
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
-/** The user's own chat-surface ground, read from a thrown-away probe of our own. */
+/**
+ * The user's own chat-surface ground, as the engine RESOLVES it on a thrown-away
+ * probe of our own. The custom property itself reads back as its authored token
+ * stream (core: var(--ui-bg-chrome) → color-mix(…)), which no parser should
+ * guess at; a probe's background-color is the used colour.
+ */
 function sampleGround(): string {
   const probe = document.createElement('div')
+  probe.style.setProperty('background-color', 'var(--ui-chat-surface-background)')
   document.body.appendChild(probe)
-  const computed = getComputedStyle(probe).getPropertyValue('--ui-chat-surface-background')
+  const computed = getComputedStyle(probe).backgroundColor
   probe.remove()
   const parsed = parseGround(computed)
   return parsed !== null ? parsed : FALLBACK_GROUND
 }
 
+/** F8: a live theme switch. Re-sample on the config tick; only a CHANGED ground re-renders. */
+function resampleGround(a: Attached): void {
+  const ground = sampleGround()
+  if (ground === a.v.ground) return
+  applyEnv(a.v, { ground })
+  paint(a)
+}
+
 /** The window the field paints for: the host's viewport atom, window size as the fallback. */
-function viewportOf(): { width: number; height: number } {
-  const vp = host.state.viewport.get()
+function viewportOf(vp: { width: number; height: number } = host.state.viewport.get()): { width: number; height: number } {
   return { width: vp.width > 0 ? vp.width : 1200, height: vp.height > 0 ? vp.height : 800 }
 }
 
@@ -67,9 +80,15 @@ function paintRoot(v: CfView): void {
   else el.setAttribute('data-cf-session', v.focusedStored)
 }
 
+/** Whatever just changed (settings, reduced motion, feed): a parked loop that is wanted again runs again. */
+function wakeIfWanted(a: Attached): void {
+  if (wantsFrame(a.v, idleSince(a.clock))) a.loop.wake()
+}
+
 function paint(a: Attached): void {
   paintField(a)
   paintRoot(a.v)
+  wakeIfWanted(a)
 }
 
 /**
@@ -167,7 +186,7 @@ export function attach(ctx: PluginContext): void {
   }
   offs.push(wireFeed(ctx, atoms, input => applyInput(a, input)))
   offs.push(host.state.viewport.listen(vp => {
-    applyEnv(v, vp)
+    applyEnv(v, viewportOf(vp))
     paint(a)
   }))
 
@@ -180,7 +199,7 @@ export function attach(ctx: PluginContext): void {
       setInterval: (fn, ms) => ctx.setInterval(fn, ms),
       now: () => Date.now(),
     },
-    { onFeed: input => applyInput(a, input), onSettings: config => applyConfig(a, config), pollWanted: () => pollPlan(v.feed, Date.now()).pollActiveList },
+    { onFeed: input => applyInput(a, input), onSettings: config => applyConfig(a, config), onTick: () => resampleGround(a), pollWanted: () => pollPlan(v.feed, Date.now()).pollActiveList },
   ))
 
   offs.push(wireReduce(v, () => paint(a)))
