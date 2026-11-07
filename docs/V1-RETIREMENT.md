@@ -36,6 +36,26 @@ property, or marked a decommissioned surface.
 | `animated_repaint_proof.py` | an animated transition reaches a live app frame by frame | the desktop budgeted loop carries the frames: `oA_part1_applied.test.ts` P3.4 + the O7 video evidence (`test_o7_desktop_evidence.py`, `test_o8_part1_video_provenance.py`) |
 | `running_app_proof.py` | a repaint reaches a real running prompt_toolkit app | decommissioned v1 surface, no v2 equivalent — same reason as `live_repaint_proof.py` |
 
+## v1 demo/render tools (`tools/`, retired by conductor addendum)
+
+`main` `0a33840` keeps them. They were also the source of all 103 pre-existing
+`ruff check .` errors (same count at `c0c06eb`), and `tools/render_chat.py:111`
+(`sudo_usage`) was the scan caution that made `hermes plugins validate` warn —
+which is why O1.1 ("validate must be CLEAN") could not pass.
+
+| v1 tool | what it did | v2 owner |
+|---|---|---|
+| `tools/README.md` | index of the v1 tools | retired with them — decommissioned v1 surface, no v2 equivalent |
+| `tools/sample_photos.py` | OKLCh statistics from *Metasepia pfefferi* photographs; every v1 `palette.py`/`field.py` constant traced to it | decommissioned v1 surface — v2 skin colour is the static `skins/cuttlefish.yaml`, pinned by `test_o6_cli_skin.py::test_O6_1_static_skin_shape` |
+| `tools/render_chat.py` | mock chat screen from the resolved v1 style dict (the `sudo_usage` caution lived here) | decommissioned v1 surface — the classic CLI surface is the static skin (`test_O6_1`, loaded by the real core loader in `test_O6_3`); a clean `validate` is pinned by `test_o1_catalog_clean.py::test_O1_1` |
+| `tools/render_preview.py` | rasterised the v1 pixel field to PNG for eyeballing | decommissioned v1 surface — the pixel evidence contract is the desktop O7 (`tests/acceptance/test_o7_desktop_evidence.py`, `test_o7_part1_recompute.py`) |
+| `tools/record_demo_gif.py` | recorded a real `hermes` pty session for the README GIF | decommissioned v1 surface, no v2 equivalent — the live-terminal demo retires with the engine |
+| `tools/render_demo_gif.py` | *(already superseded in v1)* GIF from a mock layout | decommissioned v1 surface, no v2 equivalent |
+
+References that remain (files this lane does not own, left for their owners):
+`README.md:193`, `docs/PLAN-v6.md:79`, `docs/PLAN-v7.md:31,83`, `docs/PLAN-v11.md:152`.
+`tools/desktop/` (another lane's harness) is absent on this branch and left absent.
+
 ## Deleted engine surface
 
 Root modules (`test_structure.py` `V1_ENGINE`, verbatim): `mantle.py chrome.py live.py

@@ -1,8 +1,6 @@
 line-length = 140
 target-version = "py312"
-# `tools` is dev-only v1 demo/render tooling (helpers.py DEV_DIRS excludes it from the shipping
-# scans the same way); it is not this lane's to clean.
-extend-exclude = [".venv", "desktop/node_modules", "tools", "tools/node_modules"]
+extend-exclude = [".venv", "desktop/node_modules", "tools/node_modules"]
 
 [lint]
 select = ["E", "F", "W", "I", "C90", "B"]
