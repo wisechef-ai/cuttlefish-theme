@@ -142,7 +142,12 @@ async function setPlugin(page: Page, on: boolean): Promise<void> {
 }
 
 const rowLocator = (page: Page, title: string) => page.locator('[data-sessions-mode] [data-slot="context-menu-trigger"]', { hasText: title }).first()
+/** Focus a session row. Never straight from a busy session: the plugin pairs the focused RUNTIME id with the focused STORED id
+ *  from two atoms that move one after the other, so a direct switch maps the session being left onto the one being entered
+ *  (reported as a product finding). Going through an empty new chat first leaves the pairs intact. */
 async function focusRow(page: Page, title: string): Promise<void> {
+  await page.keyboard.press('Control+n')
+  await sleep(900)
   await rowLocator(page, title).click()
   await page.mouse.move(SCREEN.w - 5, SCREEN.h / 2) // park the pointer: no hover tooltip in a still
   await sleep(500)
@@ -265,9 +270,8 @@ async function main(): Promise<void> {
     await newSession(page, TITLES.c); ids.c = await storedIdOf(page, TITLES.c); await sleep(6000)
     await newSession(page, TITLES.r3); ids.r3 = await storedIdOf(page, TITLES.r3); await sleep(3000)
     await newSession(page, TITLES.d); ids.d = await storedIdOf(page, TITLES.d)
-    await focusRow(page, TITLES.r1) // away from D before its 6 s turn ends: D finishes UNSEEN
-    await sleep(9000)
-    await newSession(page, TITLES.r4); ids.r4 = await storedIdOf(page, TITLES.r4); await sleep(4000)
+    await newSession(page, TITLES.r4); ids.r4 = await storedIdOf(page, TITLES.r4) // another session takes the focus before D's 6 s turn ends: D finishes UNSEEN
+    await sleep(10_000)
     log(`sessions: ${JSON.stringify(ids)}`)
 
     const sessions: SessionSpec[] = []

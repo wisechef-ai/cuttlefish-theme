@@ -41,7 +41,7 @@ export const readGeometry = (): Geometry => {
   const sels = [
     '[data-slot="aui_user-message-root"]', '[data-slot="aui_assistant-message-root"]', '[data-slot="tool-approval-stack"]',
     '[data-slot="card-stack"]', '[data-slot="thread-timeline"]', '[data-slot="composer-dock"]', '[data-slot="composer-fade"]',
-    '[data-slot="status-drawer-toggle"]', '[data-slot="chat-drop-overlay"]',
+    '[data-slot="status-drawer-toggle"]',
   ]
   const boxes = sels.flatMap(s => [...document.querySelectorAll(s)].map(rect))
   for (const b of [...document.querySelectorAll('button')]) if ((b.textContent || '').includes('Scroll to bottom')) boxes.push(rect(b))
