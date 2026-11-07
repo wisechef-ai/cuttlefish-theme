@@ -87,6 +87,11 @@ def parse_css_rgb(value: str) -> tuple[int, int, int, float]:
 
 # ---- stills sidecars -------------------------------------------------------------------------------------------------
 
+def _rect(v, where: str, name: str) -> None:
+    if not (isinstance(v, list) and len(v) == 4 and all(isinstance(x, int) and not isinstance(x, bool) for x in v)):
+        raise ValueError(f"{where}: {name} must be [x, y, w, h] integers")
+
+
 def load_still_meta(p: Path) -> dict:
     d = load_json(p)
     where = str(p)
@@ -97,14 +102,9 @@ def load_still_meta(p: Path) -> dict:
     if not SHA_RE.fullmatch(_need(d, "png_sha256", str, where)):
         raise ValueError(f"{where}: png_sha256 is not a sha256")
     _need(d, "taken_at", (int, float), where)
-    for key, n in (("region", 4),):
-        v = _need(d, key, list, where)
-        if len(v) != n or not all(isinstance(x, int) and not isinstance(x, bool) for x in v):
-            raise ValueError(f"{where}: {key} must be [x, y, w, h] integers")
-    ex = _need(d, "exclude", list, where)
-    for r in ex:
-        if not (isinstance(r, list) and len(r) == 4 and all(isinstance(x, int) for x in r)):
-            raise ValueError(f"{where}: every exclude entry must be [x, y, w, h] integers")
+    _rect(_need(d, "region", list, where), where, "region")
+    for r in _need(d, "exclude", list, where):
+        _rect(r, where, "every exclude entry")
     return d
 
 

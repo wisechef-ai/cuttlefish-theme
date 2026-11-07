@@ -235,7 +235,7 @@ def _unfilter_row(kind: int, line: bytearray, prev: bytearray, bpp: int) -> byte
         left = line[i - bpp] if i >= bpp else 0
         up = prev[i]
         upleft = prev[i - bpp] if i >= bpp else 0
-        add = (0, left, up, (left + up) // 2, _paeth(left, up, upleft))[kind]
+        add = (left, up, (left + up) // 2, _paeth(left, up, upleft))[kind - 1]
         line[i] = (line[i] + add) & 255
     return line
 
@@ -267,11 +267,16 @@ def _parse_png(data: bytes) -> tuple[tuple, bytes]:
     return header, bytes(idat)
 
 
+def _supported(width: int, height: int, depth: int, ctype: int, methods: tuple[int, int, int]) -> bool:
+    """8-bit, colour type 0/2/4/6, compression 0, filter method 0, no interlace, at least one pixel."""
+    return depth == 8 and ctype in _CHANNELS and methods == (0, 0, 0) and width >= 1 and height >= 1
+
+
 def read_png(path: Path) -> Image:
     header, idat = _parse_png(Path(path).read_bytes())
-    width, height, depth, ctype, _comp, _filt, interlace = header
-    if depth != 8 or ctype not in _CHANNELS or interlace != 0 or width < 1 or height < 1:
-        raise PngError(f"unsupported PNG (depth {depth}, colour type {ctype}, interlace {interlace})")
+    width, height, depth, ctype, comp, filt, interlace = header
+    if not _supported(width, height, depth, ctype, (comp, filt, interlace)):
+        raise PngError(f"unsupported PNG (depth {depth}, colour type {ctype}, methods {comp}/{filt}/{interlace})")
     try:
         raw = zlib.decompress(idat)
     except zlib.error as e:
@@ -357,21 +362,25 @@ def _components(ink: dict[tuple[int, int], tuple[int, int, int]]) -> list[list[t
     return out
 
 
-def detect_organs(img: Image, region: Rect, exclude: list[Rect] | None = None) -> tuple[list[Dot], str]:
-    """The organs visible in `region` of a still, and the ground colour they sit on. Coordinates are region-relative."""
+def _check_region(img: Image, region: Rect) -> None:
     rx, ry, rw, rh = region
     if rx < 0 or ry < 0 or rw < 1 or rh < 1 or rx + rw > img.width or ry + rh > img.height:
         raise ValueError(f"region {region} is outside the {img.width}×{img.height} image")
+
+
+def _dot_of(comp: list[tuple[int, int]], ink: dict[tuple[int, int], tuple[int, int, int]], region: Rect) -> Dot:
+    n = len(comp)
+    cx = sum(x for x, _ in comp) / n - region[0]
+    cy = sum(y for _, y in comp) / n - region[1]
+    mean_rgb = tuple(sum(ink[p][c] for p in comp) / n for c in range(3))
+    return Dot(cx, cy, math.sqrt(n / math.pi), rgb_to_hex(mean_rgb), 1.0, "organ")
+
+
+def detect_organs(img: Image, region: Rect, exclude: list[Rect] | None = None) -> tuple[list[Dot], str]:
+    """The organs visible in `region` of a still, and the ground colour they sit on. Coordinates are region-relative."""
+    _check_region(img, region)
     ground, ink = _ink_mask(img, region, exclude or [])
-    dots = []
-    for comp in _components(ink):
-        if not MIN_AREA <= len(comp) <= MAX_AREA:
-            continue
-        n = len(comp)
-        cx = sum(x for x, _ in comp) / n - rx
-        cy = sum(y for _, y in comp) / n - ry
-        mean_rgb = tuple(sum(ink[p][c] for p in comp) / n for c in range(3))
-        dots.append(Dot(cx, cy, math.sqrt(n / math.pi), rgb_to_hex(mean_rgb), 1.0, "organ"))
+    dots = [_dot_of(c, ink, region) for c in _components(ink) if MIN_AREA <= len(c) <= MAX_AREA]
     return sorted(dots, key=lambda d: (d.x, d.y)), ground
 
 

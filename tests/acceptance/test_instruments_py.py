@@ -267,3 +267,289 @@ def test_stripes_in_pixels_read_as_high_k_and_a_smooth_band_as_low_k():
     band = [(x, y, 5, "#34343c" if abs(y - 400) < 120 else "#18181b") for x in range(20, 1200, 40) for y in range(20, 800, 40)]
     m = ip.field_metrics(ip.Image(1200, 800, picture(1200, 800, "#141416", band)), (0, 0, 1200, 800))
     assert m["lowK"] >= 0.55 and m["highK"] <= 0.6 * m["lowK"], m
+
+
+# ---- (4) boundaries: every rule pinned at its edge (mutation-tested; see contract/PARTS.md) ---------------------------------
+
+def test_rgb_to_hex_clamps_and_rounds():
+    assert ip.rgb_to_hex((-5, 300, 128.4)) == "#00ff80"
+    assert ip.rgb_to_hex((0, 255, 1.6)) == "#00ff02"
+
+
+def test_composite_clamps_alpha_and_requires_equal_lengths():
+    assert ip.composite((10, 20, 30), 2.0, (0, 0, 0)) == (10, 20, 30)
+    assert ip.composite((10, 20, 30), -1.0, (1, 2, 3)) == (1, 2, 3)
+    with pytest.raises(ValueError):
+        ip.composite((1, 2), 0.5, (1, 2, 3))
+
+
+def test_percentile_edges_and_empty_samples():
+    xs = [3, 1, 2]
+    assert ip.percentile(xs, 0) == 1 and ip.percentile(xs, 0.0001) == 1 and ip.percentile(xs, 100) == 3
+    assert ip.percentile(xs, 66.7) == 3 and ip.percentile(xs, 66.6) == 2
+    for fn in (ip.mean, ip.median):
+        with pytest.raises(ValueError):
+            fn([])
+
+
+def test_visible_needs_both_alpha_and_radius():
+    dots = [ip.Dot(0, 0, 0, "#ffffff", 1), ip.Dot(0, 0, 1, "#ffffff", 0), ip.Dot(0, 0, 1e-9, "#ffffff", 1e-9),
+            ip.Dot(0, 0, 2, "#ffffff", 1)]
+    assert [(d.r, d.alpha) for d in ip.visible(dots)] == [(1e-9, 1e-9), (2, 1)]
+    assert ip.lightness_stats([], "#000000") == {"mean": 0.0, "p95": 0.0, "n": 0}
+    assert ip.lightness_stats(dots[:2], "#000000")["n"] == 0
+    assert ip.mean_chroma([]) == 0.0 and ip.mean_chroma(dots[:2]) == 0.0
+    close(ip.mean_chroma([ip.Dot(0, 0, 1, "#ff0000", 1)]), 0.25768, 1e-4, "chroma of pure red")
+    close(ip.lch_of("#ff0000")[2], 29.23, 0.01, "hue of pure red")
+
+
+def test_spot_ratios_with_one_dot_and_none():
+    assert ip.spot_ratios([]) == {"first": 0.0, "second": 0.0}
+    assert ip.spot_ratios([ip.Dot(0, 0, 3, "#ffffff", 1)]) == {"first": 1.0, "second": 0.0}
+    assert ip.spot_ratios([ip.Dot(0, 0, 3, "#ffffff", 1), ip.Dot(1, 1, 6, "#ffffff", 1, "eyespot")]) == {"first": 2.0, "second": 1.0}
+
+
+def test_band_spectrum_edges():
+    assert ip.band_spectrum([], "#000000", 1200, 800, 0) == [0.0] * 7, "no organs, no spectrum"
+    only_eye = [ip.Dot(10, 10, 3, "#ffffff", 1, "eyespot")]
+    assert ip.band_spectrum(only_eye, "#000000", 1200, 800, 0) == [0.0] * 7, "eye-spots are not organs"
+    assert len(ip.band_spectrum(grid(lambda x, y: 0.2), "#000000", 1200, 800, 45, bins=32)) == 15
+    invisible = [ip.Dot(10, 10, 3, "#ffffff", 0)]
+    assert ip.band_spectrum(invisible, "#000000", 1200, 800, 0) == [0.0] * 7, "a closed organ inks nothing"
+    diag = grid(lambda x, y: 0.1 + 0.5 * math.exp(-(((x + y - 1000) / 150) ** 2)))
+    assert ip.banding(diag, "#000000", 1200, 800)["angle"] == 45
+    anti = grid(lambda x, y: 0.1 + 0.5 * math.exp(-(((x - y - 100) / 150) ** 2)))
+    assert ip.banding(anti, "#000000", 1200, 800)["angle"] == 135
+
+
+def test_a_dot_exactly_on_the_far_edge_lands_in_the_last_bin_and_one_before_the_origin_in_the_first():
+    on_edge = [ip.Dot(1200, 400, 3, "#ffffff", 1), ip.Dot(0, 400, 3, "#ffffff", 0.1)]
+    s = ip.band_spectrum(on_edge, "#000000", 1200, 800, 0)
+    assert s[0] > 0, "both end bins are populated (clamped), so the profile is not flat"
+    below = [ip.Dot(-50, 400, 3, "#ffffff", 1), ip.Dot(600, 400, 3, "#ffffff", 0.1)]
+    assert max(ip.band_spectrum(below, "#000000", 1200, 800, 0)) > 0
+
+
+def reference_paeth(a, b, c):
+    """The PNG spec's Paeth predictor, written independently of the code under test."""
+    candidates = [(abs(b - c), 0, a), (abs(a - c), 1, b), (abs(a + b - 2 * c), 2, c)]   # |p−a|, |p−b|, |p−c|; ties prefer a, b, c
+    return min(candidates)[2]
+
+
+def png_filtered(tmp_path, ctype, width, height):
+    """Encode an image with every filter type (cycling per row) by the PNG spec's forward filters; return (path, expected rgb rows)."""
+    import struct
+    import zlib
+    chans = {0: 1, 2: 3, 4: 2, 6: 4}[ctype]
+    stride = width * chans
+    raw = [bytes((7 * x + 13 * y + (x * y) % 11) % 256 for x in range(stride)) for y in range(height)]
+    out, prev = bytearray(), bytes(stride)
+    for y, row in enumerate(raw):
+        kind = y % 5
+        line = bytearray()
+        for i in range(stride):
+            a = row[i - chans] if i >= chans else 0
+            b = prev[i]
+            c = prev[i - chans] if i >= chans else 0
+            pred = (0, a, b, (a + b) // 2, reference_paeth(a, b, c))[kind]
+            line.append((row[i] - pred) & 255)
+        out += bytes([kind]) + line
+        prev = row
+
+    def chunk(k, body):
+        return struct.pack(">I", len(body)) + k + body + struct.pack(">I", zlib.crc32(k + body) & 0xFFFFFFFF)
+    p = tmp_path / f"f{ctype}.png"
+    ihdr = struct.pack(">IIBBBBB", width, height, 8, ctype, 0, 0, 0)
+    p.write_bytes(ip.PNG_SIG + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(bytes(out))) + chunk(b"IEND", b""))
+    rgb = []
+    for row in raw:
+        px = bytearray()
+        for x in range(width):
+            px += bytes((row[x * chans],) * 3) if ctype in (0, 4) else row[x * chans:x * chans + 3]
+        rgb.append(bytes(px))
+    return p, rgb
+
+
+@pytest.mark.parametrize("ctype", [0, 2, 4, 6])
+def test_every_png_filter_type_and_colour_type_round_trips(tmp_path, ctype):
+    p, rgb = png_filtered(tmp_path, ctype, 7, 10)
+    img = ip.read_png(p)
+    assert (img.width, img.height) == (7, 10) and img.rows == rgb
+
+
+def test_png_rejects_zero_sized_and_unknown_colour_types_and_missing_ihdr(tmp_path):
+    import struct
+    import zlib
+    for ihdr in ((0, 1, 8, 2, 0, 0, 0), (1, 0, 8, 2, 0, 0, 0), (1, 1, 8, 3, 0, 0, 0)):
+        body = struct.pack(">IIBBBBB", *ihdr)
+        p = tmp_path / "z.png"
+        crc = struct.pack(">I", zlib.crc32(b"IHDR" + body) & 0xFFFFFFFF)
+        p.write_bytes(ip.PNG_SIG + struct.pack(">I", len(body)) + b"IHDR" + body + crc)
+        with pytest.raises(ip.PngError, match="unsupported"):
+            ip.read_png(p)
+    p = tmp_path / "n.png"
+    p.write_bytes(ip.PNG_SIG)
+    with pytest.raises(ip.PngError, match="no IHDR"):
+        ip.read_png(p)
+    p.write_bytes(ip.PNG_SIG + struct.pack(">I", 99) + b"IHDR" + b"\x00" * 3)
+    with pytest.raises(ip.PngError, match="truncated"):
+        ip.read_png(p)
+
+
+def blocks(w, h, ground, items):
+    """items: (x, y, bw, bh, colour) solid rectangles."""
+    rows = [bytearray(bytes(ip.hex_to_rgb(ground)) * w) for _ in range(h)]
+    for x, y, bw, bh, col in items:
+        for yy in range(y, y + bh):
+            rows[yy][3 * x:3 * (x + bw)] = bytes(ip.hex_to_rgb(col)) * bw
+    return ip.Image(w, h, [bytes(r) for r in rows])
+
+
+def test_detector_area_limits_connectivity_and_colours():
+    g = "#141416"
+    img = blocks(400, 300, g, [(10, 10, 2, 2, "#303030"), (30, 10, 3, 1, "#303030"), (50, 10, 1, 4, "#202020"),
+                               (100, 10, 50, 100, "#303030"), (200, 10, 51, 98, "#303030"),
+                               (300, 200, 2, 2, "#303030"), (302, 202, 2, 2, "#303030")])
+    dots, ground = ip.detect_organs(img, (0, 0, 400, 300))
+    got = [(round(d.x, 2), round(d.y, 2), d.color) for d in dots]
+    assert ground == g
+    assert (10.5, 10.5, "#303030") in got, "a 2×2 block (area 4 = MIN_AREA) is an organ"
+    assert all(abs(x - 31) > 0.1 for x, _y, _c in got), "3 px is below MIN_AREA"
+    assert (50.0, 11.5, "#202020") in got, "a 1×4 bar has area 4"
+    assert (124.5, 59.5, "#303030") in got, "area 5000 = MAX_AREA is an organ, centroid exact"
+    assert (225.0, 58.5, "#303030") in got, "a 51×98 block (area 4998 < MAX_AREA) is an organ"
+    assert len([1 for x, y, _c in got if x > 290]) == 2, "diagonally touching blocks are two components (4-connectivity)"
+
+
+def test_detector_area_limit_is_inclusive_at_5000_and_exclusive_at_5001():
+    g = "#141416"
+    img = blocks(300, 200, g, [(10, 10, 100, 50, "#303030"), (150, 10, 101, 50, "#303030")])
+    assert len(ip.detect_organs(img, (0, 0, 300, 200))[0]) == 1
+    assert ip.detect_organs(img, (0, 0, 300, 200))[0][0].x == pytest.approx(59.5)
+
+
+def test_detector_ink_threshold_edge_and_ground_is_the_mode():
+    base = ip.rgb_to_oklab((20, 20, 22))[0]
+    levels = {v: abs(ip.rgb_to_oklab((v, v, v))[0] - base) for v in range(18, 40)}
+    below = max(v for v, d in levels.items() if v > 20 and d < ip.INK_THRESHOLD)
+    above = min(v for v, d in levels.items() if v > 20 and d >= ip.INK_THRESHOLD)
+    assert above == below + 1
+    img = blocks(60, 20, "#141416", [(5, 5, 4, 4, ip.rgb_to_hex((below,) * 3)), (20, 5, 4, 4, ip.rgb_to_hex((above,) * 3))])
+    dots, _ = ip.detect_organs(img, (0, 0, 60, 20))
+    assert [round(d.x) for d in dots] == [22], "ΔL just under the threshold is ground; at the threshold it is ink"
+    most = blocks(60, 20, "#141416", [(0, 0, 40, 20, "#303030"), (50, 5, 4, 4, "#141416")])
+    assert ip.detect_organs(most, (0, 0, 60, 20))[1] == "#303030", "the ground is the MOST frequent colour, not the corner or the first"
+    tie = blocks(2, 1, "#141416", [(1, 0, 1, 1, "#303030")])
+    assert ip.detect_organs(tie, (0, 0, 2, 1))[1] in ("#141416", "#303030")
+
+
+def test_detector_exclusions_are_ignored_and_do_not_count_toward_the_ground():
+    img = blocks(100, 50, "#141416", [(0, 0, 100, 25, "#303030"), (60, 30, 4, 4, "#303030")])
+    dots, ground = ip.detect_organs(img, (0, 0, 100, 50), exclude=[(0, 0, 100, 25)])
+    assert ground == "#141416" and len(dots) == 1
+    inner = blocks(100, 50, "#141416", [(10, 10, 6, 6, "#303030")])
+    assert len(ip.detect_organs(inner, (0, 0, 100, 50), exclude=[(13, 10, 6, 6)])[0]) == 1, "part of an organ is still an organ"
+    pinhole = ip.detect_organs(inner, (0, 0, 100, 50), exclude=[(10, 10, 1, 1)])[0][0]
+    assert pinhole.x == pytest.approx(440 / 35, abs=1e-6), "the excluded pixel is gone"
+    assert len(ip.detect_organs(inner, (0, 0, 100, 50), exclude=[(11, 11, 6, 6)])[0]) == 1
+    assert ip._inside(5, 5, [(5, 5, 1, 1)]) and not ip._inside(6, 5, [(5, 5, 1, 1)]) and not ip._inside(5, 6, [(5, 5, 1, 1)])
+    assert not ip._inside(4, 5, [(5, 5, 1, 1)]) and not ip._inside(5, 4, [(5, 5, 1, 1)])
+
+
+def test_field_metrics_with_no_organs_is_all_zero():
+    zero = {"organs_detected": 0, "p95_dL": 0.0, "mean_dL": 0.0, "lowK": 0.0, "highK": 0.0}
+    assert ip.field_metrics(blocks(20, 20, "#141416", []), (0, 0, 20, 20)) == zero
+
+
+def test_image_pixel_indexes_x_then_y():
+    img = ip.Image(2, 2, [bytes([1, 2, 3, 4, 5, 6]), bytes([7, 8, 9, 10, 11, 12])])
+    assert img.pixel(1, 0) == (4, 5, 6) and img.pixel(0, 1) == (7, 8, 9)
+    assert ip.organ_key([ip.Dot(1, 2, 1, "#000000", 1, "eyespot"), ip.Dot(3.456, 4, 1, "#000000", 1)]) == "3.46,4.00"
+
+
+# ---- (5) the remaining edges --------------------------------------------------------------------------------------------
+
+def test_paeth_equals_the_spec_predictor_everywhere():
+    for a in range(0, 14):
+        for b in range(0, 14):
+            for c in range(0, 14):
+                assert ip._paeth(a, b, c) == reference_paeth(a, b, c), (a, b, c)
+
+
+def test_png_with_enough_pixels_to_exercise_every_neighbour(tmp_path):
+    p, rgb = png_filtered(tmp_path, 6, 23, 31)
+    assert ip.read_png(p).rows == rgb
+
+
+def test_png_one_pixel_is_valid_and_bad_methods_are_refused(tmp_path):
+    import struct
+    import zlib
+
+    def png(ihdr, raw):
+        def chunk(k, b):
+            return struct.pack(">I", len(b)) + k + b + struct.pack(">I", zlib.crc32(k + b) & 0xFFFFFFFF)
+        f = tmp_path / "one.png"
+        head = chunk(b"IHDR", struct.pack(">IIBBBBB", *ihdr))
+        f.write_bytes(ip.PNG_SIG + head + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b""))
+        return f
+    assert ip.read_png(png((1, 1, 8, 2, 0, 0, 0), b"\x00\x01\x02\x03")).rows == [bytes([1, 2, 3])]
+    assert ip.read_png(png((1, 2, 8, 2, 0, 0, 0), b"\x00\x01\x02\x03\x00\x04\x05\x06")).rows == [bytes([1, 2, 3]), bytes([4, 5, 6])]
+    for ihdr in ((1, 1, 8, 2, 1, 0, 0), (1, 1, 8, 2, 0, 1, 0), (1, 1, 8, 2, 0, 0, 2)):
+        with pytest.raises(ip.PngError, match="unsupported"):
+            ip.read_png(png(ihdr, b"\x00\x01\x02\x03"))
+    out = tmp_path / "w.png"
+    ip.write_png(out, 2, 1, [bytes([9, 8, 7, 6, 5, 4])])
+    raw = out.read_bytes()
+    assert raw[24:29] == bytes([8, 2, 0, 0, 0]), "write_png declares 8-bit RGB, deflate, adaptive filtering, no interlace"
+    assert ip.read_png(out).rows == [bytes([9, 8, 7, 6, 5, 4])]
+
+
+def test_banding_of_a_flat_or_empty_field_is_zero_at_angle_zero_and_closed_organs_ink_nothing():
+    assert ip.banding([], "#000000", 1200, 800) == {"lowK": 0.0, "highK": 0.0, "angle": 0}
+    assert ip.banding(grid(lambda x, y: 0), "#000000", 1200, 800) == {"lowK": 0.0, "highK": 0.0, "angle": 0}
+    flat = [ip.Dot(100, 100, 3, "#ffffff", 0.5), ip.Dot(700, 100, 3, "#ffffff", 0.5)]
+    with_closed = flat + [ip.Dot(1100, 100, 0, "#ffffff", 1.0)]
+    closed = ip.band_spectrum(with_closed, "#000000", 1200, 800, 0)
+    assert closed != ip.band_spectrum(flat, "#000000", 1200, 800, 0) and max(closed) > 0.2, "a zero-radius organ inks 0, it does not vanish"
+    twin = flat + [ip.Dot(1100, 100, 3, "#ffffff", 0.5)]
+    assert max(ip.band_spectrum(twin, "#000000", 1200, 800, 0)) < 1e-9, "three equally inked organs are flat"
+
+
+def test_detector_uses_all_three_channels_of_a_coloured_ground():
+    img = blocks(40, 20, "#102030", [(5, 5, 4, 4, "#304050"), (20, 5, 4, 4, "#10a030")])
+    dots, ground = ip.detect_organs(img, (0, 0, 40, 20))
+    assert ground == "#102030" and [d.color for d in dots] == ["#304050", "#10a030"]
+
+
+def test_detector_connects_in_all_four_directions():
+    g = "#141416"
+    stairs = [(20 - i, 2 * i + j, 1, 1, "#303030") for i in range(8) for j in (0, 1)]
+    stairs += [(19 - i, 2 * i + 1, 1, 1, "#303030") for i in range(8)]
+    img = blocks(40, 40, g, stairs)
+    dots = ip.detect_organs(img, (0, 0, 40, 40))[0]
+    assert len(dots) == 1, "a down-left staircase is ONE component (needs left and down moves)"
+    ush = [(5, y, 1, 1, "#303030") for y in range(5, 20)] + [(x, 19, 1, 1, "#303030") for x in range(5, 20)]
+    ush += [(19, y, 1, 1, "#303030") for y in range(3, 20)]
+    assert len(ip.detect_organs(blocks(40, 40, g, ush), (0, 0, 40, 40))[0]) == 1, "a U needs right and up moves"
+    gap = [(5, y, 1, 1, "#303030") for y in range(5, 15)] + [(7, y, 1, 1, "#303030") for y in range(5, 15)]
+    assert len(ip.detect_organs(blocks(40, 40, g, gap), (0, 0, 40, 40))[0]) == 2, "a one-pixel gap separates two organs"
+    assert len(ip.detect_organs(blocks(40, 40, g, [(5, 5, 1, 10, "#303030"), (6, 5, 1, 1, "#303030")]), (0, 0, 40, 40))[0]) == 1
+
+
+def test_detector_accepts_regions_that_touch_the_image_edges():
+    img = blocks(30, 20, "#141416", [(29, 19, 1, 1, "#303030"), (0, 0, 2, 2, "#303030")])
+    assert len(ip.detect_organs(img, (0, 0, 30, 20))[0]) == 1, "the whole image is a valid region"
+    assert ip.detect_organs(img, (0, 0, 1, 1))[1] == "#303030", "a 1×1 region at the origin is valid"
+    assert ip.detect_organs(img, (29, 19, 1, 1))[1] == "#303030", "a 1×1 region in the last pixel is valid"
+    assert ip.detect_organs(img, (28, 18, 2, 2))[0] == [], "a 1-px speck is below MIN_AREA"
+
+
+def test_field_metrics_and_dot_geometry_on_a_small_known_picture():
+    g = "#141416"
+    img = blocks(60, 40, g, [(10, 10, 4, 4, "#303030"), (30, 10, 6, 6, "#202022")])
+    dots, _ = ip.detect_organs(img, (5, 5, 50, 30))
+    assert [(d.x, d.y) for d in dots] == [(6.5, 6.5), (27.5, 7.5)], "centroids are relative to the region"
+    assert dots[0].r == pytest.approx(math.sqrt(16 / math.pi)) and dots[1].r == pytest.approx(math.sqrt(36 / math.pi))
+    m = ip.field_metrics(img, (5, 5, 50, 30))
+    d1, d2 = (ip.dot_delta_l(d, g) for d in dots)
+    assert m["organs_detected"] == 2 and m["mean_dL"] == pytest.approx((d1 + d2) / 2) and m["p95_dL"] == pytest.approx(max(d1, d2))
