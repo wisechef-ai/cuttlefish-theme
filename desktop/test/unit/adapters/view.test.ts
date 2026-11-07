@@ -106,3 +106,17 @@ test('view: subscribers hear every apply; unsubscribe stops', () => {
   assert.equal(seen.length, after, 'unsubscribed')
   assert.deepEqual([...new Set(seen)], seen, 'one bump per apply')
 })
+
+test('view D3: a feed input that changes nothing neither bumps the version nor re-notifies the surfaces', () => {
+  const v = initialView({ width: 100, height: 50, ground: '#101010', reducedMotion: false })
+  applyFeed(v, { kind: 'python.health', t: 0, session: null, payload: { ok: true } })
+  const version = v.version
+  let heard = 0
+  v.listen(() => { heard += 1 })
+  assert.equal(applyFeed(v, { kind: 'python.health', t: 5, session: null, payload: { ok: true } }), false)
+  assert.equal(applyFeed(v, { kind: 'nonsense', t: 6, session: null, payload: null }), false)
+  assert.equal(v.version, version)
+  assert.equal(heard, 0)
+  applyFeed(v, { kind: 'python.health', t: 7, session: null, payload: { ok: false } })
+  assert.equal(heard, 1, 'a real change still notifies')
+})

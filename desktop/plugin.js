@@ -310,7 +310,7 @@ __cf_defs["src/adapters/runtime.ts"] = (exports) => {
 // itself stays straight-line wiring: every decision lives in a named helper.
 const { createBudgetedLoop, host } = __cf_ext("@hermes/plugin-sdk");const { pollPlan, resolveSettings } = __cf_require("src/domain/index.ts");const { eventToFeed, stateSnapshot } = __cf_require("src/adapters/feedmap.ts");const { parseGround } = __cf_require("src/adapters/ground.ts");const { wireWatch } = __cf_require("src/adapters/configwatch.ts");const { drawClock, idleSince, initialClock, noteStateChange, wantsFrame } = __cf_require("src/adapters/looplogic.ts");const { fieldCss } = __cf_require("src/adapters/painter.ts");const { registerSurfaces } = __cf_require("src/adapters/surfaces.ts");const { applyEnv, applyFeed, applySettings, initialView } = __cf_require("src/adapters/view.ts");const FALLBACK_GROUND = '#141416'
 const REDUCE_QUERY = '(prefers-reduced-motion: reduce)'
-const LOOP_FPS = 8
+const LOOP_FPS = 5
 /** Everything the paint/teardown helpers need, in one bundle. */
                     
            
@@ -357,9 +357,13 @@ function draw(a          , now        )       {
   paintField(a)
 }
 
+/** Write the owned <style> only when its text really changed: an identical rewrite still makes the engine
+ *  re-parse the sheet and re-decode the whole data-URI layer, and at rest NOTHING may re-render. */
 function paintField(a          )       {
-  a.holder.css = fieldCss(a.v)
-  if (a.holder.el !== null) a.holder.el.textContent = a.holder.css
+  const css = fieldCss(a.v)
+  const stale = css !== a.holder.css
+  a.holder.css = css
+  if (a.holder.el !== null && (stale || a.holder.el.textContent !== css)) a.holder.el.textContent = css
 }
 
 function paintRoot(v        )       {
@@ -761,7 +765,9 @@ function initialView(env       )         {
 
 /** One feed input in. Returns true when the FOCUSED STATE NAME moved (arm the bloom). */
 function applyFeed(v        , input           )          {
-  v.feed = reduceFeed(v.feed, input)
+  const next = reduceFeed(v.feed, input)
+  if (next === v.feed) return false   // the reducer returns its model untouched when nothing changed: nothing to re-derive or repaint
+  v.feed = next
   return derive(v)
 }
 
@@ -1170,7 +1176,7 @@ const reduceSessionInfo          = (m, input, p) =>
 const reduceMessage          = (m, input, p) =>
   idOk(input.session) ? applyRuntime(m, input.kind, input.session, p, input.t) : m
 
-const reduceHealth          = (m, _i, p) => ({ ...m, healthOk: p.ok === true })
+const reduceHealth          = (m, _i, p) => (m.healthOk === (p.ok === true) ? m : { ...m, healthOk: p.ok === true })
 
 /** One reducer per event kind; an unknown kind (or garbage) falls through to the identity. */
 const REDUCERS                          = {
@@ -1693,6 +1699,9 @@ const MAX_DL = 0.30
 const FULL_DL = 0.40
 const CHROMA_C = 0.105, BLANCH_C = 0.02, SPOT_C = 0.09
 const TWINKLE_AMP = 0.55, TWINKLE_P_MIN = 7000, TWINKLE_P_SPAN = 5000
+/** Stripe count across the surface. The field's 8 (4 cycles ≈ 2 dot pitches per band) survives the chat region being a
+ *  crop of the window — at 6 the fundamental sat between spectral bins 2 and 3 and read 0.49 in real pixels. */
+const FIELD_BANDS = 8, SWATCH_BANDS = 6
 const CLOUD_TRAVEL_MS = 18000                                  // one band pass across the height
 /** Direction the chromatic organs sit relative to the ground: toward white on dark, toward black on light. */
 const dirOf = (lg        )         => (lg < 0.5 ? 1 : -1)
@@ -1772,7 +1781,7 @@ function cloudRankDl(rank        , centre        , sigmaR        , j        )   
 const cloudJitter = (seed        )               => seededStream(seed, 'cloud-ink')
 
 function zebraDl(x        , width        , u        , scale        , small         )         {
-  const bands = Math.min(12, Math.max(3, Math.round(6 * scale)))
+  const bands = Math.min(16, Math.max(3, Math.round((small ? SWATCH_BANDS : FIELD_BANDS) * scale)))
   const bright = small ? SWATCH_ZEBRA_BRIGHT : ZEBRA_BRIGHT
   const dim = small ? SWATCH_ZEBRA_DIM : ZEBRA_DIM
   return Math.floor((x / width) * bands) % 2 === 0 ? bright * jitter(u, 0.14) : dim * (1 + u * 0.5)

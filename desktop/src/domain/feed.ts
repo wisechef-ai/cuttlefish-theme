@@ -249,7 +249,7 @@ const reduceSessionInfo: Reducer = (m, input, p) =>
 const reduceMessage: Reducer = (m, input, p) =>
   idOk(input.session) ? applyRuntime(m, input.kind, input.session, p, input.t) : m
 
-const reduceHealth: Reducer = (m, _i, p) => ({ ...m, healthOk: p.ok === true })
+const reduceHealth: Reducer = (m, _i, p) => (m.healthOk === (p.ok === true) ? m : { ...m, healthOk: p.ok === true })
 
 /** One reducer per event kind; an unknown kind (or garbage) falls through to the identity. */
 const REDUCERS: Record<string, Reducer> = {

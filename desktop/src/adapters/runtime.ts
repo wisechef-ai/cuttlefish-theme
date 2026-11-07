@@ -18,7 +18,7 @@ import { applyEnv, applyFeed, applySettings, initialView, type CfEnv, type CfVie
 
 const FALLBACK_GROUND = '#141416'
 const REDUCE_QUERY = '(prefers-reduced-motion: reduce)'
-const LOOP_FPS = 8
+const LOOP_FPS = 5
 
 type Holder = { el: HTMLStyleElement | null; css: string }
 
@@ -68,9 +68,13 @@ function draw(a: Attached, now: number): void {
   paintField(a)
 }
 
+/** Write the owned <style> only when its text really changed: an identical rewrite still makes the engine
+ *  re-parse the sheet and re-decode the whole data-URI layer, and at rest NOTHING may re-render. */
 function paintField(a: Attached): void {
-  a.holder.css = fieldCss(a.v)
-  if (a.holder.el !== null) a.holder.el.textContent = a.holder.css
+  const css = fieldCss(a.v)
+  const stale = css !== a.holder.css
+  a.holder.css = css
+  if (a.holder.el !== null && (stale || a.holder.el.textContent !== css)) a.holder.el.textContent = css
 }
 
 function paintRoot(v: CfView): void {

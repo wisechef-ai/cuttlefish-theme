@@ -368,3 +368,21 @@ test('runtime: the ground is re-sampled on the config tick — a theme switch re
     ;(globalThis as unknown as { getComputedStyle: unknown }).getComputedStyle = real
   }
 })
+
+test('runtime D3: at rest NOTHING re-renders — health polls, repeated atom values and foreign events write no style (fix-m4)', async () => {
+  const { h, mount } = await boot()
+  h.respondRest((path: string) => (path === '/config' ? { settings: {}, warnings: [], rev: 'r' } : path === '/health' ? { ok: true } : { mtime: 1 }))
+  fake.responder = (method: string): unknown => (method === 'config.get' ? { mtime: 1 } : { sessions: [] })
+  const { el } = mount()
+  await focusSA()
+  await h.advance(50)
+  await h.advance(5100) // first health sight flips pluginSeen/healthOk once
+  let writes = 0
+  let text = el.textContent
+  Object.defineProperty(el, 'textContent', { get: () => text, set: (x: string) => { writes += 1; text = x } })
+  host.state.busy.set(false) // the same value again
+  host.state.focusedStoredSessionId.set('SA')
+  fake.emit({ type: 'gateway.something', session_id: 'a', payload: {} })
+  await h.advance(12000) // two health ticks, six config ticks
+  assert.equal(writes, 0, 'an unchanged view is not rewritten')
+})

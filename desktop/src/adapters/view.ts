@@ -107,7 +107,9 @@ export function initialView(env: CfEnv): CfView {
 
 /** One feed input in. Returns true when the FOCUSED STATE NAME moved (arm the bloom). */
 export function applyFeed(v: CfView, input: FeedInput): boolean {
-  v.feed = reduceFeed(v.feed, input)
+  const next = reduceFeed(v.feed, input)
+  if (next === v.feed) return false   // the reducer returns its model untouched when nothing changed: nothing to re-derive or repaint
+  v.feed = next
   return derive(v)
 }
 
