@@ -1914,7 +1914,7 @@ const TWINKLE_AMP = 0.55, TWINKLE_P_MIN = 7000, TWINKLE_P_SPAN = 5000
 /** Stripe count across the surface. The field's 8 (4 cycles ≈ 2 dot pitches per band) survives the chat region being a
  *  crop of the window — at 6 the fundamental sat between spectral bins 2 and 3 and read 0.49 in real pixels. */
 const FIELD_CYCLES = 4
-const ZEBRA_SWELL = 3.0, ZEBRA_SHRINK = 0.55, BLANCH_SWELL = 2.4
+const ZEBRA_SWELL = 2.2, ZEBRA_SHRINK = 0.55, BLANCH_SWELL = 2.1
 const CLOUD_TRAVEL_MS = 18000                                  // one band pass across the height
 /** Direction the chromatic organs sit relative to the ground: toward white on dark, toward black on light. */
 const dirOf = (lg        )         => (lg < 0.5 ? 1 : -1)

@@ -48,14 +48,14 @@ test('the swatch is the glyph in the session hue — the same shape for every se
 test('field sizes: stripe organs swell in a band and shrink in the gap along 45° diagonals; error organs swell pale; the rest keep their size', () => {
   const cons = constellation('seed-x', 1340, 880, 190, 0.062, 0.098)
   const z = radiusFactors(patternOf(DEFAULT_SETTINGS, 'needs_you'), cons, 1340, 880)
-  assert.deepEqual([...new Set(z)].sort(), [0.55, 3])
-  cons.organs.forEach((o, i) => assert.equal(z[i] === 3, zebraBright(o, 1340, 880, 1)))
+  assert.deepEqual([...new Set(z)].sort(), [0.55, 2.2])
+  cons.organs.forEach((o, i) => assert.equal(z[i] === 2.2, zebraBright(o, 1340, 880, 1)))
   // bands are diagonal: two organs on the same x+y diagonal always share a band
   const a = { ...cons.organs[0], x: 300, y: 100 }, b = { ...cons.organs[0], x: 100, y: 300 }
   assert.equal(zebraBright(a, 1340, 880, 1), zebraBright(b, 1340, 880, 1))
   assert.notEqual(zebraBright({ ...a, x: 0, y: 0 }, 1340, 880, 1), zebraBright({ ...a, x: 400, y: 0 }, 1340, 880, 1), 'and neighbouring diagonals alternate')
-  const share = z.filter(f => f === 3).length / z.length
+  const share = z.filter(f => f === 2.2).length / z.length
   assert.ok(share > 0.42 && share < 0.56, `half the organs are in a band (${share.toFixed(2)})`)
-  assert.deepEqual([...new Set(radiusFactors(patternOf(DEFAULT_SETTINGS, 'error'), cons, 1340, 880))], [2.4])
+  assert.deepEqual([...new Set(radiusFactors(patternOf(DEFAULT_SETTINGS, 'error'), cons, 1340, 880))], [2.1])
   for (const s of ['resting', 'working', 'finished_unseen']) assert.deepEqual([...new Set(radiusFactors(patternOf(DEFAULT_SETTINGS, s), cons, 1340, 880))], [1])
 })
