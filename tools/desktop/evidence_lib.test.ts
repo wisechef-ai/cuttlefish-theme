@@ -120,3 +120,68 @@ test('clipRects drops a box with no height as well as one with no width; windowF
   assert.deepEqual(clipRects([{ x: 5, y: 5, w: 0, h: 9 }], [0, 0, 100, 100], 2), [])
   assert.deepEqual(windowFacts([1, 3]), { first: 1, last: 3, span: 2, maxGap: 2 })
 })
+
+// ---- ev3: the small-window exclusion rule, the strip verdict, sidebar crops, the centre pick -------------------------------
+import {
+  MAX_EXCLUDED_SHARE, MIN_MEASURED_PX, centreDistance, cropFilter, exclusionVerdict, sidebarRect, stripVerdict,
+} from './evidence_lib.ts'
+
+test('exclusionVerdict: within the 25 % share passes and reports both numbers', () => {
+  const v = exclusionVerdict(1_000_000, 200_000)
+  assert.equal(v.ok, true); assert.equal(v.reason, null)
+  assert.equal(v.share, 0.2); assert.equal(v.measured, 800_000)
+})
+test('exclusionVerdict: a small window over 25 % passes while enough area remains (the reason says so)', () => {
+  const area = 400_000, excluded = 112_000 // 28 %, like the 1280x800 run; 288 000 px left
+  const v = exclusionVerdict(area, excluded)
+  assert.equal(v.ok, true)
+  assert.ok(v.share > MAX_EXCLUDED_SHARE)
+  assert.equal(v.measured, 288_000)
+  assert.match(v.reason ?? '', /small window: 28% excluded .*288000 px measured/)
+})
+test('exclusionVerdict: fails when the remaining measured area is below the minimum, whatever the share', () => {
+  const v = exclusionVerdict(300_000, 150_000) // 50 % excluded, 150 000 px left (< MIN)
+  assert.equal(v.ok, false)
+  assert.match(v.reason ?? '', /too little field left to measure/)
+  assert.equal(MIN_MEASURED_PX, 200_000, 'the floor is fixed here, not tuned to a run')
+  assert.equal(exclusionVerdict(1_000_000, 999_000).ok, false, 'a sliver of field is refused even at the 1600x1000 size')
+})
+test('exclusionVerdict: the exact boundaries — 25 % is ok, MIN measured px is ok, one px less is not', () => {
+  assert.equal(exclusionVerdict(1_000_000, 250_000).reason, null)
+  assert.equal(exclusionVerdict(1_000_000, 250_000).ok, true)
+  assert.equal(exclusionVerdict(400_000, 200_000).ok, true, `exactly ${MIN_MEASURED_PX} px left is measurable`)
+  assert.equal(exclusionVerdict(400_000, 200_001).ok, false)
+  assert.throws(() => exclusionVerdict(0, 0), /area must be positive/)
+})
+
+test('stripVerdict: inside the viewport and not truncated', () => {
+  const v = stripVerdict({ box: { x: 10, y: 700, w: 900, h: 22 }, viewport: { w: 1280, h: 800 }, truncated: false, textOverflow: 'ellipsis' })
+  assert.deepEqual(v, { box: { x: 10, y: 700, w: 900, h: 22 }, inside: true, clipped: false, text_overflow: 'ellipsis' })
+})
+test('stripVerdict: a box past the right or bottom edge is outside; a truncated strip is clipped', () => {
+  assert.equal(stripVerdict({ box: { x: 1000, y: 0, w: 300, h: 20 }, viewport: { w: 1280, h: 800 }, truncated: false, textOverflow: '' }).inside, false)
+  assert.equal(stripVerdict({ box: { x: 0, y: 790, w: 20, h: 20 }, viewport: { w: 1280, h: 800 }, truncated: false, textOverflow: '' }).inside, false)
+  assert.equal(stripVerdict({ box: { x: 0, y: 0, w: 1280, h: 20 }, viewport: { w: 1280, h: 800 }, truncated: true, textOverflow: 'clip' }).clipped, true)
+})
+test('stripVerdict: no strip element at all is a failure to report, not a pass', () => {
+  const v = stripVerdict({ box: null, viewport: { w: 1280, h: 800 }, truncated: false, textOverflow: '' })
+  assert.equal(v.inside, false); assert.equal(v.box, null)
+})
+
+test('sidebarRect: the padded union of the rows, clipped to the screen', () => {
+  const rows = [{ x: 20, y: 60, w: 200, h: 30 }, { x: 24, y: 300, w: 190, h: 30 }]
+  assert.deepEqual(sidebarRect(rows, { w: 1280, h: 800 }, 6), [14, 54, 212, 282])
+  assert.deepEqual(sidebarRect([{ x: -10, y: -10, w: 40, h: 40 }], { w: 1280, h: 800 }, 6), [0, 0, 36, 36])
+  assert.equal(sidebarRect([], { w: 1280, h: 800 }, 6), null)
+})
+test('cropFilter: a crop then a nearest-neighbour upscale (crisp pixels, no blur)', () => {
+  assert.equal(cropFilter([14, 54, 206, 282], 2), 'crop=206:282:14:54,scale=iw*2:ih*2:flags=neighbor')
+  assert.throws(() => cropFilter([0, 0, 0, 5], 2), /empty crop/)
+})
+test('centreDistance: 0 at the centre, 1 at the middle of an edge, normalised per axis', () => {
+  const r: [number, number, number, number] = [100, 200, 400, 200]
+  assert.equal(centreDistance(300, 300, r), 0)
+  assert.equal(centreDistance(500, 300, r), 1)
+  assert.equal(centreDistance(300, 400, r), 1)
+  assert.ok(Math.abs(centreDistance(400, 300, r) - 0.5) < 1e-12)
+})

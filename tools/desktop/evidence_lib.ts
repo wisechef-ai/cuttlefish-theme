@@ -85,3 +85,56 @@ export function listRawFiles(root: string): { path: string; sha256: string }[] {
   walk(root)
   return rels.sort().map(rel => ({ path: rel, sha256: sha256Hex(fs.readFileSync(path.join(root, rel))) }))
 }
+
+// ---- ev3 -----------------------------------------------------------------------------------------------------------------
+/** The contract's own share rule (tests/acceptance/raw_evidence.py region_ok): exclusions may cover at most 25 % of a region. */
+export const MAX_EXCLUDED_SHARE = 0.25
+/** The harness' sanity floor for a small window: at least this many field pixels must stay measurable. Fixed here, never tuned to a run. */
+export const MIN_MEASURED_PX = 200_000
+
+export interface ExclusionVerdict { area: number; excluded: number; share: number; measured: number; ok: boolean; reason: string | null }
+
+/** The honest small-window rule. A share above 25 % is allowed when at least MIN_MEASURED_PX pixels remain measurable (the reason
+ *  reports it); fewer than that fails whatever the share. Both numbers are always reported. Mirrored in measure.py (exclusion_verdict). */
+export function exclusionVerdict(area: number, excluded: number, minMeasured: number = MIN_MEASURED_PX): ExclusionVerdict {
+  if (!(area > 0)) throw new Error(`region area must be positive, got ${area}`)
+  const measured = area - excluded, share = excluded / area
+  const base = { area, excluded, share, measured }
+  if (measured < minMeasured) return { ...base, ok: false, reason: `${measured} px measured < ${minMeasured} px: too little field left to measure` }
+  if (share <= MAX_EXCLUDED_SHARE) return { ...base, ok: true, reason: null }
+  return { ...base, ok: true, reason: `small window: ${Math.round(share * 100)}% excluded (> 25%), ${measured} px measured (>= ${minMeasured})` }
+}
+
+export interface StripInput { box: Box | null; viewport: { w: number; h: number }; truncated: boolean; textOverflow: string }
+export interface StripVerdict { box: Box | null; inside: boolean; clipped: boolean; text_overflow: string }
+
+/** The status strip's DOM box against the viewport, and whether its text is cut (any element scrolls wider than its box). */
+export function stripVerdict(s: StripInput): StripVerdict {
+  const b = s.box
+  const inside = b !== null && b.x >= 0 && b.y >= 0 && b.x + b.w <= s.viewport.w && b.y + b.h <= s.viewport.h
+  return { box: b, inside, clipped: s.truncated, text_overflow: s.textOverflow }
+}
+
+/** The padded union of the boxes (the sidebar's rows), clipped to the screen; null when there is nothing to crop. */
+export function sidebarRect(boxes: Box[], screen: { w: number; h: number }, pad: number): Rect | null {
+  const live = boxes.filter(b => b.w > 0 && b.h > 0)
+  if (live.length === 0) return null
+  const x0 = Math.max(0, Math.floor(Math.min(...live.map(b => b.x)) - pad))
+  const y0 = Math.max(0, Math.floor(Math.min(...live.map(b => b.y)) - pad))
+  const x1 = Math.min(screen.w, Math.ceil(Math.max(...live.map(b => b.x + b.w)) + pad))
+  const y1 = Math.min(screen.h, Math.ceil(Math.max(...live.map(b => b.y + b.h)) + pad))
+  if (x1 <= x0 || y1 <= y0) return null
+  return [x0, y0, x1 - x0, y1 - y0]
+}
+
+/** ffmpeg -vf for a crop followed by a nearest-neighbour upscale: pixels stay square (a reviewer's 2x crop, not a blur). */
+export function cropFilter(r: Rect, factor: number): string {
+  if (!(r[2] > 0 && r[3] > 0)) throw new Error(`empty crop ${JSON.stringify(r)}`)
+  return `crop=${r[2]}:${r[3]}:${r[0]}:${r[1]},scale=iw*${factor}:ih*${factor}:flags=neighbor`
+}
+
+/** Distance of a point from the centre of a rectangle: 0 at the centre, 1 at the middle of an edge (per axis, normalised). */
+export function centreDistance(cx: number, cy: number, r: Rect): number {
+  const dx = (cx - (r[0] + r[2] / 2)) / (r[2] / 2), dy = (cy - (r[1] + r[3] / 2)) / (r[3] / 2)
+  return Math.hypot(dx, dy)
+}
