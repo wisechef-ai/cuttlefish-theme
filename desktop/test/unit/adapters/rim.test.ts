@@ -67,3 +67,41 @@ test('rimElement builds the svg through the host jsx; rimSvg writes the same ban
   assert.match(text, /^<svg width="1000" height="10">/)
   assert.match(text, /x="0.75"/, 'the pill is inset one pixel')
 })
+
+// v2.1 round r4 (§4c, rulings 1–3): the rim as the r4 patch draws it. Written first; each fails on 08e7d74.
+test('r4 needs you (ruling 1): a static warning band of two end chips, never a full-width marching stripe', () => {
+  const nodes = flat(rimNodes(input('zebra')))
+  const chips = nodes.filter(n => n.tag === 'rect' && n.attrs.width === 96)
+  assert.equal(chips.length, 2, 'two chips of 96 px')
+  assert.equal(chips.filter(n => n.attrs.transform === 'translate(-96 0)').length, 1, 'the right one is mirrored from the end')
+  assert.equal(nodes.filter(n => n.tag === 'rect' && n.attrs.fill === 'url(#cf-rim-stripes)' && n.attrs.width === '100%').length, 0, 'no full-width stripe band')
+  const ends = nodes.filter(n => n.tag === 'rect' && n.attrs.width === 1.5)
+  assert.equal(ends.length, 2, 'a 1.5 px end bar at each chip')
+  const json = JSON.stringify(rimNodes(input('zebra')))
+  assert.doesNotMatch(json, /animate|keyframes|animation/, 'the warning band is static: no animation anywhere in the rim')
+})
+
+test('r4 working (ruling 3): miniature clouds, four nodes each (three lobes and a base), no lozenge', () => {
+  const nodes = flat(rimNodes(input('clouds')))
+  const circles = nodes.filter(n => n.tag === 'circle')
+  const bases = nodes.filter(n => n.tag === 'rect' && n.attrs.rx === 1.5 && n.attrs.width === 13.4)
+  assert.ok(circles.length >= 12 && circles.length % 3 === 0, `${circles.length} lobes`)
+  assert.equal(bases.length, circles.length / 3, 'one flat base per cloud')
+})
+
+test('r4 error (ruling 2): one pale wash and ONE broken line, lighter than before', () => {
+  const body = rimNodes(input('blanch')).filter(n => n.tag !== 'defs')
+  const lines = flat(body).filter(n => n.attrs['stroke-dasharray'] !== undefined)
+  assert.equal(lines.length, 1, 'one outline')
+  assert.deepEqual([lines[0].attrs['stroke-dasharray'], lines[0].attrs['stroke-width'], lines[0].attrs.pathLength], ['975 25', 1.6, 1000], 'a single 25/1000 break')
+  assert.equal(lines[0].attrs['stroke-dashoffset'], -80)
+  assert.ok(flat(body).some(n => n.attrs['fill-opacity'] === 0.16), 'the wash is .16')
+})
+
+test('r4 finished (ruling 4): a lens-shaped eye, an iris ring and a pupil', () => {
+  const body = rimNodes(input('eyespot')).filter(n => n.tag !== 'defs')
+  const lens = flat(body).find(n => n.tag === 'path')!
+  assert.match(String(lens.attrs.d), /Q/, 'the lens is a quadratic almond')
+  const circles = flat(body).filter(n => n.tag === 'circle')
+  assert.deepEqual(circles.map(n => n.attrs.r), [2.6, 1.6], 'iris and pupil')
+})

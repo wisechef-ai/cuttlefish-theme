@@ -446,3 +446,8 @@ test('runtime D3: dispose cancels the pacing timer — none outlives the plugin'
   h.dispose()
   assert.ok(h.state.timers.every(t => !t.live), 'no pacing timer outlives the plugin')
 })
+
+test('r4 surface canvas (ruling 7): the field paints the chat surface, not the window (1600×1000 → 1340×944)', async () => {
+  const { mount } = await boot({ width: 1600, height: 1000 })
+  assert.ok(mount().el.textContent.includes('1340px 944px'), 'the field is the window minus the sidebar and the bars')
+})

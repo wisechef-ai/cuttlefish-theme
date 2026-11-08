@@ -6,7 +6,8 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 
 import { allocate, DEFAULT_SETTINGS, resolveSettings } from '../../../src/domain/index.ts'
-import { applyEnv, applyFeed, applySettings, initialView, NO_FOCUS_SEED, safePattern } from '../../../src/adapters/view.ts'
+import { applyEnv, applyFeed, applySettings, hueFor, initialView, NO_FOCUS_SEED, safePattern } from '../../../src/adapters/view.ts'
+import { hueDistance } from '../../../src/domain/index.ts'
 
 const v = () => initialView({ width: 1200, height: 800, ground: '#141416', reducedMotion: false })
 const focusSA = (x = 0) => ({ kind: 'state', t: x, session: null as string | null,
@@ -146,4 +147,40 @@ test('view D3: styleKey moves with settings and environment, version with every 
   assert.equal(v.styleKey, k + 1)
   applySettings(v, structuredClone(v.settings))
   assert.equal(v.styleKey, k + 2)
+})
+
+// v2.1 round r4 (§4c, ruling 5): identity separation. Written first; hueFor does not exist on 08e7d74.
+
+/** A view whose feed knows exactly these session keys (active_list, the locked host event). */
+function viewWith(keys: string[]) {
+  const s = initialView({ width: 1200, height: 800, ground: '#141416', reducedMotion: false })
+  applyFeed(s, { kind: 'active_list', t: 1, session: null, payload: { sessions: keys.map(k => ({ id: `rt-${k}`, session_key: k, status: 'running' })) } } as never)
+  return s
+}
+function rng(seed: number): () => number { let x = seed >>> 0; return () => ((x = (x * 1664525 + 1013904223) >>> 0) / 2 ** 32) }
+
+test('r4 hue registry (ruling 5): 2–5 live sessions are ≥ 34.5° apart; 6–7 ≥ 23°; up to 19 never equal', () => {
+  const rand = rng(7)
+  for (const [n, floor] of [[2, 34.5], [3, 34.5], [4, 34.5], [5, 34.5], [6, 23], [7, 23]] as const) {
+    for (let trial = 0; trial < 200; trial++) {
+      const keys = Array.from({ length: n }, (_, i) => `s-${trial}-${i}-${Math.floor(rand() * 1e6)}`)
+      const s = viewWith(keys)
+      const hues = keys.map(k => hueFor(s, k))
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) {
+        assert.ok(hueDistance(hues[i], hues[j]) >= floor, `${n} sessions, trial ${trial}: ${hueDistance(hues[i], hues[j]).toFixed(1)}°`)
+      }
+    }
+  }
+  const many = Array.from({ length: 19 }, (_, i) => `m-${i}`)
+  const hues = many.map(k => hueFor(viewWith(many), k))
+  assert.equal(new Set(hues).size, 19, 'no two of 19 live sessions share a hue')
+})
+
+test('r4 hue registry: one known session keeps the locked allocation; releasing a session frees its slot', () => {
+  assert.equal(hueFor(viewWith(['solo']), 'solo'), allocate('solo', []).hue_deg)
+  const s = viewWith(['a', 'b'])
+  const hb = hueFor(s, 'b')
+  applyFeed(s, { kind: 'active_list', t: 2, session: null, payload: { sessions: [{ id: 'rt-a', session_key: 'a', status: 'running' }] } } as never)
+  assert.equal(hueFor(s, 'a'), allocate('a', []).hue_deg, 'a is alone again')
+  assert.notEqual(hb, hueFor(s, 'a'), 'b is still known to the registry')
 })

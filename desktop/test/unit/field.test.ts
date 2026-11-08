@@ -6,6 +6,8 @@ import process from 'node:process'
 import { GROUNDS, H, PRESETS, ROOTS, SETTLED_MS, W } from '../acceptance/corpus.ts'
 import { coverage, type Dot, dotDeltaL, lightnessStats, organKey } from '../acceptance/instruments.ts'
 import { allocate, DEFAULT_SETTINGS, patternOf, renderField, renderStrip, renderSwatch, toSvg } from '../../src/domain/index.ts'
+import { radiusFactors } from '../../src/domain/pattern.ts'
+import { constellation } from '../../src/domain/organs.ts'
 
 const hueFor = (root: string): number => allocate(root, []).hue_deg
 
@@ -148,4 +150,32 @@ test('error is FEWER organs at resting size: same positions, same radii, 35–45
   }
   const share = totalHidden / totalOrgans
   assert.ok(share >= 0.35 && share <= 0.45, `corpus: ${(100 * share).toFixed(1)} % of the error organs are at zero ink`)
+})
+
+// v2.1 round r4 (§4c, rulings 3 and 7): cloud blobs and the soft falloff. Written first; each fails on 08e7d74.
+
+test('r4 clouds (ruling 3): with the ink targets, every organ swells ≥ 1.8× and the brightest band organs ≥ 3×', () => {
+  const cons = constellation('blob-seed', 1340, 944, 190, 0.062, 0.098)
+  const targets = cons.organs.map((_, i) => 0.02 + 0.125 * ((i * 37) % 100) / 100)
+  const f = radiusFactors(patternOf(DEFAULT_SETTINGS, 'working'), cons, 1340, 944, targets)
+  assert.ok(f.every(x => x >= 1.8), `min ${Math.min(...f).toFixed(2)}`)
+  assert.ok(Math.max(...f) >= 3, `max ${Math.max(...f).toFixed(2)}`)
+})
+
+test('r4 falloff (ruling 7): the organs shrink toward the edges of the open region to ×0.7 and stay full in the middle', () => {
+  const ratios: number[] = []
+  for (const root of ROOTS.slice(0, 5)) {
+    const dots = renderField({ ...inputOf(root, GROUNDS[0], 'resting'), width: 1340, height: 944 }).filter(d => d.role === 'organ')
+    const med = dots.map(d => d.r).sort((a, b) => a - b)[dots.length >> 1]
+    for (const d of dots) ratios.push(d.r / med)
+  }
+  assert.ok(Math.min(...ratios) <= 0.75, `edge organs down to ${Math.min(...ratios).toFixed(2)}`)
+  assert.ok(Math.max(...ratios) >= 0.99, `middle organs at full size (${Math.max(...ratios).toFixed(2)})`)
+})
+
+test('r4 one eye (§4c): the focused finished-unseen field carries exactly one eye-spot dot', () => {
+  for (const root of ROOTS.slice(0, 5)) {
+    const dots = renderField({ ...inputOf(root, GROUNDS[0], 'finished_unseen'), width: 1340, height: 944 })
+    assert.equal(dots.filter(d => d.role === 'eyespot').length, 1, `${root}`)
+  }
 })

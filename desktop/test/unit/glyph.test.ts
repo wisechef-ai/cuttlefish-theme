@@ -2,7 +2,7 @@
 // Spec: docs/design/IMPLEMENTATION.md §1 (ink), §2 (geometry), §6 (the tests these are).
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
-import { GLYPH_H, GLYPH_W, glyphExtras, glyphOf, STRIP_K } from '../../src/domain/glyph.ts'
+import { GLYPH_H, GLYPH_W, glyphExtras, glyphOf, type GlyphExtra, STRIP_K } from '../../src/domain/glyph.ts'
 import { contrast, palette } from '../../src/domain/ink.ts'
 import { allocate, DEFAULT_SETTINGS, patternOf, renderStrip, renderSwatch } from '../../src/domain/index.ts'
 import { hexToRgb, rgbToOklab } from '../../src/domain/oklch.ts'
@@ -230,4 +230,51 @@ test('the swatch shape is the state and the hue is the identity: same geometry f
   const b = swatch('s-two', 'needs_you').dots.map(d => [d.x, d.y, d.r])
   assert.deepEqual(a, b, 'state is shape')
   assert.notDeepEqual(swatch('s-one', 'needs_you').dots.map(d => d.color), swatch('s-two', 'needs_you').dots.map(d => d.color), 'identity is hue')
+})
+
+// v2.1 round r4 (§4c, rulings 1–6): the marks as the r4 patch draws them. Written first; each fails on 08e7d74.
+const projDot = (d: { x: number; y: number; r: number; pigment: string }) => [d.x, d.y, d.r, d.pigment]
+const projExtra = (e: GlyphExtra) => [e.k, e.pigment, e.above === true, e.fill === true, e.alpha ?? null, e.stroke ?? null,
+  e.x ?? e.cx ?? null, e.y ?? e.cy ?? null, e.w ?? e.rx ?? null, e.h ?? e.ry ?? null, e.rx ?? null, e.d ?? null]
+
+test('r4 marks (ruling 1–4): the exact dot and extra lists', () => {
+  assert.deepEqual(glyphOf('mottle').map(projDot), [[12, 4.7, 4.3, 'soft'], [12, 8, 5, 'soft'], [12, 11.3, 4.3, 'soft']], 'resting: one upright oval')
+  assert.deepEqual(glyphExtras('mottle').map(projExtra), [
+    ['ellipse', 'paper', true, true, 0.9, null, 10.6, 4.6, 1, 1, 1, null],
+    ['ellipse', 'paper', true, true, 0.9, null, 13.2, 8.4, 1.1, 1.1, 1.1, null],
+    ['ellipse', 'paper', true, true, 0.9, null, 11, 11.6, 0.9, 0.9, 0.9, null]], 'and three paper holes above')
+  assert.deepEqual(glyphOf('clouds').map(projDot), [[6.8, 9.6, 3.3, 'chroma'], [12.4, 7.8, 4.4, 'chroma'], [17.6, 9.8, 3.1, 'chroma']], 'working: three lobes')
+  assert.deepEqual(glyphExtras('clouds').map(projExtra), [['rect', 'chroma', false, true, 1, null, 3.8, 9.8, 16.2, 3.9, 1.9, null]], 'and a flat base')
+  assert.deepEqual(glyphOf('zebra').map(projDot), [[6, 5.5, 2.8, 'chroma'], [12, 5.5, 2.8, 'chroma'], [18, 5.5, 2.8, 'chroma'],
+    [6, 10.5, 2.8, 'chroma'], [12, 10.5, 2.8, 'chroma'], [18, 10.5, 2.8, 'chroma']], 'needs you: six dots')
+  const z = glyphExtras('zebra')
+  assert.deepEqual(z.map(projExtra), [
+    ['rect', 'chroma', false, true, 1, null, 2.5, 2, 19, 12, 3, null],
+    ['path', 'paper', true, false, null, 3.4, null, null, null, null, null, 'M4 12 L12 4'],
+    ['path', 'paper', true, false, null, 3.4, null, null, null, null, null, 'M11.5 12 L19.5 4']], 'a filled chip with exactly TWO bars')
+  assert.deepEqual(glyphOf('blanch').map(projDot), [[13, 1.5, 1.5, 'blanch'], [22, 9, 1.5, 'blanch']], 'error: two ends of the break')
+  assert.deepEqual(glyphExtras('blanch').map(projExtra), [
+    ['rect', 'wash', false, true, 0.16, null, 2, 1.5, 20, 13, 1, null],
+    ['path', 'blanch', false, false, null, 2.2, null, null, null, null, null, 'M13 1.5 H2 V14.5 H22 V9']], 'the frame with the top-right corner open')
+  const eye = glyphOf('eyespot')
+  assert.deepEqual(eye.map(projDot), [[3, 8, 0.7, 'chroma'], [21, 8, 0.7, 'chroma'], [12, 8, 2.8, 'spot']], 'eye: two corner dots, the pupil LAST')
+  assert.deepEqual(glyphExtras('eyespot').map(projExtra), [
+    ['path', 'chroma', false, true, 0.3, null, null, null, null, null, null, 'M2 8 Q12 -2 22 8 Q12 18 2 8 Z'],
+    ['path', 'chroma', false, false, null, 1.6, null, null, null, null, null, 'M2 8 Q12 -2 22 8 Q12 18 2 8 Z'],
+    ['ellipse', 'chroma', false, false, null, 1.5, 12, 8, 4.4, 4.4, 4.4, null],
+    ['ellipse', 'paper', true, true, 1, null, 13.3, 6.6, 0.9, 0.9, 0.9, null]], 'an almond with an iris ring and a catch-light')
+})
+
+test('r4 optical footprint (ruling 6): each mark\'s ink area is within ±25 % of the five-mark mean', () => {
+  const area = (base: PatternKind): number => raster(base).filter(Boolean).length / 16     // 96×64 samples = 4×4 per design px
+  const a = STATES.map(area)
+  const mean = a.reduce((s, v) => s + v, 0) / a.length
+  STATES.forEach((s, i) => assert.ok(Math.abs(a[i] / mean - 1) <= 0.25, `${s}: ${a[i].toFixed(0)} px² vs mean ${mean.toFixed(0)}`))
+})
+
+test('r4 error (ruling 2): the open corner is clear at 1× — no ink along the 6 px of top edge or the 4 px of right edge beside it, and no dot bridges it', () => {
+  const mask = raster('blanch')
+  const at = (x: number, y: number): boolean => mask[Math.floor(y * 4) * 96 + Math.floor(x * 4)]
+  for (let x = 14.5; x <= 20.5; x += 0.25) assert.equal(at(x, 1.5), false, `top gap at x ${x}`)
+  for (let y = 2; y <= 6.5; y += 0.25) assert.equal(at(22, y), false, `right gap at y ${y}`)
 })
