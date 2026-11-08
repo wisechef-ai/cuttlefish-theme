@@ -32,12 +32,12 @@ export function inkFor(hue, chroma, ground, minContrast = MIN_CONTRAST) {
   for (let i = 0; i < 24; i++) { const m = (a + b) / 2; if (ok(m)) b = m; else a = m }
   return oklchToHex(b, chroma, hue)
 }
-export const SOFT_CONTRAST = 3.5
-export const CHROMA_C = 0.115, BLANCH_C = 0.012, BLANCH_CONTRAST = 4.5   // error is a bold dark-grey frame, never a faint one
+export const SOFT_CONTRAST = 3.35, SOFT_C = 0.07
+export const CHROMA_C = 0.115, BLANCH_C = 0.012, BLANCH_CONTRAST = 3.35   // error is a bold dark-grey frame, never a faint one
 export function palette(hue, ground) {
   const lab = hexToLab(ground), dir = lab.L < 0.5 ? 1 : -1
   const chroma = inkFor(hue, CHROMA_C, ground)
-  const soft = inkFor(hue, CHROMA_C, ground, SOFT_CONTRAST)        // resting: quieter than the rest, still ≥ 3:1
+  const soft = inkFor(hue, SOFT_C, ground, SOFT_CONTRAST)        // resting: quieter than the rest, still ≥ 3:1
   const blanch = inkFor(hue, BLANCH_C, ground, BLANCH_CONTRAST)
   const spot = oklchToHex(dir > 0 ? 0.07 : 0.17, 0.03, hue)      // the pupil: near-black, ≥ 3:1 on the iris ink on both grounds
   return { chroma, soft, blanch, spot, wash: blanch, paper: ground }
@@ -63,11 +63,11 @@ const ring = (n, cx, cy, rx, ry, r, pig, phase = 0) =>
 export const GLYPHS = {
   // resting (r4): ONE soft oval with a visible mottle: paper holes cut out of it. Quiet ink, ~16x9.
   resting: {
-    dots: [circ(12, 4.7, 4.3, 'soft'), circ(12, 8, 5.0, 'soft'), circ(12, 11.3, 4.3, 'soft')],
+    dots: [circ(12, 5.4, 5.1, 'soft'), circ(12, 8, 5.9, 'soft'), circ(12, 10.6, 5.1, 'soft')],
     extras: [
-      { k: 'ellipse', cx: 10.6, cy: 4.6, rx: 1.0, ry: 1.0, pig: 'paper', alpha: 0.9, above: true },
-      { k: 'ellipse', cx: 13.2, cy: 8.4, rx: 1.1, ry: 1.1, pig: 'paper', alpha: 0.9, above: true },
-      { k: 'ellipse', cx: 11, cy: 11.6, rx: 0.9, ry: 0.9, pig: 'paper', alpha: 0.9, above: true },
+      { k: 'ellipse', cx: 10.4, cy: 5.2, rx: 1.0, ry: 1.0, pig: 'paper', alpha: 0.9, above: true },
+      { k: 'ellipse', cx: 13.6, cy: 8.4, rx: 1.1, ry: 1.1, pig: 'paper', alpha: 0.9, above: true },
+      { k: 'ellipse', cx: 10.8, cy: 11.2, rx: 0.9, ry: 0.9, pig: 'paper', alpha: 0.9, above: true },
     ],
   },
   // working (r4): a solid cloud, three lobes, flat bottom
@@ -84,12 +84,12 @@ export const GLYPHS = {
       { k: 'path', d: 'M11.5 12 L19.5 4', pig: 'paper', stroke: 3.4, above: true },
     ],
   },
-  // error (r4): hollow pale frame, top-right corner missing with a wide gap (9 px of top edge + 7.5 px of right edge)
+  // error (r5): the PALEST mark: a washed hue-tinted plate, a thin outline at 3.2:1, a big open corner (8.5 px of top edge + 7 px of right edge)
   error: {
-    dots: [circ(13, 1.5, 1.5, 'blanch'), circ(22, 9, 1.5, 'blanch')],
+    dots: [circ(13, 2.5, 1.1, 'blanch'), circ(21, 9, 1.1, 'blanch')],
     extras: [
-      { k: 'rect', x: 2, y: 1.5, w: 20, h: 13, rx: 1, pig: 'wash', alpha: 0.16, fill: true },
-      { k: 'path', d: 'M13 1.5 H2 V14.5 H22 V9', pig: 'blanch', stroke: 2.2 },
+      { k: 'rect', x: 3, y: 2.5, w: 18, h: 11, rx: 1, pig: 'chroma', alpha: 0.24, fill: true },
+      { k: 'path', d: 'M13 2.5 H3 V13.5 H21 V9', pig: 'blanch', stroke: 1.6 },
     ],
   },
   // finished unseen (r4): an almond/lens eye: pale lens, crisp outline, solid iris, dark pupil, catch-light; two corner dots
@@ -130,23 +130,21 @@ export function rimSvg(state, hue, ground, width) {
   const pill = (extra = '') => `<rect x=".75" y=".75" width="${pw}" height="${ph}" rx="${ph / 2}" fill="none" ${extra}/>`
   const clip = `<clipPath id="cap"><rect x=".75" y=".75" width="${pw}" height="${ph}" rx="${ph / 2}"/></clipPath>`
   let body = ''
-  if (state === 'resting') body = pill(`stroke="${c}" stroke-width="1"`)
+  // resting (r5): ONE quiet hairline in the soft ink; no pill, no double line
+  if (state === 'resting') body = `<rect x="0" y="${h - 1}" width="${width}" height="1" fill="${pal.soft}"/>`
   if (state === 'working') {
-    // small CLOUDS (the mark in miniature: three lobes, flat base), not lozenges; spaced irregularly
-    const cloud = x => `<g fill="${c}"><circle cx="${f(x + 3.4)}" cy="5.4" r="2.5"/><circle cx="${f(x + 7.2)}" cy="4.1" r="3.2"/><circle cx="${f(x + 11.2)}" cy="5.5" r="2.7"/><rect x="${f(x + 1.2)}" y="5.3" width="13.4" height="3" rx="1.5"/></g>`
-    const out = []
-    let x = 30, k = 0
-    while (x < width - 60) { out.push(cloud(x)); k++; x += 16 + 54 + (k * 41) % 64 }
-    body = `${out.join('')}${pill(`stroke="${c}" stroke-width="1"`)}`
+    // r5: a clean pill outline, a faint tint inside, and five LARGER soft clouds spaced evenly (every 20 % of the width)
+    const cloud = `<g opacity=".55" fill="${c}"><circle cx="40" cy="5.6" r="3.2"/><circle cx="46.4" cy="4.3" r="4.2"/><circle cx="52.8" cy="5.6" r="3.4"/><rect x="37" y="5.4" width="19.6" height="3.1" rx="1.5"/></g>`
+    body = `<defs><pattern id="cl" x="0" y="0" width=".2" height="1" patternUnits="objectBoundingBox" patternContentUnits="userSpaceOnUse">${cloud}</pattern></defs><rect width="${width}" height="${h}" fill="${c}" fill-opacity=".08" clip-path="url(#cap)"/><rect width="${width}" height="${h}" fill="url(#cl)" clip-path="url(#cap)"/>${pill(`stroke="${c}" stroke-width="1.2"`)}`
   }
   if (state === 'needs_you') {
-    // a static warning BAND: two bracket chips of bold stripes (left and right), a clear chip end, the pill outline between
     const chip = x => `<g clip-path="url(#cap)"><rect x="${x}" y="0" width="96" height="${h}" fill="url(#s)"/></g>`
     body = `<defs><pattern id="s" width="12" height="${h}" patternUnits="userSpaceOnUse" patternTransform="skewX(-45)"><rect width="6" height="${h}" fill="${c}"/></pattern></defs>${pill(`stroke="${c}" stroke-width="1.5"`)}${chip(0)}${chip(width - 96)}<rect x="96" y=".75" width="1.5" height="${ph}" fill="${c}"/><rect x="${width - 97.5}" y=".75" width="1.5" height="${ph}" fill="${c}"/>`
   }
   if (state === 'error') {
-    // pale, washed, ONE line with ONE break (a gap near the right end); lighter than the old dashed double
-    body = `<rect width="${width}" height="${h}" fill="${pal.wash}" fill-opacity=".16" clip-path="url(#cap)"/>${pill(`stroke="${b}" stroke-width="1.6" pathLength="1000" stroke-dasharray="975 25" stroke-dashoffset="-80"`)}`
+    // r5: the TOP EDGE of a box, pale and thin, with its two short returns and ONE clear gap near the right end: a broken, blanched border. No track, no thumb.
+    const t = 1.2, gl = 0.62 * width, gr = 0.62 * width + 56
+    body = `<rect x=".75" y=".75" width="${f(gl - .75)}" height="${t}" fill="${b}"/><rect x="${f(gr)}" y=".75" width="${f(width - gr - .75)}" height="${t}" fill="${b}"/><rect x=".75" y=".75" width="${t}" height="${ph}" fill="${b}"/><rect x="${f(width - .75 - t)}" y=".75" width="${t}" height="${ph}" fill="${b}"/>`
   }
   if (state === 'finished_unseen') {
     body = `${pill(`stroke="${c}" stroke-width="1"`)}<path d="M8 5 Q20 -2 32 5 Q20 12 8 5 Z" fill="${c}" fill-opacity=".3" stroke="${c}" stroke-width="1.2"/><circle cx="20" cy="5" r="2.6" fill="${c}"/><circle cx="20" cy="5" r="1.6" fill="${pal.spot}"/>`

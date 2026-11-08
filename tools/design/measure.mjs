@@ -64,8 +64,11 @@ export function measureCell(img, cell, dpr, pal, pigments) {
     if (k === 'spot' && found.chroma) against = lum(found.chroma.r / found.chroma.n, found.chroma.g / found.chroma.n, found.chroma.b / found.chroma.n)
     res[k] = { n: e.n, ratio: ratio(l, against) }
   }
-  let area = 0; for (let i = 0; i < w * h; i++) area += mask[i]
-  return { res, mask, w, h, inkArea: area / (dpr * dpr), worst: Math.min(...pigments.map(k => res[k].ratio)) }
+  let area = 0, sumDl = 0, nDl = 0, x0b = 1e9, x1b = -1, y0b = 1e9, y1b = -1
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const [r, g, b] = at(x, y); const c = ratio(lum(r, g, b), bl); if (c >= 1.3) { area++; x0b = Math.min(x0b, x); x1b = Math.max(x1b, x); y0b = Math.min(y0b, y); y1b = Math.max(y1b, y); sumDl += Math.abs(Math.cbrt(lum(r, g, b)) - Math.cbrt(bl)); nDl++ } }
+  const meanDl = nDl ? sumDl / nDl : 0
+  const env = x1b >= 0 ? ((x1b - x0b + 1) * (y1b - y0b + 1)) / (dpr * dpr) : 0
+  return { res, mask, w, h, inkArea: area / (dpr * dpr), env, meanDl, worst: Math.min(...pigments.map(k => res[k].ratio)) }
 }
 const iou = (a, b) => { let i = 0, u = 0; for (let k = 0; k < a.length; k++) { i += a[k] & b[k]; u += a[k] | b[k] } return u ? i / u : 0 }
 
@@ -83,7 +86,7 @@ if (process.argv[1] && path.basename(process.argv[1]) === 'measure.mjs') {
       const gl = GLYPHS[cell.state]
       const pigments = [...new Set([...gl.dots.map(d => d.pig), ...gl.extras.filter(e => e.pig !== 'wash' && e.pig !== 'paper' && (e.alpha === undefined || e.alpha === 1)).map(e => e.pig)])]
       const m = measureCell(img, cell, dpr, pal, pigments)
-      rows.push({ ...cell, dpr, ratio: m.worst, coreN: 0, inkArea: m.inkArea })
+      rows.push({ ...cell, dpr, ratio: m.worst, coreN: 0, inkArea: m.inkArea, env: m.env, meanDl: m.meanDl })
       if (m.worst < MIN_RATIO) fails.push(`${cell.state} ${cell.ground}${cell.sel ? '/sel' : ''} hue ${cell.hue} @${dpr}x = ${m.worst.toFixed(2)}`)
       byKey.set(`${cell.ground}|${cell.sel}|${cell.hue}|${cell.state}`, m.mask)
     }
@@ -104,11 +107,14 @@ if (process.argv[1] && path.basename(process.argv[1]) === 'measure.mjs') {
     const f = d => Math.min(...rows.filter(r => r.ground === g && r.sel === sel && r.state === s && r.dpr === d).map(r => r.ratio)).toFixed(2)
     md += `| ${g} | ${sel ? 'selected' : 'unselected'} | ${s} | ${f(1)} | ${f(2)} |\n`
   }
-  const areas = {}
-  for (const s of states) { const v = rows.filter(r => r.state === s && r.dpr === 2 && r.ground === 'light' && !r.sel && r.hue === 205).map(r => r.inkArea); areas[s] = v[0] }
+  const areas = {}, pale = {}, inkOnly = {}
+  for (const s of states) { const v = rows.filter(r => r.state === s && r.dpr === 2 && r.ground === 'light' && !r.sel && r.hue === 205); areas[s] = v[0].env; inkOnly[s] = v[0].inkArea; pale[s] = v[0].meanDl }
   const meanArea = Object.values(areas).reduce((x, y) => x + y, 0) / states.length
-  md += `\n## Optical footprint: ink area at 1× px² (light ground; pixels ≥ 2:1 vs ground), ratio to the five-mark mean (bar ±25 %)\n\n| state | ink px² | ratio |\n|---|---|---|\n`
-  for (const s of states) { const r = areas[s] / meanArea; md += `| ${s} | ${areas[s].toFixed(0)} | ${r.toFixed(2)} |\n`; if (r < 0.75 || r > 1.25) fails.push(`footprint ${s} ${r.toFixed(2)}`) }
+  md += `\n## Optical footprint: ENVELOPE (bounding box of the pixels ≥ 1.3:1, so a washed fill counts) at 1× px², light ground, ratio to the five-mark mean (bar ±25 %); the ≥ 1.3:1 pixel area is shown for information\n\n| state | envelope px² | ratio | visible px² |\n|---|---|---|---|\n`
+  for (const s of states) { const r = areas[s] / meanArea; md += `| ${s} | ${areas[s].toFixed(0)} | ${r.toFixed(2)} | ${inkOnly[s].toFixed(0)} |\n`; if (r < 0.75 || r > 1.25) fails.push(`footprint ${s} ${r.toFixed(2)}`) }
+  md += `\n## Paleness: mean lightness distance from the ground over the mark's visible pixels (OKLab-L proxy ∛Y; smaller = paler). Error must be the PALEST.\n\n| state | mean ΔL | \n|---|---|\n`
+  for (const s of states) md += `| ${s} | ${pale[s].toFixed(3)} |\n`
+  if (Object.entries(pale).some(([s, v]) => s !== 'error' && v <= pale.error)) fails.push('error is not the palest mark')
   const worstIou = {}
   for (const r of iouRows) { const k = `${r.a} / ${r.b}`; worstIou[k] = Math.max(worstIou[k] ?? 0, r.v) }
   md += `\n## Silhouette: pairwise mask IoU (mask = pixels ≥ 2:1 vs ground; worst over grounds and selected/unselected; bar ≤ ${MAX_IOU})\n\n| pair | worst IoU |\n|---|---|\n`

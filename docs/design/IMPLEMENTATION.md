@@ -181,6 +181,33 @@ All five marks live in the 24×16 box. Ink area at 1× (pixels ≥ 2:1 on the li
 7. `field.test.ts › falloff`: radius factor is 0.7 at the lane edge and 1 in the middle of the region; resting ink per dot unchanged by the falloff.
 8. Goldens (`renderField` digests, swatch digests, golden CSS): regenerate after steps 1–7 (they pin exact numbers).
 
+## 4d. Round r5 (targeted: the error language, the two rims, a calmer rest)
+
+Patch: `docs/design/r5-pale-error-quiet-rest.patch` (diff of `desktop/src` at 7049668 → candidate; 3 files: `domain/ink.ts`, `domain/glyph.ts`, `adapters/rim.ts`). Rebuild `desktop/plugin.js`. **Locked suite on the patched tree: 116/116.** Nothing else changes: not the field, not the needs-you or finished-unseen marks, not core chrome (the blue focus outline and the truncated "[app…" title are core's: untouched).
+
+### Ruling 1: error is the PALEST mark (mark + status icon)
+* The r4 mark was the darkest linework of the five (frame 2.2 px at 4.5:1). New (`GLYPHS.blanch`): plate `rect x3 y2.5 w18 h11 rx1` fill **chroma α .24** (a washed fill: the identity hue mixed far toward the ground; the wash is an extra, so the dots' achromatic rule `meanChroma ≤ 0.03` is untouched), frame `path M13 2.5 H3 V13.5 H21 V9` stroke **blanch 1.6**, dots `[13,2.5,r1.1] [21,9,r1.1]` (blanch). The open corner is 8.5 px of the top edge + 7 px of the right edge.
+* Contrast maths (the locked bar is 3:1 for the OUTLINE; the fill is a wash, not ink): `BLANCH_CONTRAST 4.5 → 3.35` in `ink.ts`. The design target is 3.35 because the real dark selected row is harsher than the 0.10 L allowance the formula assumes: measured from pixels the outline holds **3.10:1 minimum** over 3 grounds × selected/unselected × 6 hues × 1×/2× (`contrast-table.md`); worst cell dark/selected. Unselected rows: 4.2:1 (light), 3.9 (dark), 5.1 (Nord).
+* Paleness (`contrast-table.md`, mean OKLab-L distance of the mark's visible pixels from the ground; smaller = paler): **error 0.187** vs resting 0.388, needs-you 0.403, working 0.408, finished 0.386 — error is the palest by a factor of two. The status strip draws the same mark ×0.875, so it follows.
+* Footprint (ruling 6 of r4 kept): measured as the ENVELOPE (bounding box of pixels ≥ 1.3:1, so a washed fill counts): resting 192, working 184, needs-you 228, error 260, finished 264 px², ratio to the mean 0.85 / 0.81 / 1.01 / 1.15 / 1.17 (±25 %). The old "ink area ≥ 2:1" metric cannot be used for a pale mark; it is still printed for information.
+
+### Ruling 2: the error rim is a broken border, never a scrollbar
+`rim.ts case 'blanch'`: no pill, no fill, no dash gap. Four plain rects in `pal.blanch` (3.35:1): the top edge's left part `x .75 y .75 width '62%' h 1.2`, its right part `x '62%' width '38%'` with `transform translate(56 0)` (so there is ONE clear 56 px gap, then the line runs on to the end), and the two short returns `x .75 w 1.2 h 8.5` and `x '100%' w 1.2 h 8.5 translate(-1.95 0)`. It reads as the top edge of a box that is broken in one place; nothing on it can be mistaken for a thumb on a track.
+
+### Ruling 3: the working rim: a clean outline and a few larger soft clouds
+`rim.ts case 'clouds'`: the 1.2 px pill outline in the identity ink; inside it a faint tint (`fill-opacity .08`) and **five** clouds spaced evenly by an `objectBoundingBox` pattern tile (`x 0 y 0 width .2 height 1`, `patternContentUnits userSpaceOnUse`): one group (`opacity .55`, so overlaps do not darken) of lobes `(40,5.6,r3.2) (46.4,4.3,r4.2) (52.8,5.6,r3.4)` and a base `rect x37 y5.4 w19.6 h3.1 rx1.5`, repeated every 20 % of the width. Larger and fewer than the 15 px mini-clouds, soft, never crowded against a track. Static (no animation), so the CPU cost is that of one paint of the rim; the field still carries the moving clouds.
+
+### Ruling 4: rest is calm
+* Mark: the soft ink is lower in saturation: `SOFT_C = 0.07` (was 0.115, the identity hue is kept) at `SOFT_CONTRAST 3.35` (was 3.5); the oval is slightly wider so its envelope stays within ±25 % (dots `[12,5.4,r5.1] [12,8,r5.9] [12,10.6,r5.1]`, three paper holes unchanged in kind: `(10.4,5.2) r1.0`, `(13.6,8.4) r1.1`, `(10.8,11.2) r0.9`). Measured outline contrast ≥ 3.10:1 on all grounds.
+* Rim: **one quiet hairline** in the soft ink: `rect x0 y9 width '100%' height 1 fill soft` (no pill, so no coloured double line). Needs-you (two striped chips) and working (clean outline + clouds) stay the loudest rims; error is the palest.
+
+### Tests (write first; they fail on 7049668)
+1. `ink.test.ts › the r5 inks`: `SOFT_C 0.07`, `SOFT_CONTRAST 3.35`, `BLANCH_CONTRAST 3.35`; for grounds `#fefefe #141416 #2e3440`, hues 100..350, rows unselected and selected (`light #f6f8fa/#d8e1f0, dark #17181c/#2a3142, nord #2e3440/#434c5e`): `contrast(soft, row) ≥ 3.05` and `contrast(blanch, row) ≥ 3.05`; `chroma(soft) < chroma(chroma ink)`.
+2. `glyph.test.ts › error is the palest`: the error mark's extras are a `rect` fill chroma α .24 and a `path` stroke blanch 1.6 (path `M13 2.5 H3 V13.5 H21 V9`); no extra of the error mark has alpha 1 or a stroke wider than 1.6; the rasterised mark's mean lightness distance from the ground is lower than every other mark's (reuse the 96×64 helper with each extra's alpha applied).
+3. `glyph.test.ts › resting`: the three dots are `[12,5.4,5.1] [12,8,5.9] [12,10.6,5.1]` pigment soft; and the optical envelope of all five marks stays within ±25 % of the mean (bounding boxes: resting 12×16, working ≈ 17×11, needs-you 19×12, error 18×11 plus its stroke, finished 22×10).
+4. `rim.test.ts › r5 rims`: resting is exactly ONE node (a rect, `y h−1`, `height 1`, fill = soft) and no `rx`; blanch is exactly four rects, none with `rx`, `height`/`width` ≤ 1.2 for the three thin ones, exactly one has `transform translate(56 0)`, no `stroke-dasharray` anywhere, no `fill-opacity`; clouds has a `pattern` with `width 0.2` and `patternUnits objectBoundingBox`, a `g opacity .55` with 3 circles and 1 rect, a faint tint rect `fill-opacity .08`, and a 1.2 px pill outline; zebra and eyespot are unchanged (r4 tests).
+5. Locked: `make contract` stays green; `git diff --exit-code 5358f8c HEAD -- contract tests/acceptance desktop/test/acceptance` stays empty.
+
 ## 5. Files that change in `desktop/src`
 
 | file | change |
