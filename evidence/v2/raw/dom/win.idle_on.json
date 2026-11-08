@@ -2,51 +2,51 @@
   "schema": "cf2-window-dump/1",
   "window": "idle_on",
   "plugin": "on",
-  "captured_at": 1794087039.242,
+  "captured_at": 1794158387.943,
   "html": {
     "data-cf-state": "resting",
-    "data-cf-session": "local-56ad9e3c96ce5ffb3acd96643c57298f774ba4d3ac8e06f4d7f9b42d4b452882"
+    "data-cf-session": "local-a7a3ad44531eb1905b29222a43413c4b1245c71463a66017909cd4d020155641"
   },
   "rows": [
     {
-      "data-cf-session": "local-56ad9e3c96ce5ffb3acd96643c57298f774ba4d3ac8e06f4d7f9b42d4b452882",
+      "data-cf-session": "local-a7a3ad44531eb1905b29222a43413c4b1245c71463a66017909cd4d020155641",
       "data-cf-state": "resting",
-      "swatch_circles": 14
+      "swatch_circles": 3
     },
     {
-      "data-cf-session": "local-3b5a5c2652d657a33a9ef6d287e9af4e980260597b58abe555e54babaad29fbf",
+      "data-cf-session": "local-2a39d4f98647028a2149d213700ca9041b202a2ef6929ae84ccaf1af7acfb7c0",
       "data-cf-state": "resting",
-      "swatch_circles": 14
+      "swatch_circles": 3
     },
     {
-      "data-cf-session": "local-37d5b6029d561c5b22a3d66663715bb872bf5734e5bffd394eacd15c10817fd3",
+      "data-cf-session": "local-9d0e6c0f8073adba45d8993d4b46eeb1a6aae3564ea530851701c2055d37fdbb",
       "data-cf-state": "resting",
-      "swatch_circles": 14
+      "swatch_circles": 3
     },
     {
-      "data-cf-session": "local-c6f453157b671caece4c0616a83202eecbbbe6e925c47b010c3ef6c9cb182085",
+      "data-cf-session": "local-ba74bf3f22e88e66b4cba29a8b2c70765fa181a4573f95d3fb5ec9e0fca60ff7",
       "data-cf-state": "resting",
-      "swatch_circles": 14
+      "swatch_circles": 3
     },
     {
-      "data-cf-session": "local-e750283ab34ba2e25462631353a040d253f214f6152ac661df517eb19ca52b26",
+      "data-cf-session": "local-53e54a589261dcf657c5b37595f1f1b2f6114eaab5a3c75e8a2675c3ff1b72c1",
       "data-cf-state": "resting",
-      "swatch_circles": 14
+      "swatch_circles": 3
     },
     {
-      "data-cf-session": "local-ba649d0030cea28202ad99dff4d302f7122af58abf62b80d1e36d3178ba6c4bb",
+      "data-cf-session": "local-6a9192a21c33f7ea25af01a08a3cb17262377e30996d56792f451c28b5754c4d",
       "data-cf-state": "resting",
-      "swatch_circles": 14
+      "swatch_circles": 3
     },
     {
-      "data-cf-session": "local-14d632e713cebd9e7d41bdf12c188facb49b15816e745c534cf0e601e93aadf9",
+      "data-cf-session": "local-566c3dd6dd705295a467bf49a01e7fa9b789014740b0e4060a0be77375106338",
       "data-cf-state": "resting",
-      "swatch_circles": 14
+      "swatch_circles": 3
     },
     {
-      "data-cf-session": "local-8268dd04360d2c4d80a919773e1b48e7e4205a0617ec7964bbbff9c3b24942a1",
+      "data-cf-session": "local-ae94f858e43d38569c6c813ae9bf00f494d42a9392c53549c480556fff3368d8",
       "data-cf-state": "resting",
-      "swatch_circles": 14
+      "swatch_circles": 3
     }
   ]
 }
