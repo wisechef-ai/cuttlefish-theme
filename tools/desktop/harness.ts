@@ -1,7 +1,7 @@
 /**
  * Real-Desktop harness (dev only, never shipped). Boots the v0.22.7 `apps/desktop` SOURCE BUILD against a throwaway
  * home, on a private X display, with a local mock model. Ported from v22 tools/desktop_harness.ts (sound, reused) with
- * three changes: durable sandboxes under /home/adam/repos/hackathon/sandboxes (the scratch pruner eats ~/.hermes/cache),
+ * three changes: durable sandboxes under <home>/repos/hackathon/sandboxes (the scratch pruner eats ~/.hermes/cache),
  * the default model is tools/desktop/mock_llm.py, and every launch records its isolation facts for the evidence.
  *
  *   HOME → <sandbox>   HERMES_HOME → <sandbox>/hermes-home   userData → <sandbox>/electron-user-data

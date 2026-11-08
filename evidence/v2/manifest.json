@@ -9,8 +9,8 @@
     "desktop_build": "source"
   },
   "isolation": {
-    "hermes_home": "/home/adam/repos/hackathon/sandboxes/evidence-lcsK3I/hermes-home",
-    "user_data_dir": "/home/adam/repos/hackathon/sandboxes/evidence-lcsK3I/electron-user-data",
+    "hermes_home": "<home>/repos/hackathon/sandboxes/evidence-lcsK3I/hermes-home",
+    "user_data_dir": "<home>/repos/hackathon/sandboxes/evidence-lcsK3I/electron-user-data",
     "gateway_port": 35225,
     "live_gateway_ports": [
       1933,

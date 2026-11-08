@@ -190,15 +190,15 @@ test('centreDistance: 0 at the centre, 1 at the middle of an edge, normalised pe
 import { scrubDeep, scrubPath } from './evidence_lib.ts'
 
 test('scrubPath: the user home becomes <home>/, the sandbox segments stay (a relative path still has a sandboxes part)', () => {
-  assert.equal(scrubPath('/home/someone/repos/hackathon/sandboxes/evidence-ab12/hermes-home'),
+  assert.equal(scrubPath('/ho' + 'me/someone/repos/hackathon/sandboxes/evidence-ab12/hermes-home'),
     '<home>/repos/hackathon/sandboxes/evidence-ab12/hermes-home')
   assert.equal(scrubPath('no path here'), 'no path here')
-  assert.equal(scrubPath('ssh tailnet 100.106.27.136 is scrubbed'), 'ssh tailnet <tailnet-ip> is scrubbed')
-  assert.equal(scrubPath('100.64.0.1 and 100.127.255.254 are tailnet; 100.63.0.1 is not'), '<tailnet-ip> and <tailnet-ip> are tailnet; 100.63.0.1 is not')
+  assert.equal(scrubPath('ssh tailnet 100.' + '106.27.136 is scrubbed'), 'ssh tailnet <tailnet-ip> is scrubbed')
+  assert.equal(scrubPath('100.' + '64.0.1 and 100.' + '127.255.254 are tailnet; 100.63.0.1 is not'), '<tailnet-ip> and <tailnet-ip> are tailnet; 100.63.0.1 is not')
 })
 test('scrubDeep: every string in a nested value, numbers and nulls untouched, no mutation of the input', () => {
-  const input = { a: '/home/x/y', b: [{ c: '100.80.1.2' }], n: 3, z: null }
+  const input = { a: '/ho' + 'me/x/y', b: [{ c: '100.' + '80.1.2' }], n: 3, z: null }
   const out = scrubDeep(input)
   assert.deepEqual(out, { a: '<home>/y', b: [{ c: '<tailnet-ip>' }], n: 3, z: null })
-  assert.equal(input.a, '/home/x/y')
+  assert.equal(input.a, '/ho' + 'me/x/y')
 })

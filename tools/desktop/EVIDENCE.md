@@ -4,13 +4,14 @@ One command makes `evidence/v2/` (dev only, never shipped). The product is not b
 
 ```
 make evidence                                   # HEAD (must be on origin): start → wait → fetch, ~12 min wall
-tools/desktop/capture-remote.sh start <commit>  # hercules: niced, memory-capped systemd --user unit running capture.sh
+CF_CAPTURE_HOST=<user@host> tools/desktop/capture-remote.sh start <commit>  # the capture host: niced, memory-capped systemd --user unit running capture.sh
 tools/desktop/capture-remote.sh wait            # polls ≤ 8 min per call: exit 0 done, 3 still running, 1 failed
-tools/desktop/capture-remote.sh fetch           # copies hercules' evidence/v2 into this repo
-tools/desktop/capture.sh <commit> [WxH]         # (on hercules) fetch the commit into ~/cf2/run/repo, unit tests, capture.ts
-tools/desktop/capture-remote.sh start <commit> 1280x800   # a second window size: evidence/v2-1280x800 (fetch with the same WxH)
+tools/desktop/capture-remote.sh fetch           # copies the host's evidence/v2 into this repo
+tools/desktop/capture.sh <commit> [WxH]         # (on the capture host) fetch the commit into ~/cf2/run/repo, unit tests, capture.ts
+CF_CAPTURE_HOST=<user@host> tools/desktop/capture-remote.sh start <commit> 1280x800   # a second window size: evidence/v2-1280x800 (fetch with the same WxH)
 ```
-Runs are sequential (one private Xvfb `:93`, one mock port): start the next one only after `wait` says the last one finished.
+Runs are sequential on one host: start the next one only after `wait` says the last one finished. `start` picks a free private
+display (`:90`-`:99`) and mock port (`18900`-`18999`) on the host and hands them to the run, so a run never shares them with another.
 
 `capture.ts` (sandbox up → scenario → video/stills/pixels/perf → manifest → sandbox down):
 
@@ -48,6 +49,7 @@ Runs are sequential (one private Xvfb `:93`, one mock port): start the next one 
 
 ## Tests (where they run)
 
-* `node --test tools/desktop/*.test.ts` (inside `capture.sh` on hercules, and locally after `npm ci` in `tools/desktop/`).
+* `node --test tools/desktop/*.test.ts` (inside `capture.sh` on the capture host, and locally after `npm ci` in `tools/desktop/`).
 * `python -m pytest tools/desktop/test_measure.py` (the exclusion rule, the union of exclusions, the ink centroid, the still guard).
-  `make test` does not run it (the Makefile's `test` target is the builder gate, owned elsewhere).
+* Both run in `make test`. `tools/desktop/hygiene.test.ts` scans every tracked file for a user home path, a tailnet address and the
+  capture host's name; manifests are scrubbed at write time (`<home>/`, `<tailnet-ip>`).

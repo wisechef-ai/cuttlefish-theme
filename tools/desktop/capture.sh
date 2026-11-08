@@ -1,10 +1,10 @@
 #!/bin/bash
-# THE capture, on hercules (dev only):  tools/desktop/capture.sh <commit-or-branch> [WxH]   (WxH: window size, default 1600x1000)
+# THE capture, on the Linux capture host (dev only; capture-remote.sh runs it there):  tools/desktop/capture.sh <commit-or-branch> [WxH]   (WxH: window size, default 1600x1000)
 #
 # Fetches that commit into a PRIVATE clone (~/cf2/run/repo; never the working checkout), runs the harness unit tests,
 # then the real-Desktop capture, which records everything under <clone>/evidence/v2 (sandbox up -> scenario -> video,
 # stills, pixels, perf -> manifest -> sandbox down). Builds nothing in the product: desktop/plugin.js is what the commit ships.
-# Heavy: run it in a unit (capture-remote.sh does). Isolation is asserted in code; if it breaks the run aborts.
+# Heavy: run it in a unit (capture-remote.sh does). Display and mock port come from CF_DISPLAY / CF_MOCK_PORT (set by capture-remote.sh). Isolation is asserted in code; if it breaks the run aborts.
 set -euo pipefail
 COMMIT=${1:?usage: capture.sh <commit-or-branch> [WxH]}
 SIZE=${2:-}   # empty = the default window (evidence/v2); 1280x800 writes evidence/v2-1280x800
