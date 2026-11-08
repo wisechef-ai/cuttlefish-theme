@@ -84,11 +84,16 @@ def _write(path: Path, doc) -> Path:
     return path
 
 
+MERGED = {"plugins": {"entries": {"cuttlefish-theme": {"settings": {"motion": "off"}}}}}
+
+
 def test_the_active_config_is_read_through_load_config_readonly(core, tmp_path):
-    _write(core.active / "config.yaml", DOC)
-    assert liveconfig.read_raw_settings(core.active) == ({"motion": "alive"}, [])
+    _write(core.active / "config.yaml", DOC)  # disk says alive ...
+    core._shared = MERGED                      # ... core's merged view says off: we must serve core's view
+    assert liveconfig.read_raw_settings(core.active) == ({"motion": "off"}, [])
     assert core.readonly_calls == 1
-    assert core.raw_calls == [], "behavioural reads of the active config never use the raw reader"
+    assert set(core.raw_calls) <= {core.active / "config.yaml"}, \
+        "the raw reader may only run as the parse-check diagnostic on the active file, never to read settings"
 
 
 def test_another_home_is_read_through_the_raw_reader_only(core, tmp_path):
@@ -100,9 +105,10 @@ def test_another_home_is_read_through_the_raw_reader_only(core, tmp_path):
 
 def test_resolve_live_without_a_home_reads_the_active_config(core):
     _write(core.active / "config.yaml", DOC)
+    core._shared = MERGED
     settings, warnings = liveconfig.resolve_live()
-    assert settings["motion"] == "alive" and warnings == []
-    assert core.readonly_calls == 1 and core.raw_calls == []
+    assert settings["motion"] == "off" and warnings == []
+    assert core.readonly_calls == 1
 
 
 def test_the_settings_we_keep_are_a_copy_of_core_s_shared_dict(core):
@@ -170,5 +176,10 @@ def test_real_core_sees_a_live_edit_of_the_active_config(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(home))
     (home / "config.yaml").write_text("plugins:\n  entries:\n    cuttlefish-theme:\n      settings:\n        motion: alive\n")
     assert liveconfig.resolve_live()[0]["motion"] == "alive"
-    (home / "config.yaml").write_text("plugins:\n  entries:\n    cuttlefish-theme:\n      settings:\n        motion: off\n")
+    # quoted: an unquoted off is a YAML 1.1 boolean
+    (home / "config.yaml").write_text("plugins:\n  entries:\n    cuttlefish-theme:\n      settings:\n        motion: \"off\"\n")
     assert liveconfig.resolve_live()[0]["motion"] == "off", "core's cache keys on the file signature: an edit applies"
+    (home / "config.yaml").write_text("plugins: [unclosed\n")  # broken: core falls back, we still warn once
+    settings, warnings = liveconfig.resolve_live()
+    assert settings["motion"] == "off", "core serves its last-known-good copy of the file"
+    assert [(w["path"], w["code"]) for w in warnings] == [("config", "type")]
