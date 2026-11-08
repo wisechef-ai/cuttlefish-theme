@@ -107,3 +107,36 @@ test('r4 finished (ruling 4): a lens-shaped eye, an iris ring and a pupil', () =
   const circles = flat(body).filter(n => n.tag === 'circle')
   assert.deepEqual(circles.map(n => n.attrs.r), [2.6, 1.6], 'iris and pupil')
 })
+
+// v2.1 round r5 (§4d rulings 2–4): the rims as the r5 patch draws them. Written first; each fails on 7049668.
+test('r5 resting (ruling 4): ONE hairline in the soft ink, no pill, no second line', () => {
+  const body = rimNodes(input('mottle')).filter(n => n.tag !== 'defs')
+  assert.equal(body.length, 1, 'one node')
+  assert.equal(body[0].tag, 'rect')
+  assert.deepEqual([body[0].attrs.y, body[0].attrs.height], [9, 1], 'the bottom pixel row of the 10 px rim')
+  assert.equal(body[0].attrs.fill, palette(200, '#fefefe').soft, 'in the soft ink')
+  assert.equal(body[0].attrs.rx, undefined, 'no rounded pill')
+})
+
+test('r5 error (ruling 2): a broken border of four plain rects, one clear 56 px gap, no pill, no dash, no wash', () => {
+  const body = flat(rimNodes(input('blanch')).filter(n => n.tag !== 'defs'))
+  assert.equal(body.filter(n => n.tag === 'rect').length, 4, 'four rects')
+  assert.ok(body.every(n => n.attrs.rx === undefined), 'no rounded ends')
+  assert.equal(body.filter(n => n.attrs.transform === 'translate(56 0)').length, 1, 'exactly one gap, of 56 px')
+  assert.ok(body.every(n => n.attrs['stroke-dasharray'] === undefined && n.attrs['fill-opacity'] === undefined), 'no dash and no wash')
+  assert.ok(body.some(n => n.attrs.height === 1.2 && n.attrs.width === '62%'), 'the top edge runs in two parts')
+})
+
+test('r5 working (ruling 3): a clean 1.2 px outline, a faint tint, and five spaced clouds in a 20 % tile', () => {
+  const nodes = rimNodes(input('clouds'))
+  const tile = flat(nodes).find(n => n.tag === 'pattern')!
+  assert.equal(tile.attrs.width, 0.2)
+  assert.equal(tile.attrs.patternUnits, 'objectBoundingBox')
+  const group = flat(nodes).find(n => n.tag === 'g')!
+  assert.equal(group.attrs.opacity, 0.55, 'the lobes share one group opacity')
+  assert.equal(group.children!.filter(n => n.tag === 'circle').length, 3, 'three lobes')
+  assert.equal(group.children!.filter(n => n.tag === 'rect').length, 1, 'and a base')
+  assert.ok(flat(nodes).some(n => n.tag === 'rect' && n.attrs['fill-opacity'] === 0.08), 'a faint tint')
+  const pillNode = flat(nodes).find(n => n.tag === 'rect' && n.attrs.rx === 4.25)!
+  assert.equal(pillNode.attrs['stroke-width'], 1.2, 'a 1.2 px outline')
+})

@@ -282,9 +282,8 @@ function pathPts(d: string): Array<[number, number]> {
   return pts
 }
 
-/** Colour-aware footprint (§4c ruling 6, contrast-table.md): every sample is composited layer by layer in its real colour
- *  (pale fills at their alpha included), and it counts as ink when it reaches 2:1 against the light ground. */
-function inkMask(base: PatternKind, ground: string, hue: number): boolean[] {
+/** Every sample composited layer by layer in its real colour (pale fills at their alpha included), 96×64 at 4× per design px. */
+function inkColours(base: PatternKind, ground: string, hue: number): Array<{ r: number; g: number; b: number }> {
   const pal = palette(hue, ground)
   const bg = hexToRgb(ground)
   const S = 4, W = 96, H = 64
@@ -315,19 +314,67 @@ function inkMask(base: PatternKind, ground: string, hue: number): boolean[] {
     for (const d of glyphOf(base)) if ((x - d.x) ** 2 + (y - d.y) ** 2 <= d.r * d.r) col[py * W + px] = composite(hexToRgb(pal[d.pigment]), 1, col[py * W + px])
   }
   glyphExtras(base).filter(e => e.above).forEach(paintExtra)
-  return col.map(c => contrast(rgbToHex(c), ground) >= 2)
+  return col
 }
 
-test('r4 optical footprint (ruling 6): each mark\'s ink area (pixels ≥ 2:1 on the light ground) is within ±25 % of the five-mark mean', () => {
-  const area = (base: PatternKind): number => inkMask(base, '#fefefe', 205).filter(Boolean).length / 16     // 96×64 samples = 4×4 per design px
-  const a = STATES.map(area)
-  const mean = a.reduce((s, v) => s + v, 0) / a.length
-  STATES.forEach((s, i) => assert.ok(Math.abs(a[i] / mean - 1) <= 0.25, `${s}: ${a[i].toFixed(0)} px² vs mean ${mean.toFixed(0)}`))
-})
+/** The §4c ink mask: a sample is ink when it reaches 2:1 against the light ground. */
+function inkMask(base: PatternKind, ground: string, hue: number): boolean[] {
+  return inkColours(base, ground, hue).map(c => contrast(rgbToHex(c), ground) >= 2)
+}
+
 
 test('r4 error (ruling 2): the open corner is clear at 1× — no ink along the 6 px of top edge or the 4 px of right edge beside it, and no dot bridges it', () => {
   const mask = raster('blanch')
   const at = (x: number, y: number): boolean => mask[Math.floor(y * 4) * 96 + Math.floor(x * 4)]
   for (let x = 14.5; x <= 20.5; x += 0.25) assert.equal(at(x, 1.5), false, `top gap at x ${x}`)
   for (let y = 2; y <= 6.5; y += 0.25) assert.equal(at(22, y), false, `right gap at y ${y}`)
+})
+
+// v2.1 round r5 (§4d): the error mark is the PALEST; the footprint is measured as an ENVELOPE (the bounding box of the pixels
+// that reach 1.3:1 against the ground), because a pale mark cannot pass the r4 ink-area bar of 2:1. This test REPLACES the
+// r4 ink-area footprint test, which is removed; the ink area is still printed for information only.
+const lightDL = (c: { r: number; g: number; b: number }, ground: string): number =>
+  Math.abs(rgbToOklab(c).L - rgbToOklab(hexToRgb(ground)).L)
+
+test('r5 error is the PALEST mark (§4d ruling 1): its visible pixels sit closest to the ground in OKLab L', () => {
+  const ground = '#fefefe'
+  const meanDL = (base: PatternKind): number => {
+    const vis = inkColours(base, ground, 205).filter(c => rgbToHex(c) !== ground)
+    return vis.reduce((sum, c) => sum + lightDL(c, ground), 0) / vis.length
+  }
+  const err = meanDL('blanch')
+  for (const other of ['mottle', 'clouds', 'zebra', 'eyespot'] as const) {
+    assert.ok(err < meanDL(other), `error ${err.toFixed(3)} must be paler than ${other} ${meanDL(other).toFixed(3)}`)
+  }
+})
+
+test('r5 error mark (§4d ruling 1): one pale plate (chroma α .24), one thin outline (1.6) with the open corner; no solid extra', () => {
+  const err = glyphExtras('blanch')
+  assert.deepEqual(err.map(projExtra), [
+    ['rect', 'chroma', false, true, 0.24, null, 3, 2.5, 18, 11, 1, null],
+    ['path', 'blanch', false, false, null, 1.6, null, null, null, null, null, 'M13 2.5 H3 V13.5 H21 V9']], 'the washed plate and the broken frame')
+  assert.ok(err.every(e => (e.alpha ?? 1) < 1 || e.stroke !== undefined), 'no extra is solid or a heavy stroke')
+  assert.deepEqual(glyphOf('blanch').map(projDot), [[13, 2.5, 1.1, 'blanch'], [21, 9, 1.1, 'blanch']], 'the two ends of the break')
+})
+
+test('r5 resting mark (§4d ruling 4): three quiet dots, an upright oval slightly wider', () => {
+  assert.deepEqual(glyphOf('mottle').map(projDot), [[12, 5.4, 5.1, 'soft'], [12, 8, 5.9, 'soft'], [12, 10.6, 5.1, 'soft']])
+  assert.deepEqual(glyphExtras('mottle').map(projExtra).map(e => [e[6], e[7]]), [[10.4, 5.2], [13.6, 8.4], [10.8, 11.2]], 'three paper holes')
+})
+
+test('r5 optical footprint (§4d ruling 1): each mark\'s ENVELOPE (bounding box of pixels ≥ 1.3:1 on the light ground) is within ±25 % of the five-mark mean', () => {
+  const ground = '#fefefe'
+  const envelope = (base: PatternKind): number => {
+    const cols = inkColours(base, ground, 205)
+    let minX = 1e9, minY = 1e9, maxX = -1, maxY = -1
+    cols.forEach((c, i) => {
+      if (contrast(rgbToHex(c), ground) < 1.3) return
+      const x = i % 96, y = Math.floor(i / 96)
+      minX = Math.min(minX, x); maxX = Math.max(maxX, x); minY = Math.min(minY, y); maxY = Math.max(maxY, y)
+    })
+    return ((maxX - minX + 1) / 4) * ((maxY - minY + 1) / 4)
+  }
+  const a = STATES.map(envelope)
+  const mean = a.reduce((s, v) => s + v, 0) / a.length
+  STATES.forEach((s, i) => assert.ok(Math.abs(a[i] / mean - 1) <= 0.25, `${s}: envelope ${a[i].toFixed(0)} px² vs mean ${mean.toFixed(0)}`))
 })
