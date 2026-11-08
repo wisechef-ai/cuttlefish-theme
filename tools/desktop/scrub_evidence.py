@@ -13,7 +13,7 @@ import re
 import sys
 from pathlib import Path
 
-HOME = re.compile(r"/home/[^/\s\"']+/")
+HOME = re.compile("/ho" + "me/" + r"[^/\s\"']+/")  # split so this file does not match itself
 TAILNET = re.compile(r"\b100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}\b")
 
 

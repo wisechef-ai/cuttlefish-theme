@@ -24,7 +24,7 @@ No scope creep found. `git diff --exit-code 5358f8c -- contract tests/acceptance
 | swatch hue = identity only | seed swatch hue with `sessionId+state` | P6.2, P6.3, P6.4 |
 | **ring ("composer ring") = identity hue, never state** | `ringOf(hue + (working?40:0))` | **NOTHING FAILED** (30 acceptance + 45 adapter unit pass) → F5 |
 
-## The fake host vs the real v0.22.7 SDK (read-only `/home/adam/repos/hackathon/hermes-core/apps/desktop/src`)
+## The fake host vs the real v0.22.7 SDK (read-only: the pinned core checkout's `apps/desktop/src`)
 Verified OK against the real source:
 - `PluginContext.onEvent/setTimeout/setInterval/register/rest/onDispose` — `contrib/plugin.ts:119-154,336-396`; scoped, disposed with the plugin. `GatewayEvent` is `{type, session_id, payload}`, fanned to `'*'` (`contrib/events.ts:55`). Plugin events arrive via `_broadcast_global_event` → `session_id: ""` (server.py:587,632) — `eventToFeed` maps that to `session:null`, payload carries the stored id, as README pins.
 - `host.state.{busyBySession,busy,focusedSessionId,focusedStoredSessionId,activeSessionId,gateway,viewport}` are nanostores atoms (`sdk/index.ts:556-604`) with `get/listen`. `busyBySession` is keyed by RUNTIME id and is built from ALL session states (index.ts:225); `busy` is the FOCUSED chat only (index.ts:566).

@@ -149,7 +149,7 @@ test('an unknown session carries no signals at all', () => {
   assert.deepEqual([...signalsOf(initialFeed(), 'nobody')], [])
 })
 
-// fix-m4 D1 — real orderings from the M4 capture (hercules x9.log): on a direct focus switch the runtime-id
+// fix-m4 D1 — real orderings from the M4 capture (the capture host's x9 log): on a direct focus switch the runtime-id
 // atom lags the stored-id atom, so the snapshot carries (OLD runtime id, NEW stored id).
 const snap = (rtFocus: string | null, stored: string | null, extra: Record<string, unknown> = {}): FeedInput =>
   ev('state', rtFocus, { gateway: 'open', ...(rtFocus ? { focused_session_id: rtFocus } : {}), ...(stored ? { focused_stored_session_id: stored } : {}), ...extra })

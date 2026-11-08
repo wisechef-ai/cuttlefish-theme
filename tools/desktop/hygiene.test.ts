@@ -19,9 +19,7 @@ export const PATTERNS: { name: string; re: RegExp }[] = [
 /** Lines that already matched before this lane, in files this lane does not own (locked contract, product tests, reviews).
  *  The exact number of matching lines allowed per file: one more anywhere, or in a file not listed, fails. Remove entries as the files are fixed. */
 export const ALLOWED: Record<string, number> = {
-  'desktop/test/acceptance/traces/README.md': 1, // a grep pattern for the trace redaction check (locked contract)
-  'desktop/test/unit/feed.test.ts': 1, // a comment naming the M4 capture host (product unit test, not this lane's)
-  'reviews/review-adapters.md': 1, // a review note quoting the core checkout path (docs, not this lane's)
+  'desktop/test/acceptance/traces/README.md': 1, // LOCKED (desktop/test/acceptance/**): a grep pattern for the trace redaction check
   'tests/acceptance/helpers.py': 2, // CF_HERMES_CORE and the default interpreter path (locked contract)
   'tests/acceptance/test_instruments_py.py': 1, // NODE_FALLBACK default (locked contract)
   'tests/acceptance/test_o8_submission_kit.py': 1, // CF_KIT_DIR default (locked contract)
