@@ -6,14 +6,16 @@ import { hexToLab, hexToRgb, oklabToRgb, oklchToHex, rgbToHex } from './oklch.ts
 
 /** The design target for every mark ink (the bar is 3.0; the headroom covers antialiasing and a tinted selected row). */
 export const MIN_CONTRAST = 3.6
-/** Resting's soft ink: the quietest ink that still holds ≥ 3:1 on every row tint. */
-export const SOFT_CONTRAST = 3.5
-/** Error: a bold near-grey frame, never a faint one. */
-export const BLANCH_CONTRAST = 4.5
+/** Resting's soft ink (r5): lower saturation (SOFT_C) and the quietest contrast that still holds ≥ 3:1 on every row tint (measured min 3.10 on the dark selected row). */
+export const SOFT_CONTRAST = 3.35
+/** Error (r5): a thin near-grey outline at the same quiet contrast as resting; the mark's paleness comes from its washed fill. */
+export const BLANCH_CONTRAST = 3.35
 /** The selected-row allowance in OKLab L, toward the ink side of the ground. */
 export const SELECT_ALLOWANCE = 0.10
 /** The identity pigment's chroma, and the near-achromatic error chroma (mean chroma must stay ≤ 0.03). */
 export const CHROMA_C = 0.115
+/** Resting's chroma: the identity hue kept, the saturation lowered. */
+export const SOFT_C = 0.07
 export const BLANCH_C = 0.012
 
 export interface Palette {
@@ -69,7 +71,7 @@ export function palette(hue: number, ground: string): Palette {
   const dir = hexToLab(ground).L < 0.5 ? 1 : -1
   const out: Palette = {
     chroma: inkFor(hue, CHROMA_C, ground),
-    soft: inkFor(hue, CHROMA_C, ground, SOFT_CONTRAST),
+    soft: inkFor(hue, SOFT_C, ground, SOFT_CONTRAST),
     blanch: inkFor(hue, BLANCH_C, ground, BLANCH_CONTRAST),
     spot: oklchToHex(dir > 0 ? 0.07 : 0.17, 0.03, hue),
     paper: ground,

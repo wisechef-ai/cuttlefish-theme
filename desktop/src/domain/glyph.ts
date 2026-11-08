@@ -43,13 +43,13 @@ const strokeOf = (pigment: ExtraPigment, width: number, above = false): Pick<Gly
   ({ pigment, stroke: width, above })
 
 const GLYPHS: Record<PatternKind, { dots: GlyphDot[]; extras: GlyphExtra[] }> = {
-  // resting (r4): one soft UPRIGHT oval (10 wide, ~15 tall) with a visible mottle of paper holes; quiet ink
+  // resting (r5): one soft UPRIGHT oval (≈ 12 wide, 15 tall) in the quiet, lower-saturation ink, with a visible mottle of paper holes
   mottle: {
-    dots: [circ(12, 4.7, 4.3, 'soft'), circ(12, 8, 5.0, 'soft'), circ(12, 11.3, 4.3, 'soft')],
+    dots: [circ(12, 5.4, 5.1, 'soft'), circ(12, 8, 5.9, 'soft'), circ(12, 10.6, 5.1, 'soft')],
     extras: [
-      { k: 'ellipse', cx: 10.6, cy: 4.6, rx: 1.0, ry: 1.0, ...fillOf('paper', 0.9, true) },
-      { k: 'ellipse', cx: 13.2, cy: 8.4, rx: 1.1, ry: 1.1, ...fillOf('paper', 0.9, true) },
-      { k: 'ellipse', cx: 11, cy: 11.6, rx: 0.9, ry: 0.9, ...fillOf('paper', 0.9, true) },
+      { k: 'ellipse', cx: 10.4, cy: 5.2, rx: 1.0, ry: 1.0, ...fillOf('paper', 0.9, true) },
+      { k: 'ellipse', cx: 13.6, cy: 8.4, rx: 1.1, ry: 1.1, ...fillOf('paper', 0.9, true) },
+      { k: 'ellipse', cx: 10.8, cy: 11.2, rx: 0.9, ry: 0.9, ...fillOf('paper', 0.9, true) },
     ],
   },
   // working (r4): a solid cloud, three lobes on a flat base (≈ 17 × 10)
@@ -66,12 +66,13 @@ const GLYPHS: Record<PatternKind, { dots: GlyphDot[]; extras: GlyphExtra[] }> = 
       { k: 'path', d: 'M11.5 12 L19.5 4', ...strokeOf('paper', 3.4, true) },
     ],
   },
-  // error (r4): a HOLLOW pale frame, the top-right corner missing (a gap of 9 px of top edge + 7.5 px of right edge); never filled
+  // error (r5): the PALEST mark: a washed plate (the identity hue at α .24 over the ground), a thin outline at the quiet 3.35:1, and a big
+  // open corner (8.5 px of the top edge + 7 px of the right edge). Hollow: the plate is a wash, never ink.
   blanch: {
-    dots: [circ(13, 1.5, 1.5, 'blanch'), circ(22, 9, 1.5, 'blanch')],
+    dots: [circ(13, 2.5, 1.1, 'blanch'), circ(21, 9, 1.1, 'blanch')],
     extras: [
-      { k: 'rect', x: 2, y: 1.5, w: 20, h: 13, rx: 1, ...fillOf('wash', 0.16) },
-      { k: 'path', d: 'M13 1.5 H2 V14.5 H22 V9', ...strokeOf('blanch', 2.2) },
+      { k: 'rect', x: 3, y: 2.5, w: 18, h: 11, rx: 1, ...fillOf('chroma', 0.24) },
+      { k: 'path', d: 'M13 2.5 H3 V13.5 H21 V9', ...strokeOf('blanch', 1.6) },
     ],
   },
   // finished unseen (r4): an almond / lens EYE: pale lens, crisp outline, iris ring, dark pupil, catch-light

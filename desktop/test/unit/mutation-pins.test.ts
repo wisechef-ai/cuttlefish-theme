@@ -236,7 +236,8 @@ test('renderSwatch golden digests: working clouds and resting mottle', () => {
   const clouds = Buffer.from(blake2b(utf8(JSON.stringify(renderSwatch({ ...base, pattern: patternOf(DEFAULT_SETTINGS, 'working') }).dots)), 32)).toString('hex')
   assert.equal(clouds, '59ba20269457688fe82eac8eed68d79322350197e168a52c66929b620c971355')
   const mottle = Buffer.from(blake2b(utf8(JSON.stringify(renderSwatch({ ...base, pattern: patternOf(DEFAULT_SETTINGS, 'resting') }).dots)), 32)).toString('hex')
-  assert.equal(mottle, '8d157fc5b1eb41377dc200d3adcf0d6f243c4f18f28dbba47d801c2478d7ad99')
+  // §4d ruling 4: the resting mark is the r5 oval (re-pinned from the same input)
+  assert.equal(mottle, '14869a97f01c92a69b79e976584e56e81976fe3e4d7f7799094ecb2bcc9a2e51')
 })
 
 // Every earlier digest used dials at 1, where `*` and `/` agree. These two render with

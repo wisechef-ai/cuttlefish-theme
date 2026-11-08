@@ -113,12 +113,14 @@ test('five silhouettes at 1×: pairwise IoU ≤ 0.55, and error vs finished-unse
   assert.ok(iou(masks.blanch, masks.eyespot) <= 0.30, `error vs finished: ${iou(masks.blanch, masks.eyespot).toFixed(2)}`)
 })
 
-test('WCAG 1.4.11: every mark pigment is ≥ 3.2:1 on every design row, selected or not; paper and pupil hold their own contrast', () => {
+// §4d ruling 1 and 4: the resting and error inks are set to 3.35 (the measured dark-selected floor is 3.10), so their bar is the 3.05 of §4d
+test('WCAG 1.4.11: every mark pigment is ≥ 3.2:1 on every design row (chroma), ≥ 3.05:1 for the quiet resting and pale error inks (§4d); paper and pupil hold their own contrast', () => {
   const rowsOf: Record<string, string[]> = { '#fefefe': ROWS.slice(0, 2), '#141416': ROWS.slice(2, 4), '#2e3440': ROWS.slice(4) }
   for (const ground of GROUNDS) for (const hue of HUES) {
     const pal = palette(hue, ground)
-    for (const row of rowsOf[ground]) for (const p of ['chroma', 'soft', 'blanch'] as const) {
-      assert.ok(contrast(pal[p], row) >= 3.2, `${p} on ${row} (ground ${ground}, hue ${hue}): ${contrast(pal[p], row).toFixed(2)}`)
+    for (const row of rowsOf[ground]) {
+      assert.ok(contrast(pal.chroma, row) >= 3.2, `chroma on ${row} (ground ${ground}, hue ${hue}): ${contrast(pal.chroma, row).toFixed(2)}`)
+      for (const p of ['soft', 'blanch'] as const) assert.ok(contrast(pal[p], row) >= 3.05, `${p} on ${row} (ground ${ground}, hue ${hue}): ${contrast(pal[p], row).toFixed(2)}`)
     }
     assert.ok(contrast(pal.paper, pal.chroma) >= 3.5, `paper vs chroma on ${ground}`)
     assert.ok(contrast(pal.spot, pal.chroma) >= 3.0, `pupil vs iris on ${ground}`)
@@ -155,7 +157,7 @@ test('finished-unseen: exactly one eye-spot dot (pupil r 2.8, ≥ 2× the median
   const err = glyphExtras('blanch')
   assert.ok(!err.some(e => e.k === 'ellipse'), 'error has no ellipse')
   const plate = err.find(e => e.k === 'rect')
-  assert.ok(plate && plate.alpha === 0.16, 'error has a pale plate')
+  assert.ok(plate && plate.alpha === 0.24, 'error has a pale plate (r5: chroma at .24)')
   const frame = err.find(e => e.k === 'path')!
   assert.match(frame.d ?? '', /^M[\d. ]+(?:[HV][\d. ]+)+$/, 'the frame is M H V only')
   const pts = [...(frame.d ?? '').matchAll(/([HV])\s*([\d.]+)|M\s*([\d.]+)\s+([\d.]+)/g)]
@@ -228,12 +230,13 @@ const projDot = (d: { x: number; y: number; r: number; pigment: string }) => [d.
 const projExtra = (e: GlyphExtra) => [e.k, e.pigment, e.above === true, e.fill === true, e.alpha ?? null, e.stroke ?? null,
   e.x ?? e.cx ?? null, e.y ?? e.cy ?? null, e.w ?? e.rx ?? null, e.h ?? e.ry ?? null, e.rx ?? null, e.d ?? null]
 
-test('r4 marks (ruling 1–4): the exact dot and extra lists', () => {
-  assert.deepEqual(glyphOf('mottle').map(projDot), [[12, 4.7, 4.3, 'soft'], [12, 8, 5, 'soft'], [12, 11.3, 4.3, 'soft']], 'resting: one upright oval')
+// The exact lists of the r4 marks; the resting mark and the error mark are the r5 values (§4d rulings 1 and 4).
+test('r4/r5 marks: the exact dot and extra lists', () => {
+  assert.deepEqual(glyphOf('mottle').map(projDot), [[12, 5.4, 5.1, 'soft'], [12, 8, 5.9, 'soft'], [12, 10.6, 5.1, 'soft']], 'resting: one upright oval (r5)')
   assert.deepEqual(glyphExtras('mottle').map(projExtra), [
-    ['ellipse', 'paper', true, true, 0.9, null, 10.6, 4.6, 1, 1, 1, null],
-    ['ellipse', 'paper', true, true, 0.9, null, 13.2, 8.4, 1.1, 1.1, 1.1, null],
-    ['ellipse', 'paper', true, true, 0.9, null, 11, 11.6, 0.9, 0.9, 0.9, null]], 'and three paper holes above')
+    ['ellipse', 'paper', true, true, 0.9, null, 10.4, 5.2, 1, 1, 1, null],
+    ['ellipse', 'paper', true, true, 0.9, null, 13.6, 8.4, 1.1, 1.1, 1.1, null],
+    ['ellipse', 'paper', true, true, 0.9, null, 10.8, 11.2, 0.9, 0.9, 0.9, null]], 'and three paper holes above (r5)')
   assert.deepEqual(glyphOf('clouds').map(projDot), [[6.8, 9.6, 3.3, 'chroma'], [12.4, 7.8, 4.4, 'chroma'], [17.6, 9.8, 3.1, 'chroma']], 'working: three lobes')
   assert.deepEqual(glyphExtras('clouds').map(projExtra), [['rect', 'chroma', false, true, 1, null, 3.8, 9.8, 16.2, 3.9, 1.9, null]], 'and a flat base')
   assert.deepEqual(glyphOf('zebra').map(projDot), [[6, 5.5, 2.8, 'chroma'], [12, 5.5, 2.8, 'chroma'], [18, 5.5, 2.8, 'chroma'],
@@ -243,10 +246,7 @@ test('r4 marks (ruling 1–4): the exact dot and extra lists', () => {
     ['rect', 'chroma', false, true, 1, null, 2.5, 2, 19, 12, 3, null],
     ['path', 'paper', true, false, null, 3.4, null, null, null, null, null, 'M4 12 L12 4'],
     ['path', 'paper', true, false, null, 3.4, null, null, null, null, null, 'M11.5 12 L19.5 4']], 'a filled chip with exactly TWO bars')
-  assert.deepEqual(glyphOf('blanch').map(projDot), [[13, 1.5, 1.5, 'blanch'], [22, 9, 1.5, 'blanch']], 'error: two ends of the break')
-  assert.deepEqual(glyphExtras('blanch').map(projExtra), [
-    ['rect', 'wash', false, true, 0.16, null, 2, 1.5, 20, 13, 1, null],
-    ['path', 'blanch', false, false, null, 2.2, null, null, null, null, null, 'M13 1.5 H2 V14.5 H22 V9']], 'the frame with the top-right corner open')
+  // the r5 error mark (§4d ruling 1) is asserted in its own test below
   const eye = glyphOf('eyespot')
   assert.deepEqual(eye.map(projDot), [[3, 8, 0.7, 'chroma'], [21, 8, 0.7, 'chroma'], [12, 8, 2.8, 'spot']], 'eye: two corner dots, the pupil LAST')
   assert.deepEqual(glyphExtras('eyespot').map(projExtra), [
