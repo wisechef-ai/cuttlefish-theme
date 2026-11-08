@@ -61,22 +61,23 @@ Every plugin surface draws the same five pictures. The shape is the state; the h
 
 ![The five marks, sidebar rows on light, dark and Nord grounds](design/contact-marks.png)
 
-| state | sidebar mark (24×16) | field (focused chat) | composer rim (10 px) | status strip |
+| state | sidebar mark (24×16) | field (focused chat) | composer rim (one 10 px pill) | status strip |
 |---|---|---|---|---|
-| resting | three small dots; nothing else | sparse faint mottle | a 1 px hairline | the mark + "resting" |
-| working | one solid cloud (seven lobes) | clouds drift (left half stays faint) | a train of cloud lobes on a thin track | cloud + "working" |
-| needs you | outlined chip, bold diagonal stripes | diagonal bands of big dots (right of the text) | full-width bold diagonal stripes | stripes chip + "needs you" |
-| error | pale grey chip, hollow broken ring, **no hue** | big pale, colourless blobs | pale wash inside a broken (dashed) outline | grey ring + "error" |
-| finished (unseen) | solid iris, one big dark pupil | one big dark disc in the right gutter | a hairline with one dark eye | eye + "done" |
+| resting | three small dots; nothing else | sparse faint mottle | an empty 1 px pill outline | the mark + "resting" |
+| working | one solid cloud (seven lobes) | clouds drift on the right | a train of cloud lobes in the pill | cloud + "working" |
+| needs you | outlined chip, bold diagonal stripes | diagonal bands of big dots (right of the text) | stripes filling the pill | stripes chip + "needs you" |
+| error | pale **hollow square**, grey frame **broken at the right**, no hue | fewer, paler, colourless blobs (never denser than resting) | pale wash in a dashed, broken pill outline | grey broken square + "error" |
+| finished (unseen) | pale disc, crisp ring, **one big dark core** (round) | one dark disc in the right gutter | a hairline pill with one dark eye | eye + "done" |
 
 Rules the pictures obey:
 
 1. **Silhouette, not hue.** No two marks share an outline: dots / cloud / striped plate / hollow ring / disc-with-pupil. Pairwise overlap is measured (worst pair ≤ 0.55 IoU); a grey-scale screenshot still reads.
-2. **Error is the only grey mark.** Blanching *is* the loss of hue, so error is drawn in the near-achromatic pigment; it is also the only hollow mark.
+2. **Error is the only grey, angular, hollow mark.** Blanching *is* the loss of hue, so error is drawn in the near-achromatic pigment, as a square frame that is broken on one side; every other mark is filled or round.
 3. **Rest is small, not faint.** The resting mark is three small dots at full contrast — quiet because there is little of it, not because it is pale.
 4. **One working family.** Cloud lobes (overlapping circles of unequal radius) are the working picture on every surface: the sidebar cloud, the rim's lobe train, the big soft lobes of the field.
-5. **The field never smothers text.** Organs left of half the page width (where the text column is) are drawn at half size and half ink, so the stripes and blobs live in the open space on the right.
-6. **A seen, finished session is resting.** The eye appears only while a finished turn is unseen.
+5. **The field never smothers text.** No organ is drawn in the left 60 % of the page (the text column), nor behind the title card or the composer; the stripes, blobs and clouds live in the open space on the right.
+6. **One rim system.** Every rim is the same pill — same height, same place, same round ends; only its fill and outline change.
+7. **A seen, finished session is resting.** The eye appears only while a finished turn is unseen.
 
 
 ## Remapping and adding states

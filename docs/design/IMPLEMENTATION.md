@@ -6,10 +6,10 @@ Everything below is exact. Reference renders: `contact-marks.png`, `contact-ligh
 
 | surface | v2.0 | v2.1 |
 |---|---|---|
-| sidebar mark | 28×14 dot glyphs, low ink (ΔL ≤ 0.30), error = faint beads, eye-spot = pale blob | **24×16** chip, ink picked for ≥ 3.6:1 on the row (floor 3.0:1, WCAG 1.4.11), five distinct silhouettes, error = grey/hollow/washed, eye = solid iris + big dark pupil |
+| sidebar mark | 28×14 dot glyphs, low ink (ΔL ≤ 0.30), error = faint beads, eye-spot = pale blob | **24×16** chip, ink picked for ≥ 3.6:1 on the row (floor 3.0:1, WCAG 1.4.11), five distinct silhouettes: dots / cloud / striped plate / **hollow square with a broken frame (error, grey, angular)** / **pale disc, crisp ring, one big dark core (finished-unseen, round)** |
 | status strip | glyph + label, clipped | same mark at ×0.875 (21×14) + label, one nowrap row, verified not clipped |
-| composer rim | 6 px, thin | **10 px**, bold: stripes / lobe train / wash + broken outline / eye |
-| field | big dots everywhere, eye-spot mid-page and pale | organs left of ½ the width are drawn at **½ radius** (same ink); eye-spot = one big **dark** disc in the right gutter |
+| composer rim | 6 px, five unrelated bands | **one system**: a 10 px pill (same placement, same round end caps) whose fill/outline echo the mark: hairline / lobe train / stripes / wash + broken frame / one eye |
+| field | big dots everywhere, text covered | **no organ in the reading lane**: the left 60 % of the width, the top 5 % and the bottom 12 % (title, text, cards, composer) stay clear; needs-you swell 1.8, error swell 1.9 (quiet, pale); eye-spot = one dark disc (4.3 × median organ radius) in the right gutter |
 | working motif | clouds only in places | cloud lobes on every surface (sidebar cloud = 7 lobes, rim = lobe trains, field = soft lobes) |
 
 Contract facts the design was fitted to (do not "improve" past them):
@@ -31,9 +31,9 @@ worst    = sRGB(OKLab(clamp(lab.L + dir*SELECT, .01, .99), lab.a, lab.b))
 ink(h,C) = the L nearest the ground (bisect 24 steps between lab.L and dir>0 ? 0.97 : 0.04) such that
            contrast(oklchToHex(L, C, h), ground) ≥ 3.6  AND  contrast(…, worst) ≥ 3.6        // WCAG relative luminance
 palette  = { chroma: ink(hue, 0.115),          // the identity pigment
-             blanch: ink(hue, 0.012),          // error: near-achromatic (meanChroma ≤ 0.03), the hue is "bleached out"
+             blanch: ink(hue, 0.012, minContrast=4.5),   // error: near-achromatic (meanChroma ≤ 0.03); a bold grey frame, never a faint one
              spot:   oklchToHex(dir>0 ? 0.07 : 0.17, 0.03, hue),   // the pupil: near-black on both grounds
-             wash:   palette.blanch }          // used only at alpha 0.30, as a plate
+             wash:   palette.blanch }          // used only as a pale plate (alpha 0.14 in the mark, 0.30 in the rim), never as ink
 ```
 Worked values (hue 205): `#fefefe → chroma #007c8a, blanch #697274, spot #001316`; `#141416 → #00909d, #798485, #000203`; `#2e3440 → #2dbbc9, #a2adae, #000203`.
 
@@ -60,41 +60,47 @@ needs_you        pigment chroma   (twenty r=1.7 dots on three "/" bars, step 1.2
   [15.98,11.82] [16.83,10.97] [17.68,10.12] [18.53,9.27] [19.38,8.42]          (all r = 1.7)
   extras   <rect x=.75 y=.75 width=22.5 height=14.5 rx=3.5 fill=none stroke=chroma stroke-width=1.5/>
 
-error            pigment blanch   (eight r=1.9 beads on an oval, centre (12,8), rx 9.6 ry 5.6, phase 22.5°: clear gaps = "broken")
-  [20.87,10.14] [15.67,13.17] [8.33,13.17] [3.13,10.14] [3.13,5.86] [8.33,2.83] [15.67,2.83] [20.87,5.86]     (r = 1.9)
-  extras   <ellipse cx=12 cy=8 rx=9.2 ry=5.6 fill=blanch fill-opacity=.30/>    (the pale wash chip; drawn FIRST, under the beads)
+error            pigment blanch   (a pale, hollow, SQUARE chip; its frame is broken at the right with a clear notch; two round ends where it breaks)
+  dots     [22,4.4,r1.8] [22,11.6,r1.8]  (pigment blanch)
+  extras   <rect x=2 y=2 width=20 height=12 rx=1 fill=blanch fill-opacity=.14/>               (the pale plate; FIRST)
+           <path d="M22 4.4 V1.5 H1.5 V14.5 H22 V11.6" fill=none stroke=blanch stroke-width=2.2 stroke-linejoin=miter/>   (the broken frame: open between y 4.4 and 11.6)
 
-finished_unseen  (sixteen chroma beads r=1.3 on a circle of radius 6.6 at (12,8), then ONE pupil)
-  beads    [18.6,8] [18.1,10.53] [16.67,12.67] [14.53,14.1] [12,14.6] [9.47,14.1] [7.33,12.67] [5.9,10.53] [5.4,8] [5.9,5.47] [7.33,3.33] [9.47,1.9] [12,1.4] [14.53,1.9] [16.67,3.33] [18.1,5.47]
-  pupil    [12,8, r=3.6] pigment spot, role 'eyespot'      (LAST entry; the only 'eyespot' dot)
-  extras   <ellipse cx=12 cy=8 rx=6.6 ry=6.6 fill=chroma/>    (the iris disc, drawn FIRST; an <ellipse>, never a <circle>)
+finished_unseen  (a pale disc, a crisp ring, ONE big dark core, four iris flecks; ROUND)
+  dots     four flecks r=0.7 (chroma) at (12+5.1cosθ, 8+5.1sinθ), θ = 45°,135°,225°,315°  — the "organs" the contract's spotRatios compares to
+           core [12,8,r4.0] pigment spot, role 'eyespot'      (LAST entry; the only 'eyespot' dot; ratio 4.0/0.7 = 5.7)
+  extras   <ellipse cx=12 cy=8 rx=6.8 ry=6.8 fill=chroma fill-opacity=.30/>                   (the pale disc; FIRST — on dark grounds it is the light halo)
+           <ellipse cx=12 cy=8 rx=6.8 ry=6.8 fill=none stroke=chroma stroke-width=1.6/>        (the crisp ring; an <ellipse>, never a <circle>)
 ```
-Draw order in the SVG: extras first, then dots (the order of the arrays). `svgElement` gets an optional `extras` argument (adapters/svg.ts) and renders `rect`/`ellipse` nodes through the same `jsx` factory with the raw numbers.
+Draw order in the SVG: extras first, then dots (the order of the arrays). `svgElement` gets an optional `extras` argument (adapters/svg.ts) and renders `rect`/`ellipse`/`path` nodes through the same `jsx` factory with the raw numbers.
 
-Domain API (unchanged signatures): `glyphOf(base)` keeps returning `GlyphDot[]` (`{x,y,r,pigment:'chroma'|'blanch'|'spot'}`; drop the `ink` field); add `glyphExtras(base): GlyphExtra[]` (`{k:'rect'|'ellipse', …, pigment:'chroma'|'blanch', alpha?}`) and export `GLYPH_W=24, GLYPH_H=16, STRIP_K=0.875`. `renderSwatch`/`renderStrip` still return `{dots,width,height}` (strip: ×K); add `extras` to the returned object (`{dots, width, height, extras}`); `renderSmall` no longer calls `alphaFor/effectiveDl`.
+Domain API (unchanged signatures): `glyphOf(base)` keeps returning `GlyphDot[]` (`{x,y,r,pigment:'chroma'|'blanch'|'spot'}`; drop the `ink` field); add `glyphExtras(base): GlyphExtra[]` (`{k:'rect'|'ellipse'|'path', …, pigment:'chroma'|'blanch', alpha?, stroke?}`) and export `GLYPH_W=24, GLYPH_H=16, STRIP_K=0.875`. `renderSwatch`/`renderStrip` still return `{dots,width,height}` (strip: ×K); add `extras` to the returned object (`{dots, width, height, extras}`); `renderSmall` no longer calls `alphaFor/effectiveDl`.
 
 **Layout.** The mark is `width:24px;height:16px;flex:none`. It replaces a 28×14 box: **+4 px of title room at every sidebar width**; nothing else in the row moves. Row height (27 px) leaves 5.5 px above and below.
 
 **Strip.** Root: `display:inline-flex; align-items:center; gap:6px; white-space:nowrap; line-height:1; flex-shrink:0; font-weight:600` (label) next to the 21×14 SVG. Label text = state label (resting's empty label falls back to the state name, as today).
 
-## 3. Composer rim
+## 3. Composer rim: ONE system
 
-`RIM_HEIGHT = 10` (surfaces.ts). `rimNodes(i)` returns, per `base` (`c`=chroma, `b`=blanch, `s`=spot pigments of §1 for `i.ground`; `h=10`; widths are `100%` of the composer, as today):
-* **mottle** (resting): `rect x0 y9 w100% h1 fill c`.
-* **clouds** (working): `rect x0 y4.25 w100% h1.5 c opacity .45` (track) + lobe trains: `circle`s with `cy=5, fill=c`; a train = radii `r_i`, centres at `x0 + Σ 1.15·r_j` (j<i); trains `[3.2,4.6,3.6] [3.8,5,4,2.8] [3,4.2] [3.6,5,4] [3,4.4,3.2]` repeated; first train at x=18 px, next train starts `Σ(1.15·r) + 40 + (k·37 mod 70)` px after the previous start, k = train counter from 1; stop when x ≥ width−40. (Static: the rim never animates.) Use `x` in px (the rim measures its own width with `width='100%'` → draw in a `viewBox` of the composer width, or render with a fixed 1600 px tile and `preserveAspectRatio="xMinYMid slice"`; the coder picks one, the markup differs by state either way).
-* **zebra** (needs you): `pattern id=cf-rim-stripes width=12 height=10 patternUnits=userSpaceOnUse patternTransform="skewX(-45)"` containing `rect w6 h10 fill c`; `rect w100% h10 fill url(#cf-rim-stripes)`. (45°, 6 on / 6 off.)
-* **blanch** (error): `rect x0 y0 w100% h10 fill b opacity .16` + `rect x1 y1 w(100%−2) h8 rx2 fill none stroke b stroke-width 2 stroke-dasharray "9 6"`.
-* **eyespot** (finished): hairline as mottle + `circle cx20 cy5 r4.8 fill c` + `circle cx20 cy5 r3 fill s`.
-The `--dt-composer-ring` variable stays the identity hue's pigment (not state): unchanged.
+`RIM_HEIGHT = 10`. Every state draws the **same pill**: `rect x=.75 y=.75 width=(W−1.5) height=8.5 rx=4.25 fill=none` (same placement, same round end caps, 1 px inset, W = composer width) and a `clipPath id=cf-rim-cap` of the same rect. Only what fills the pill and how its outline is drawn changes, echoing the mark (`c`/`b`/`s` = chroma/blanch/spot of §1 for `i.ground`):
 
-## 4. The field (focused chat): two changes, both proven against the locked suite
+| base | fill (clipped to the pill) | outline |
+|---|---|---|
+| mottle (resting) | none | `stroke c, 1` |
+| clouds (working) | lobe trains: `circle cy=5 fill c`; train radii `[3.2,4.6,3.6] [3.8,5,4,2.8] [3,4.2] [3.6,5,4] [3,4.4,3.2]` repeated, lobe i centred at `x + Σ_{j<i} 1.15·r_j`; first train x=26; next train starts `Σ(1.15·r) + 40 + (k·37 mod 70)` px later (k = train counter from 1) until x ≥ W−40 | `stroke c, 1` |
+| zebra (needs you) | `pattern id=cf-rim-stripes width=12 height=10 userSpaceOnUse patternTransform=skewX(-45)` of `rect w6 h10 fill c` | `stroke c, 1.5` |
+| blanch (error) | `rect fill b fill-opacity .30` | `stroke b, 2.6, stroke-dasharray "round(0.42·W) 14"` (a broken frame with gaps) |
+| eyespot (finished) | none | `stroke c, 1`; plus at x=14,y=5: `circle r3.9 fill c fill-opacity .3 stroke c stroke-width 1.2` and `circle r2.4 fill s` |
 
-Apply `docs/design/field-f1-f2.patch` (it is a diff of `domain/organs.ts`, `domain/pattern.ts`, `domain/field.ts` only):
-* **F1 eye-spot**: `eyeSpotAt` → `x = w·(0.74 + 0.16·u)`, `y = h·(0.50 + 0.20·u')` (right gutter, lower half, away from the text column). `planGround.spot = oklchToHex(clamp(gl − 0.62, .03, .97), 0.09, hue)` (near-black on light grounds, black on dark). The dot's ΔL target is `min(spotMaxDl, 0.50·intensity·bloom)` (was 0.156, capped 0.30). Radius unchanged (`5.4 × median organ radius`, ≈ 30 px).
-* **F2 reading lane**: in `renderField`, every `role:'organ'` dot with `x < 0.5·width` has its **radius × 0.5** (ink/alpha unchanged, because the locked blanch/loudness tests are per-dot ΔL). Text lives on the left; the stripes/blobs/clouds read in the open right half.
-`tools/design/field_spike.ts` shows the classifier at 0/300 misreads for this shrink.
+(Static: the rim never animates. Draw at the composer's measured width, or in a fixed-width tile with `preserveAspectRatio="xMinYMid slice"`; the markup differs by state either way — P3.2.) The `--dt-composer-ring` variable stays the identity hue's pigment (not state): unchanged. Reference: `tools/design/model.mjs rimSvg`, `sheet-rim-strip.png`.
 
-No other field constant changes. (Why not more: the stripes are a scatter of ≤ 190 fixed-position organs by contract; they can only ever read as bands of big dots. The rim and the sidebar carry the unmistakable stripes.)
+## 4. The field (focused chat): the reading lane, proven against the locked suite
+
+Apply `docs/design/field-f1-f2.patch` (a diff of `domain/organs.ts`, `domain/pattern.ts`, `domain/field.ts` only). **116/116 locked acceptance tests green with it** (scratch copy; no product code was touched in this lane). What it does:
+* **Reading lane, on every state.** `renderField` builds its constellation only in the region **x ≥ 0.60·W, 0.05·H ≤ y ≤ 0.88·H** (a lattice of the same density over the smaller area: `190 · 0.40 · 0.83 · 1.6` ≈ 100 organs), then offsets it into place. So no organ is ever drawn behind the text column (left 60 %), the title card (top 5 %) or the composer (bottom 12 %). Stated limit: the constants GUTTER 0.60 / TOP 0.05 / BOTTOM 0.12 are the edge of what the locked classifier tolerates: GUTTER 0.65 already fails O2.1 and O4.6. Very wide transcripts (text past 60 % of the width) can still meet organs on the right; that is accepted.
+* **Needs you: sparse and quiet.** `ZEBRA_SWELL 2.2 → 1.8`, `ZEBRA_SHRINK 0.55 → 0.45`. The stripes are carried by the mark and the rim; the field's bands are a hint.
+* **Error: fewer, paler, never denser than resting.** `BLANCH_SWELL 3.2 → 1.9`, `BLANCH_LIGHTER_LIGHT 0.012 → 0.0135` (a deterministic margin so P2.1 holds with the smaller sample). Over the lane's smaller area the blobs cover far less of the page than v2.0's.
+* **Finished unseen: one smaller dark eye-spot in the gutter.** `eyeSpotAt` → `x = w(0.80+0.12u)`, `y = h(0.52+0.16u')`; `planGround.spot = oklchToHex(clamp(gl−0.62,.03,.97), .09, hue)`; ΔL target `min(spotMaxDl, 0.50·intensity·bloom)`; radius `4.3 ×` median organ radius (≈ 25 px; below 4.0 the contract's `spotRatios.first ≥ 4` read becomes fragile). The field can only draw ONE `eyespot` dot, so the ring+core picture lives in the mark and the rim; the field's dot is the dark core.
+* No other field constant changes. The stripes remain a scatter of fixed organs by contract: they can only ever read as bands of big dots, hence the real work is done by the rim and the mark.
 
 ## 5. Files that change in `desktop/src`
 
@@ -102,8 +108,8 @@ No other field constant changes. (Why not more: the stripes are a scatter of ≤
 |---|---|
 | `domain/ink.ts` (new) | `contrast`, `inkFor`, `palette` (§1) |
 | `domain/glyph.ts` | §2 geometry; `GLYPH_W/H`, `STRIP_K`; `glyphExtras`; drop `ink` |
-| `domain/field.ts` | `renderSmall`: opaque dots from `palette`, extras; F2 lane in `renderField`; eye dot ΔL (F1) |
-| `domain/organs.ts`, `domain/pattern.ts` | F1 (patch) |
+| `domain/field.ts` | `renderSmall`: opaque dots from `palette`, extras; reading-lane constellation in `renderField`; eye dot (patch) |
+| `domain/organs.ts`, `domain/pattern.ts` | the patch |
 | `domain/index.ts` | export `inkFor`, `palette`, `contrast`, `glyphExtras`, `STRIP_K` |
 | `adapters/svg.ts` | `svgElement(…, dots, extras?)`: extras first |
 | `adapters/surfaces.ts` | `RIM_HEIGHT=10`; SwatchView/StripView pass `out.extras`; strip label weight; strip svg is the ×K mark |
@@ -114,15 +120,15 @@ No other field constant changes. (Why not more: the stripes are a scatter of ≤
 ## 6. Failing tests to write FIRST (`desktop/test/unit/…`; each must fail on v2.0 code)
 
 1. `glyph.test.ts › every dot of every state lies inside the 24×16 box (±0.5), the strip inside 21×14` — loop `PATTERN_KINDS`, `glyphOf`, `renderSwatch`, `renderStrip`.
-2. `glyph.test.ts › five silhouettes: pairwise IoU ≤ 0.55` — rasterise each state's circles + extras on a 96×64 grid (a ~20-line scanline test helper: pixel in if inside any circle or extra ellipse/rect-stroke, ×4 scale; mask = ink pixels, not the 0.30 wash), assert `IoU(a,b) ≤ 0.55` for all 10 pairs. Reference values from the pixel measurement: worst pair working/finished 0.53; the others ≤ 0.36.
+2. `glyph.test.ts › five silhouettes: pairwise IoU ≤ 0.55, and error vs finished-unseen ≤ 0.30` — rasterise each state's circles + extras (filled ellipses/rects and stroked paths/rects/ellipses; skip the pale plates) on a 96×64 grid (a small scanline test helper, ×4 scale); assert `IoU(a,b) ≤ 0.55` for all 10 pairs and the explicit pair error/finished-unseen `≤ 0.30`. Reference values from the pixel measurement (`contrast-table.md`): error/finished-unseen 0.18, worst pair working/finished-unseen 0.42, the rest ≤ 0.33.
 3. `glyph.test.ts › WCAG 1.4.11: every pigment ≥ 3.3:1 on the row` — for ground ∈ {`#fefefe`,`#141416`,`#2e3440`}, hue ∈ {100,150,205,260,310,350}, row ∈ {unselected, selected} using the design rows `light {#f6f8fa, #d8e1f0}`, `dark {#17181c, #2a3142}`, `nord {#2e3440, #434c5e}`: `contrast(palette(hue, ground)[p], row) ≥ 3.3` for `p ∈ {chroma, blanch}`, and `contrast(palette.spot, palette.chroma) ≥ 3.0` (pupil vs iris). Measured minimum from pixels: 3.33 (dark selected).
 4. `glyph.test.ts › error is the only grey mark` — `meanChroma(error dots) ≤ 0.03`; every other state's organ dots within 10° of the identity hue (measured worst case over hues 0–357° × 4 grounds: 5.1°; if a coder's colour maths drifts more, lower C for that hue by bisection, keep the hue exact); `error` extras use `blanch`.
-5. `glyph.test.ts › finished-unseen has exactly one eyespot-role dot, r ≥ 2.5 × the median organ radius, and a solid iris extra of radius 6.6`.
+5. `glyph.test.ts › finished-unseen has exactly one eyespot-role dot (r 4.0, ≥ 5 × the median organ radius 0.7) plus a pale-disc extra and a ring extra of radius 6.8; error has no ellipse extra and its frame path is rectilinear with a gap (only `M`/`H`/`V` commands, and the path is open: first and last points differ)`.
 6. `glyph.test.ts › the swatch is opaque and intensity 0 switches it off` (alpha 1 / alpha 0), `the strip is the swatch × 0.875`.
-7. `glyph.test.ts › extras are never circles` — every `glyphExtras(*)` entry has `k ∈ {'rect','ellipse'}`; and a surface test that the SwatchView tree has exactly `renderSwatch().dots.length` `<circle>` elements (oA_part4's guard).
+7. `glyph.test.ts › extras are never circles` — every `glyphExtras(*)` entry has `k ∈ {'rect','ellipse','path'}`; and a surface test that the SwatchView tree has exactly `renderSwatch().dots.length` `<circle>` elements (oA_part4's guard).
 8. `rim.test.ts › rim nodes per state` — height 10; mottle: one rect h1; clouds: ≥ 12 circles and a track rect; zebra: pattern width 12, `skewX(-45)`, stripe rect width 6; blanch: wash rect + dashed rect (`'9 6'`, stroke-width 2); eyespot: iris r 4.8 + pupil r 3; the five markups pairwise different.
-9. `field.test.ts › eye-spot sits in the right gutter, dark, bold` — over the 20 corpus roots × 3 grounds: `x ∈ [0.74,0.90]·W`, `y ∈ [0.50,0.70]·H`; on light grounds the dot's `dotDeltaL ≥ 0.45`; radius ≥ 5 × median.
-10. `field.test.ts › reading lane` — organs with `x < W/2` have `r` exactly half of the same organ's unlaned radius (`renderField` vs a copy with `LANE_SHRINK=1` via the constellation), alpha unchanged.
+9. `field.test.ts › eye-spot sits in the gutter, dark` — over the 20 corpus roots × 3 grounds: `x ∈ [0.80,0.92]·W`, `y ∈ [0.52,0.68]·H`; on light grounds the dot's `dotDeltaL ≥ 0.45`; radius ≥ 4 × median organ radius.
+10. `field.test.ts › reading lane` — for every preset, root and ground, every organ has `x ≥ 0.60·W` and `0.05·H ≤ y ≤ 0.88·H`; `organs ≥ 40`; error: `coverage(error) ≤ coverage(resting)` (never denser than resting) — compute coverage with the contract's `coverage` instrument.
 11. `surfaces.test.ts › the strip is one nowrap row and cannot clip` — the StripView root style is `{display:'inline-flex', alignItems:'center', whiteSpace:'nowrap', flexShrink:0, lineHeight:1}`; children are `[svg(height ≤ 16), label]`; and `svg.height + 2 ≤ 20` (the status bar's content height). **Layout check on the real Desktop** (the evidence DOM dump, `tools/desktop/pagecode.ts` strip section): `strip.scrollWidth ≤ strip.clientWidth`, `strip.getBoundingClientRect().right ≤ statusbar.getBoundingClientRect().right`, label `getBoundingClientRect().height > 0` and inside the status bar's rect, for all five states at 1600×1000 and 1280×800.
 12. `surfaces.test.ts › the sidebar mark never costs title room` — `GLYPH_W ≤ 28`.
 
@@ -135,15 +141,15 @@ No other field constant changes. (Why not more: the stripes are a scatter of ≤
 
 ## 8. Pairwise silhouettes (what makes each pair differ by shape, not hue)
 
-| pair | difference |
-|---|---|
-| resting ↔ working | three tiny specks vs one solid 20×11 cloud |
-| resting ↔ needs you | specks vs an outlined, striped plate |
-| resting ↔ error | specks vs a pale grey plate with a ring of beads |
-| resting ↔ finished | specks vs a toothed solid disc with a black pupil |
-| working ↔ needs you | bumpy solid blob vs rectangular plate with diagonal gaps |
-| working ↔ error | solid vs hollow |
-| working ↔ finished | wide flat-bottomed blob vs round disc ⌀ 14.6 (IoU 0.53 — the closest pair; the pupil and the toothed rim separate them further) |
-| needs you ↔ error | striped fill vs hollow ring; outline is rectangular vs oval |
-| needs you ↔ finished | rectangle vs disc; stripes vs solid |
-| error ↔ finished | hollow dashed oval, grey, vs solid round hue disc, dark pupil |
+| pair | difference | IoU |
+|---|---|---|
+| resting ↔ working | three tiny specks vs one solid 20×11 cloud | 0.33 |
+| resting ↔ needs you | specks vs an outlined, striped plate | 0.16 |
+| resting ↔ error | specks vs a square frame | 0.00 |
+| resting ↔ finished | specks vs a ringed disc with a dark core | 0.20 |
+| working ↔ needs you | bumpy solid blob vs rectangular plate with diagonal gaps | 0.28 |
+| working ↔ error | solid vs hollow | 0.10 |
+| working ↔ finished | wide flat-bottomed blob vs a round ring ⌀ 13.6 with a dark core | 0.42 |
+| needs you ↔ error | striped fill vs hollow frame **open at the right**, no stripes | 0.26 |
+| needs you ↔ finished | rectangle vs disc; stripes vs ring | 0.31 |
+| **error ↔ finished** | **angular, hollow, broken, grey** vs **round, pale-filled, hue ring + one black core** | **0.18** |

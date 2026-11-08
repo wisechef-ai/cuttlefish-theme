@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { chromium } from 'playwright'
 import { BOX, STATES, HUES, RIM_H, glyphSvg } from './model.mjs'
-import { GROUNDS, LABELS, appHtml, css, rowHtml, stripHtml, rimHtml } from './pages.mjs'
+import { GROUNDS, LABELS, appHtml, legendHtml, css, rowHtml, stripHtml, rimHtml } from './pages.mjs'
 
 const out = path.resolve(process.argv[2] ?? 'out')
 const only = (process.argv.find(a => a.startsWith('--only=')) ?? '--only=cells,sheets,apps').slice(7).split(',')
@@ -77,14 +77,25 @@ if (only.includes('sheets')) {
 
 // ---- whole app mocks --------------------------------------------------------------------------------------------------
 if (only.includes('apps')) {
-  for (const g of Object.keys(GROUNDS)) for (const s of STATES) await full(appHtml(g, s), `app-${g}-${s}.png`, 1280, 800, 1)
+  for (const g of ['light', 'dark', 'nord']) {
+    for (const s of STATES) await full(appHtml(g, s), `app-${g}-${s}.png`, 1280, 800, 1)
+    await full(legendHtml(g), `app-${g}-legend.png`, 1280, 800, 1)
+  }
   for (const g of ['light', 'dark']) {
-    const imgs = STATES.map(s => `<figure style="margin:0"><img src="app-${g}-${s}.png" style="width:640px;display:block"/><figcaption style="font:12px sans-serif;color:#888;padding:2px 6px">${g} · ${s}</figcaption></figure>`).join('')
-    fs.writeFileSync(path.join(out, `contact-${g}.html`), `<html><body style="margin:0;background:#888;display:grid;grid-template-columns:640px 640px;gap:6px;width:1286px">${imgs}</body></html>`)
-    const ctx = await browser.newContext({ viewport: { width: 1286, height: 3 * 406 }, deviceScaleFactor: 1 })
+    const cells = [...STATES, 'legend'].map(s => `<figure style="margin:0"><img src="app-${g}-${s}.png" style="width:640px;display:block"/><figcaption style="font:12px sans-serif;color:#222;padding:2px 6px;background:#ccc">${g} · ${s}</figcaption></figure>`).join('')
+    fs.writeFileSync(path.join(out, `contact-${g}.html`), `<html><body style="margin:0;background:#888;display:grid;grid-template-columns:640px 640px;gap:6px;width:1286px">${cells}</body></html>`)
+    const ctx = await browser.newContext({ viewport: { width: 1286, height: 3 * 424 }, deviceScaleFactor: 1 })
     const page = await ctx.newPage()
     await page.goto('file://' + path.join(out, `contact-${g}.html`))
     await page.screenshot({ path: path.join(out, `contact-${g}.png`), fullPage: true })
+    await ctx.close()
+  }
+  // the real size: the sidebar of a 1280x800 window at 1x and 2x (device scale), all five states in one column, light and dark
+  for (const dpr of [1, 2]) for (const g of ['light', 'dark']) {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: dpr })
+    const page = await ctx.newPage()
+    await page.setContent(appHtml(g, 'working'))
+    await page.screenshot({ path: path.join(out, `sidebar-${g}@${dpr}x.png`), clip: { x: 0, y: 50, width: 260, height: 190 } })
     await ctx.close()
   }
 }
