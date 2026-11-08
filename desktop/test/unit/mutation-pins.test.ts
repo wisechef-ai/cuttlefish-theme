@@ -119,11 +119,12 @@ test('swatch and strip radii are exactly their tuned deterministic ranges; toSvg
   const radii = (dots: { r: number; alpha: number }[]): number[] =>
     dots.filter(d => d.alpha > 0).map(d => d.r).sort((a, b) => a - b)
   const sw = radii(renderSwatch({ seed: ROOTS[0], hueDeg: hue, ground: GROUNDS[0], pattern: patternOf(DEFAULT_SETTINGS, 'working'), intensity: 1 }).dots)
-  assert.equal(sw[0].toFixed(3), '1.371')
-  assert.equal(sw[sw.length - 1].toFixed(3), '1.901')
+  assert.equal(sw[0].toFixed(3), '2.800', 'the working glyph: smallest puff')
+  assert.equal(sw[sw.length - 1].toFixed(3), '4.667', 'the working glyph: largest puff')
   const st = radii(renderStrip({ seed: ROOTS[0], hueDeg: hue, ground: GROUNDS[0], pattern: patternOf(DEFAULT_SETTINGS, 'working'), intensity: 1 }).dots)
-  assert.equal(st[0].toFixed(3), '1.602')
-  assert.equal(st[st.length - 1].toFixed(3), '2.247')
+  assert.equal(st.length, 4, 'the strip carries the glyph once')
+  assert.equal(st[0].toFixed(3), '2.800')
+  assert.equal(st[st.length - 1].toFixed(3), '4.667')
   const strip = renderStrip({ seed: ROOTS[0], hueDeg: hue, ground: GROUNDS[0], pattern: patternOf(DEFAULT_SETTINGS, 'working'), intensity: 1 })
   const visible = strip.dots.filter(d => d.alpha > 0 && d.r > 0)
   assert.equal((toSvg(strip.dots, strip.width, strip.height).match(/<circle\b/g) ?? []).length, visible.length)
@@ -205,7 +206,7 @@ test('renderField golden digest: zebra at scale 2 (the band count follows the di
     motion: 'still' as const, reducedMotion: false, tMs: 0, sinceChangeMs: SETTLED_MS,
   }
   assert.equal(Buffer.from(blake2b(utf8(JSON.stringify(renderField(input))), 32)).toString('hex'),
-    '596599d77c26398bacc47fd7eb97e9ce3e3e75caa5f083b4d9b186772d409162')
+    'fda696c96bcc6e398d4d603a14d80086854093e38317bb1fd0225b17ca8e8472')
 })
 
 test('renderField golden digest: resting mottle, settled', () => {
@@ -231,9 +232,9 @@ test('renderField golden digest: alive clouds with every dial off unity', () => 
 test('renderSwatch golden digests: working clouds and resting mottle', () => {
   const base = { seed: ROOTS[0], hueDeg: allocate(ROOTS[0], []).hue_deg, ground: GROUNDS[0], intensity: 1 }
   const clouds = Buffer.from(blake2b(utf8(JSON.stringify(renderSwatch({ ...base, pattern: patternOf(DEFAULT_SETTINGS, 'working') }).dots)), 32)).toString('hex')
-  assert.equal(clouds, '6c68603401f3ad39ff3f2806db04133c786077d22b18535db49cb3dca99d3f1c')
+  assert.equal(clouds, 'c16ee1c111c74b46db44918261b450fbd2ecccd5942828aaebde3afb0f54acf7')
   const mottle = Buffer.from(blake2b(utf8(JSON.stringify(renderSwatch({ ...base, pattern: patternOf(DEFAULT_SETTINGS, 'resting') }).dots)), 32)).toString('hex')
-  assert.equal(mottle, '7b2c9d34c11090a69e3c6223f2e4fd1f0c20327dc76f68ba9c6b288c494a5927')
+  assert.equal(mottle, 'cd8f74b531cf0b67832ae57af4d7be140a2d7d026454ae93a46c156f9b2e3430')
 })
 
 // Every earlier digest used dials at 1, where `*` and `/` agree. These two render with

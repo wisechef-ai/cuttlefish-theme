@@ -113,3 +113,12 @@ test('feedmap: a percentage alpha is judged as a percentage', async () => {
   assert.equal(parseGround('rgb(1 2 3 / 50%)'), null)
   assert.equal(parseGround('rgb(1 2 3 / 100%)'), '#010203')
 })
+
+test('feedmap D1: a focused runtime with a null stored atom (Ctrl+N) forwards an explicit null; no focused runtime forwards nothing', () => {
+  const base = { activeSessionId: atom<string | null>('rtN'), busy: atom(false), busyBySession: atom<Record<string, boolean>>({}), gateway: atom('open') }
+  const fresh = stateSnapshot({ ...base, focusedSessionId: atom<string | null>('rtN'), focusedStoredSessionId: atom<string | null>(null) }, 1)
+  assert.equal(fresh.payload?.focused_stored_session_id, null)
+  assert.ok(Object.hasOwn(fresh.payload ?? {}, 'focused_stored_session_id'))
+  const none = stateSnapshot({ ...base, focusedSessionId: atom<string | null>(null), focusedStoredSessionId: atom<string | null>(null) }, 2)
+  assert.ok(!Object.hasOwn(none.payload ?? {}, 'focused_stored_session_id'))
+})

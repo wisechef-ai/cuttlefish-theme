@@ -113,3 +113,21 @@ test('painter: reduced motion parks the cloud, the bloom passes', () => {
   w.sinceChangeMs = 10_000
   assert.notEqual(fieldCss(w), bloom, 'the bloom settles')
 })
+
+test('painter D3: the frame memo keys on EVERY input — changing any one of them changes the text', () => {
+  const base = view()
+  applyFeed(base, { kind: 'state', t: 0, session: 'a', payload: { gateway: 'open', busyBySession: { a: true }, focused_session_id: 'a', focused_stored_session_id: 'SA' } })
+  base.sinceChangeMs = 1e9
+  base.tMs = 3000
+  const css0 = fieldCss(base)
+  assert.equal(fieldCss({ ...base }), css0, 'the same inputs, the same text')
+  const variants: Record<string, Partial<CfView>> = {
+    stored: { focusedStored: 'SB' }, width: { width: 1300 }, height: { height: 700 }, hue: { hueDeg: (base.hueDeg + 40) % 360 },
+    ground: { ground: '#fafafa' }, tMs: { tMs: 6000 }, since: { sinceChangeMs: 100 }, motion: { motion: 'alive' },
+    reduced: { reducedMotion: true }, pattern: { pattern: { ...base.pattern, base: 'zebra' } },
+    intensity: { settings: { ...base.settings, intensity: 0.5 } },
+  }
+  for (const [name, over] of Object.entries(variants)) {
+    assert.notEqual(fieldCss({ ...base, ...over }), css0, `${name} is part of the key`)
+  }
+})

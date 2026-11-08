@@ -74,10 +74,22 @@ test('surfaces: the chip speaks the state\'s own words, and says nothing for an 
   const h2 = fakeCtx()
   registerSurfaces(h2.ctx, ghost, () => () => {})
   const mute = expand((h2.contributions.get('strip')!.render as () => unknown)()).tree as { props: { children: unknown[] } }
-  assert.equal(mute.props.children[1], '', 'an unnamed state falls back to silence, never a throw')
+  assert.equal(mute.props.children[1], 'a state no settings name', 'a state with no label falls back to its own name, never a throw')
 })
 
-test('surfaces: the composer rim is a 4–6 px full-width band of dots with no words, tiled whole (F4)', () => {
+test('surfaces D4: the status strip ALWAYS names the state — a resting (empty-label) strip says "resting", dim', () => {
+  const h = fakeCtx()
+  const v = view()
+  applyFeed(v, { kind: 'state', t: 0, session: null, payload: { gateway: 'open', focused_session_id: 'a', focused_stored_session_id: 'SA' } })
+  assert.equal(v.settings.states.resting.label, '', 'the locked default label of resting is empty')
+  registerSurfaces(h.ctx, v, () => () => {})
+  const chip = expand((h.contributions.get('strip')!.render as () => unknown)()).tree as { props: { children: unknown[] } }
+  assert.equal(chip.props.children[1], 'resting')
+  const text = JSON.stringify(expand((h.contributions.get('strip')!.render as () => unknown)()).tree)
+  assert.ok(text.includes('"resting"'))
+})
+
+test('surfaces: the composer rim is one clean 4–6 px full-width band, no words, no grain (legibility)', () => {
   const h = fakeCtx()
   const v = view()
   registerSurfaces(h.ctx, v, () => () => {})
@@ -90,11 +102,44 @@ test('surfaces: the composer rim is a 4–6 px full-width band of dots with no w
   assert.equal(rim.props.style.lineHeight, 0, 'no inline baseline gap can grow the band')
   assert.equal(rim.props.style.overflow, 'hidden')
   assert.equal(rim.props.style.pointerEvents, 'none', 'a decoration never eats a click')
-  const json = JSON.stringify(rim.props.children)
   const kids = ([] as unknown[]).concat(rim.props.children)
   assert.ok(kids.every(k => typeof k === 'object' && k !== null), 'no label text node in the rim')
-  assert.ok(json.includes('"type":"circle"'), 'it still draws the dots')
-  assert.ok(json.includes('"type":"pattern"'), 'tiled across the full width, whole tile visible')
+  const json = JSON.stringify(rim.props.children)
+  assert.ok(json.includes('"type":"rect"') && !json.includes('"type":"circle"'), 'a resting rim is a hairline, not dots')
+  assert.ok(!json.includes('"type":"pattern"'), 'and not a tiled texture')
   const strip = JSON.stringify(expand((h.contributions.get('strip')!.render as () => unknown)()).tree)
   assert.ok(!strip.includes('"type":"pattern"'), 'the status strip keeps its own look')
+})
+
+test('surfaces D5: the strip is ONE nowrap row — glyph beside the words, never stacked (the status bar clipped the stacked label)', () => {
+  const h = fakeCtx()
+  registerSurfaces(h.ctx, view(), () => () => {})
+  const chip = expand((h.contributions.get('strip')!.render as () => unknown)()).tree as
+    { props: { style: Record<string, unknown>; children: Array<{ props?: { style?: Record<string, unknown> } } | string> } }
+  assert.equal(chip.props.style.display, 'inline-flex')
+  assert.equal(chip.props.style.whiteSpace, 'nowrap')
+  assert.equal(chip.props.style.alignItems, 'center')
+  const glyph = chip.props.children[0] as { props: { style: Record<string, unknown>; height: number } }
+  assert.equal(glyph.props.style.display, 'block', 'the svg is a flex item, not an inline box that opens a line')
+  assert.equal(glyph.props.height <= 16, true, 'and short enough for a status bar')
+  assert.equal(chip.props.children[1], 'resting')
+})
+
+test('surfaces D3: a swatch re-renders only for its OWN state; the chrome only for the focused one; settings/ground move every key', async () => {
+  const { swatchKey, chromeKey } = await import('../../../src/adapters/surfaces.ts')
+  const { applyEnv } = await import('../../../src/adapters/view.ts')
+  const v = view()
+  applyFeed(v, { kind: 'state', t: 0, session: null, payload: { gateway: 'open', focused_session_id: 'a', focused_stored_session_id: 'SA' } })
+  applyFeed(v, { kind: 'session.info', t: 1, session: 'b', payload: { stored_session_id: 'SB' } })
+  const [a0, b0, c0] = [swatchKey(v, 'SA'), swatchKey(v, 'SB'), chromeKey(v)]
+  applyFeed(v, { kind: 'plugin.cuttlefish-theme.needs_you', t: 2, session: null, payload: { session_id: 'SB', request_id: 'r', active: true } })
+  assert.equal(swatchKey(v, 'SA'), a0, 'A is unmoved by B')
+  assert.notEqual(swatchKey(v, 'SB'), b0, 'B changed')
+  assert.equal(chromeKey(v), c0, 'the focused chrome is unmoved by a background session')
+  applyFeed(v, { kind: 'plugin.cuttlefish-theme.needs_you', t: 3, session: null, payload: { session_id: 'SA', request_id: 'r2', active: true } })
+  assert.notEqual(chromeKey(v), c0, 'the focused session changed state')
+  const k = chromeKey(v)
+  applyEnv(v, { ground: '#fafafa' })
+  assert.notEqual(chromeKey(v), k)
+  assert.notEqual(swatchKey(v, 'SB'), b0)
 })

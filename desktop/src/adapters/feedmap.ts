@@ -65,6 +65,7 @@ export function stateSnapshot(atoms: StateAtoms, t: number): FeedInput {
   if (isStr(focused)) payload.focused_session_id = focused
   const focusedStored = atoms.focusedStoredSessionId.get()
   if (isStr(focusedStored)) payload.focused_stored_session_id = focusedStored
+  else if (focusedStored === null && isStr(focused)) payload.focused_stored_session_id = null // a new empty chat (Ctrl+N)
   const active = atoms.activeSessionId.get()
   return { kind: 'state', t, session: isStr(active) ? active : null, payload }
 }

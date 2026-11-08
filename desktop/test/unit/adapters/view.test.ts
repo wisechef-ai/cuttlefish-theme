@@ -106,3 +106,44 @@ test('view: subscribers hear every apply; unsubscribe stops', () => {
   assert.equal(seen.length, after, 'unsubscribed')
   assert.deepEqual([...new Set(seen)], seen, 'one bump per apply')
 })
+
+test('view D3: a feed input that changes nothing neither bumps the version nor re-notifies the surfaces', () => {
+  const v = initialView({ width: 100, height: 50, ground: '#101010', reducedMotion: false })
+  applyFeed(v, { kind: 'python.health', t: 0, session: null, payload: { ok: true } })
+  const version = v.version
+  let heard = 0
+  v.listen(() => { heard += 1 })
+  assert.equal(applyFeed(v, { kind: 'python.health', t: 5, session: null, payload: { ok: true } }), false)
+  assert.equal(applyFeed(v, { kind: 'nonsense', t: 6, session: null, payload: null }), false)
+  assert.equal(v.version, version)
+  assert.equal(heard, 0)
+  applyFeed(v, { kind: 'plugin.cuttlefish-theme.needs_you', t: 7, session: null, payload: { session_id: 'SA', request_id: 'r1', active: true } })
+  assert.equal(heard, 1, 'a real change still notifies')
+})
+
+test('view D3: a burst of 200 host events that leaves every session\'s state as it was notifies nobody and bumps nothing', () => {
+  const v = initialView({ width: 100, height: 50, ground: '#101010', reducedMotion: false })
+  applyFeed(v, { kind: 'state', t: 0, session: 'a', payload: { gateway: 'open', busy: true, busyBySession: { a: true }, focused_session_id: 'a', focused_stored_session_id: 'SA' } })
+  assert.equal(v.focusedState, 'working')
+  const version = v.version
+  let heard = 0
+  v.listen(() => { heard += 1 })
+  for (let i = 0; i < 200; i++) {
+    const kind = ['message.start', 'tool.start', 'tool.complete', 'status.update', 'state'][i % 5]
+    applyFeed(v, { kind, t: i, session: 'a', payload: kind === 'state'
+      ? { gateway: 'open', busy: true, busyBySession: { a: true }, focused_session_id: 'a', focused_stored_session_id: 'SA' }
+      : { tool_call_id: `t${i % 2}`, kind: 'busy' } })
+  }
+  assert.equal(heard, 0, 'no surface was told to re-render')
+  assert.equal(v.version, version)
+  assert.equal(v.styleKey, 0)
+})
+
+test('view D3: styleKey moves with settings and environment, version with every visible change', () => {
+  const v = initialView({ width: 100, height: 50, ground: '#101010', reducedMotion: false })
+  const k = v.styleKey
+  applyEnv(v, { ground: '#fafafa' })
+  assert.equal(v.styleKey, k + 1)
+  applySettings(v, structuredClone(v.settings))
+  assert.equal(v.styleKey, k + 2)
+})

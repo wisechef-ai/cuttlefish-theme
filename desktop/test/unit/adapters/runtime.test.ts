@@ -25,7 +25,7 @@ interface FakeElement {
 interface FakeDocument { documentElement: FakeElement; head: { children: FakeElement[] } }
 interface FakeAtom<T> { get(): T; set(v: T): void }
 interface FakeSdk {
-  calls: { loops: Array<{ wakes: number; disposed: boolean; opts: { fps?: number; idleWhen?: () => boolean } }> }
+  calls: { loops: Array<{ wakes: number; disposed: boolean; opts: { fps?: number; idleWhen?: () => boolean }; draw: (t: number) => void }> }
   fake: { reset(): void; emit(e: unknown): void; responder: (method: string, params?: unknown) => unknown }
   host: { state: Record<string, FakeAtom<unknown>> }
 }
@@ -52,7 +52,7 @@ const { expand } = await import(reactPath) as FakeReact
 const { calls, fake, host } = sdk
 const { fieldCss } = await import('../../../src/adapters/painter.ts')
 const { applyFeed, initialView } = await import('../../../src/adapters/view.ts')
-const { attach } = await import('../../../src/adapters/runtime.ts')
+const { attach, frameTime } = await import('../../../src/adapters/runtime.ts')
 
 /** A ground the fallback could never guess: the fake computed style yields it verbatim. */
 const GROUND_RGB = 'rgb(1, 2, 3)'
@@ -367,4 +367,82 @@ test('runtime: the ground is re-sampled on the config tick — a theme switch re
   } finally {
     ;(globalThis as unknown as { getComputedStyle: unknown }).getComputedStyle = real
   }
+})
+
+test('runtime D3: at rest NOTHING re-renders — health polls, repeated atom values and foreign events write no style (fix-m4)', async () => {
+  const { h, mount } = await boot()
+  h.respondRest((path: string) => (path === '/config' ? { settings: {}, warnings: [], rev: 'r' } : path === '/health' ? { ok: true } : { mtime: 1 }))
+  fake.responder = (method: string): unknown => (method === 'config.get' ? { mtime: 1 } : { sessions: [] })
+  const { el } = mount()
+  await focusSA()
+  await h.advance(50)
+  await h.advance(5100) // first health sight flips pluginSeen/healthOk once
+  let writes = 0
+  let text = el.textContent
+  Object.defineProperty(el, 'textContent', { get: () => text, set: (x: string) => { writes += 1; text = x } })
+  host.state.busy.set(false) // the same value again
+  host.state.focusedStoredSessionId.set('SA')
+  fake.emit({ type: 'gateway.something', session_id: 'a', payload: {} })
+  await h.advance(12000) // two health ticks, six config ticks
+  assert.equal(writes, 0, 'an unchanged view is not rewritten')
+})
+
+test('runtime D3: working frames sit on a 200 ms grid and repeat every cloud cycle, so the engine re-uses its decoded images (fix-m4)', async () => {
+  const { mount } = await boot()
+  const { el } = mount()
+  await focusSA()
+  working()
+  await flush()
+  const frame = (t: number): string => { calls.loops[0].draw(t); return el.textContent }
+  frame(0) // anchors the state-change bloom; the checks below are after it (> 2.4 s), where only the clouds move
+  const a = frame(10000)
+  assert.equal(frame(10190), a, 'inside one 200 ms bucket the picture is the same')
+  const b = frame(10200)
+  assert.notEqual(b, a, 'the next bucket moves the cloud')
+  assert.equal(frame(10000 + 18000), a, 'one cloud cycle later the very same text (a cacheable image)')
+  assert.equal(frame(10200 + 5 * 18000), b)
+  assert.equal(frame(10000), a, 'and a replay is exact')
+})
+
+test('runtime D3: frameTime puts frames on the 200 ms grid and wraps them at the cloud cycle — except under alive, whose twinkles keep their own periods', () => {
+  assert.equal(frameTime(10190, 'still'), 10000)
+  assert.equal(frameTime(10200, 'still'), 10200)
+  assert.equal(frameTime(10000 + 36000, 'still'), 10000)
+  assert.equal(frameTime(10000 + 36000, 'off'), 10000)
+  assert.equal(frameTime(46190, 'alive'), 46000, 'alive: grid only, no wrap')
+})
+
+test('runtime D3: between frames the loop PARKS (no 60 Hz rAF spin) and a scoped timer wakes it for the next one (fix-m4)', async () => {
+  const { h, mount } = await boot()
+  mount()
+  await focusSA()
+  working()
+  await flush()
+  const loop = calls.loops[0]
+  assert.equal(loop.opts.idleWhen?.(), false, 'a wanted frame is not yet drawn: not parked')
+  loop.draw(10_000)
+  assert.equal(loop.opts.idleWhen?.(), true, 'the loop\'s own check right after a frame: park, zero pending rAF')
+  assert.equal(loop.opts.idleWhen?.(), false, 'and only that one check — any later look says the clouds are wanted')
+  const wakes = loop.wakes
+  await h.advance(100)
+  assert.equal(loop.wakes, wakes, 'not woken early')
+  await h.advance(100)
+  assert.equal(loop.wakes, wakes + 1, 'woken once, ~190 ms after the frame')
+  assert.equal(loop.opts.idleWhen?.(), false, 'ready for the next frame')
+  loop.draw(10_200)
+  loop.draw(10_400) // a second frame arriving while the first timer was pending replaces it, never stacks
+  await h.advance(190)
+  assert.equal(loop.wakes, wakes + 2, 'one timer per frame, never two')
+})
+
+test('runtime D3: dispose cancels the pacing timer — none outlives the plugin', async () => {
+  const { h, mount } = await boot()
+  mount()
+  await focusSA()
+  working()
+  await flush()
+  calls.loops[0].draw(10_000)
+  assert.ok(h.state.timers.some(t => t.live), 'a pacing timer is pending after a frame')
+  h.dispose()
+  assert.ok(h.state.timers.every(t => !t.live), 'no pacing timer outlives the plugin')
 })

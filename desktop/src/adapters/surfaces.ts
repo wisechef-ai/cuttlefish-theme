@@ -12,19 +12,31 @@ import {
   type PluginContribution, type PluginContext, type SessionRowSlotProps,
 } from '@hermes/plugin-sdk'
 import { allocate, renderStrip, renderSwatch, signalsOf, stateFor } from '../domain/index.ts'
-import { bandElement, svgElement } from './svg.ts'
+import { rimElement } from './rim.ts'
+import { svgElement } from './svg.ts'
 import { safePattern, seedOfStored, type CfView } from './view.ts'
 
-/** The composer rim's height in px (brief: a 4–6 px band). */
-const RIM_HEIGHT = 5
+/** The composer rim's height in px (brief: a 4–6 px band; the top of that range, so the cues read). */
+const RIM_HEIGHT = 6
 
-function useLive(v: CfView): void {
-  useSyncExternalStore((cb: () => void) => v.listen(cb), () => v.version)
+/** Re-render when — and only when — this surface's own derived key changes (React compares the snapshot by value). */
+function useLive(v: CfView, key: () => string): void {
+  useSyncExternalStore((cb: () => void) => v.listen(cb), key)
+}
+
+/** A row swatch's whole input: its own state and how things look. Another session's change leaves it alone. */
+export function swatchKey(v: CfView, sessionId: string): string {
+  return `${stateFor(v.settings, signalsOf(v.feed, sessionId))}|${v.styleKey}`
+}
+
+/** The strip's and the rim's whole input: the focused state, who is focused, how things look. */
+export function chromeKey(v: CfView): string {
+  return `${v.focusedState}|${v.focusedStored ?? ''}|${v.styleKey}`
 }
 
 /** The sidebar row swatch: the session's OWN state and identity, never the focused one's. */
 function SwatchView({ v, sessionId }: { v: CfView } & SessionRowSlotProps): unknown {
-  useLive(v)
+  useLive(v, () => swatchKey(v, sessionId))
   const state = stateFor(v.settings, signalsOf(v.feed, sessionId))
   const out = renderSwatch({
     seed: sessionId,
@@ -36,10 +48,11 @@ function SwatchView({ v, sessionId }: { v: CfView } & SessionRowSlotProps): unkn
   return svgElement(jsx, out, { 'data-cf-session': sessionId, 'data-cf-state': state }, out.dots)
 }
 
-/** The focused state's words, or '' when the settings do not name it — never a throw. */
+/** The focused state's words; when its label is empty (resting's locked default) or the settings do not name it, the
+ *  state's own name — the strip always says where the session stands, and never throws. */
 function labelOf(v: CfView, state: string): string {
   const found = v.settings.states[state]?.label
-  return found !== undefined ? found : ''
+  return found !== undefined && found !== '' ? found : state.replaceAll('_', ' ')
 }
 
 /** The focused state's strip dots (the status strip's and the rim's one source). */
@@ -57,20 +70,26 @@ function focusedStrip(v: CfView): { strip: ReturnType<typeof renderStrip>; state
 
 /** The status strip: the focused state's dots and its words. */
 function StripView({ v }: { v: CfView }): unknown {
-  useLive(v)
+  useLive(v, () => chromeKey(v))
   const { strip, state } = focusedStrip(v)
-  return jsx('div', { 'data-cf-state': state, 'data-cf-strip': 'cuttlefish', children: [svgElement(jsx, strip, {}, strip.dots), labelOf(v, state)] })
+  return jsx('div', {
+    'data-cf-state': state,
+    'data-cf-strip': 'cuttlefish',
+    // one nowrap row: the label must sit BESIDE the glyph — stacked below it, the status bar's fixed height clipped it
+    style: { display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1, flexShrink: 0 },
+    children: [svgElement(jsx, strip, { style: { display: 'block', flexShrink: 0 } }, strip.dots), labelOf(v, state)],
+  })
 }
 
-/** The composer rim: a 5 px full-width band of the same dots, no words, static. */
+/** The composer rim: one clean 6 px band echoing the state's glyph, no words, static. */
 function RimView({ v }: { v: CfView }): unknown {
-  useLive(v)
-  const { strip, state } = focusedStrip(v)
+  useLive(v, () => chromeKey(v))
+  const state = v.focusedState
   return jsx('div', {
     'data-cf-state': state,
     'data-cf-rim': 'cuttlefish',
     style: { width: '100%', height: RIM_HEIGHT, overflow: 'hidden', lineHeight: 0, pointerEvents: 'none' },
-    children: bandElement(jsx, strip, RIM_HEIGHT, strip.dots),
+    children: rimElement(jsx, { base: safePattern(v.settings, state).base, hueDeg: v.hueDeg, ground: v.ground, intensity: v.settings.intensity, height: RIM_HEIGHT }),
   })
 }
 

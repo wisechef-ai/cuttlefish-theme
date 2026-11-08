@@ -166,6 +166,7 @@ function stateSnapshot(atoms            , t        )            {
   if (isStr(focused)) payload.focused_session_id = focused
   const focusedStored = atoms.focusedStoredSessionId.get()
   if (isStr(focusedStored)) payload.focused_stored_session_id = focusedStored
+  else if (focusedStored === null && isStr(focused)) payload.focused_stored_session_id = null // a new empty chat (Ctrl+N)
   const active = atoms.activeSessionId.get()
   return { kind: 'state', t, session: isStr(active) ? active : null, payload }
 }
@@ -267,8 +268,24 @@ const { planGround, renderField, toSvg } = __cf_require("src/domain/index.ts");c
 function ringOf(hueDeg        , ground        )         {
   return planGround(hueDeg, ground).chroma
 }
+/** Rendered texts by input: a working loop revisits the same frames every cloud cycle, and an SVG of ~190 organs
+ *  costs ~4 ms to build, so the repeats are served from here. Bounded; cleared whole when full. */
+const memo = new Map                ()
+const MEMO_CAP = 160
+
 /** The whole owned CSS for the current view: two rules, nothing else (P5/P7 allowlists). */
 function fieldCss(v        )         {
+  const key = JSON.stringify([v.focusedStored, v.width, v.height, v.hueDeg, v.ground, v.pattern, v.settings.intensity,
+    v.motion, v.reducedMotion, v.tMs, v.sinceChangeMs])
+  const hit = memo.get(key)
+  if (hit !== undefined) return hit
+  const css = buildCss(v)
+  if (memo.size >= MEMO_CAP) memo.clear()
+  memo.set(key, css)
+  return css
+}
+
+function buildCss(v        )         {
   const svg = toSvg(
     renderField({
       seed: seedOfStored(v.focusedStored),
@@ -298,6 +315,72 @@ function fieldCss(v        )         {
 Object.assign(exports, { ringOf, fieldCss });
 };
 
+__cf_defs["src/adapters/rim.ts"] = (exports) => {
+// The composer RIM (C1/C6): one clean thin band above the composer that echoes the state's glyph — never texture.
+//   resting = a hairline          working = a track with bold cloud segments   needs you = bold diagonal stripes
+//   error   = a pale wash inside a broken (dashed) outline — the swatch's hollow dashed oval    finished unseen = a hairline with one dark eye-spot
+// Identity hue throughout (error is the near-achromatic pale pigment); the state speaks through shape and ink.
+// The band is a tree of plain nodes, rendered as React elements (the surface) or as SVG text (the dev sheets).
+const { alphaFor, hexToRgb, planGround } = __cf_require("src/domain/index.ts");const SPOT_INK = 0.3
+const STRIPE_ID = 'cf-rim-stripes'
+/** The fill + opacity that shows `ink` (|dL|) of a pigment on this ground. */
+function inkOf(plan            , hex        , maxDl        , ink        , intensity        )                                  {
+  const alpha = alphaFor(Math.min(0.3, ink * intensity), hexToRgb(hex), plan, maxDl)
+  return { fill: hex, opacity: Number(alpha.toFixed(3)) }
+}
+
+/** The band's nodes for one pattern base; an unknown base degrades to the hairline. Width is '100%' of the composer. */
+function rimNodes(i          )            {
+  const plan = planGround(i.hueDeg, i.ground)
+  const h = i.height
+  const chroma = (ink        ) => inkOf(plan, plan.chroma, plan.chromaMaxDl, ink, i.intensity)
+  const hair          = { tag: 'rect', attrs: { x: 0, y: h - 1, width: '100%', height: 1, ...chroma(0.08) } }
+  switch (i.base) {
+    case 'clouds':
+      return [
+        { tag: 'rect', attrs: { x: 0, y: h * 0.25, width: '100%', height: h * 0.5, ...chroma(0.09) } },
+        ...[['3%', '17%'], ['27%', '24%'], ['58%', '15%'], ['79%', '18%']].map(([x, w])          => (
+          { tag: 'rect', attrs: { x, y: 0, width: w, height: h, rx: h / 2, ...chroma(0.30) } })),
+      ]
+    case 'zebra':
+      return [
+        { tag: 'defs', attrs: {}, children: [{ tag: 'pattern', attrs: { id: STRIPE_ID, width: 12, height: h, patternUnits: 'userSpaceOnUse', patternTransform: 'skewX(-45)' },
+          children: [{ tag: 'rect', attrs: { x: 0, y: 0, width: 6, height: h, ...chroma(0.30) } }] }] },
+        { tag: 'rect', attrs: { x: 0, y: 0, width: '100%', height: h, fill: `url(#${STRIPE_ID})` } },
+      ]
+    case 'blanch': {
+      const wash = inkOf(plan, plan.blanch, plan.blanchMaxDl, 0.12, i.intensity)
+      const line = inkOf(plan, plan.blanch, plan.blanchMaxDl, 0.34, i.intensity)
+      return [
+        { tag: 'rect', attrs: { x: 0, y: 0, width: '100%', height: h, ...wash } },
+        { tag: 'rect', attrs: { x: 0.75, y: 0.75, width: '100%', height: h - 1.5, fill: 'none', stroke: String(line.fill), 'stroke-opacity': line.opacity, 'stroke-width': 1.5, 'stroke-dasharray': '7 5' } },
+      ]
+    }
+    case 'eyespot':
+      return [hair, { tag: 'circle', attrs: { cx: h * 3, cy: h / 2, r: h * 0.46, ...inkOf(plan, plan.spot, plan.spotMaxDl, SPOT_INK, i.intensity) } }]
+    default:
+      return [hair]
+  }
+}
+
+/** The nodes as React elements through the host's jsx factory. */
+function rimElement(jsx     , i          )          {
+  const build = (n         )          => jsx(n.tag, { ...n.attrs, ...(n.children ? { children: n.children.map(build) } : {}) })
+  return jsx('svg', { width: '100%', height: i.height, 'aria-hidden': true, children: rimNodes(i).map(build) })
+}
+
+/** The nodes as SVG text (dev contact sheets only). */
+function rimSvg(i                              )         {
+  const text = (n         )         => {
+    const attrs = Object.entries(n.attrs).map(([k, v]) => ` ${k}="${typeof v === 'string' && v.endsWith('%') ? `${(parseFloat(v) / 100) * i.width}` : v}"`).join('')
+    return `<${n.tag}${attrs}>${(n.children ?? []).map(text).join('')}</${n.tag}>`
+  }
+  return `<svg width="${i.width}" height="${i.height}">${rimNodes(i).map(text).join('')}</svg>`
+}
+
+Object.assign(exports, { rimNodes, rimElement, rimSvg });
+};
+
 __cf_defs["src/adapters/runtime.ts"] = (exports) => {
 /// <reference path="./sdk.d.ts" />
 // The wiring (C1–C10): one attach(ctx) call owns everything the plugin keeps
@@ -307,15 +390,27 @@ __cf_defs["src/adapters/runtime.ts"] = (exports) => {
 // attributes) happen at apply time so the skin exists even while the loop is
 // parked; the loop only exists to animate (working clouds, the bloom). attach
 // itself stays straight-line wiring: every decision lives in a named helper.
-const { createBudgetedLoop, host } = __cf_ext("@hermes/plugin-sdk");const { pollPlan, resolveSettings } = __cf_require("src/domain/index.ts");const { eventToFeed, stateSnapshot } = __cf_require("src/adapters/feedmap.ts");const { parseGround } = __cf_require("src/adapters/ground.ts");const { wireWatch } = __cf_require("src/adapters/configwatch.ts");const { drawClock, idleSince, initialClock, noteStateChange, wantsFrame } = __cf_require("src/adapters/looplogic.ts");const { fieldCss } = __cf_require("src/adapters/painter.ts");const { registerSurfaces } = __cf_require("src/adapters/surfaces.ts");const { applyEnv, applyFeed, applySettings, initialView } = __cf_require("src/adapters/view.ts");const FALLBACK_GROUND = '#141416'
+const { createBudgetedLoop, host } = __cf_ext("@hermes/plugin-sdk");const { CLOUD_TRAVEL_MS, pollPlan, resolveSettings } = __cf_require("src/domain/index.ts");const { eventToFeed, stateSnapshot } = __cf_require("src/adapters/feedmap.ts");const { parseGround } = __cf_require("src/adapters/ground.ts");const { wireWatch } = __cf_require("src/adapters/configwatch.ts");const { drawClock, idleSince, initialClock, noteStateChange, wantsFrame } = __cf_require("src/adapters/looplogic.ts");const { fieldCss } = __cf_require("src/adapters/painter.ts");const { registerSurfaces } = __cf_require("src/adapters/surfaces.ts");const { applyEnv, applyFeed, applySettings, initialView } = __cf_require("src/adapters/view.ts");const FALLBACK_GROUND = '#141416'
 const REDUCE_QUERY = '(prefers-reduced-motion: reduce)'
-const LOOP_FPS = 8
+/** The budgeted loop's OWN budget is set high on purpose: it parks after every frame (its rAF would otherwise spin at
+ *  60 Hz for as long as a session works — measured +2.2 pp of renderer CPU on the real Desktop) and a scoped timer
+ *  wakes it FRAME_GAP_MS later, so the timer paces the frames (~5/s) and the loop never skips one. */
+const LOOP_FPS = 10
+const FRAME_GAP_MS = 190
+/** Frame times sit on this grid (below the loop's frame interval, so no frame is ever dropped), and — outside `alive`,
+ *  where time only moves the clouds — wrap at the cloud cycle: the painted text then repeats exactly, and the engine
+ *  re-uses the decoded image of a data-URI it has already seen instead of parsing a new SVG at every frame. */
+const FRAME_GRID_MS = 200
 /** Everything the paint/teardown helpers need, in one bundle. */
                     
            
                   
                     
                 
+                                                                                                                                         
+                   
+                                 
+                    
  
 
 const isRec = (v         )                               => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -349,16 +444,46 @@ function viewportOf(vp                                    = host.state.viewport.
   return { width: vp.width > 0 ? vp.width : 1200, height: vp.height > 0 ? vp.height : 800 }
 }
 
-/** One animation frame: advance the clock, repaint the field CSS in place. */
-function draw(a          , now        )       {
-  a.v.tMs = now
-  a.v.sinceChangeMs = drawClock(a.clock, now)
-  paintField(a)
+/** The time a frame paints with: on the grid, and wrapped at the cloud cycle unless `alive` twinkles run on their own periods. */
+function frameTime(now        , motion        )         {
+  const onGrid = Math.floor(now / FRAME_GRID_MS) * FRAME_GRID_MS
+  return motion === 'alive' ? onGrid : onGrid % CLOUD_TRAVEL_MS
 }
 
+/** One animation frame: advance the clock, repaint the field CSS in place. */
+function draw(a          , now        )       {
+  a.v.tMs = frameTime(now, a.v.motion)
+  a.v.sinceChangeMs = drawClock(a.clock, now)
+  paintField(a)
+  restUntilNextFrame(a)
+}
+
+/** The loop's idle check: right after a frame it answers "park" once (the timer wakes it), then it reports the state's wants. */
+function idleNow(a          )          {
+  if (a.restOwed) {
+    a.restOwed = false
+    return true
+  }
+  return !wantsFrame(a.v, idleSince(a.clock))
+}
+
+/** Park the loop until the next frame is due; one timer at a time. */
+function restUntilNextFrame(a          )       {
+  a.cancelPace?.()
+  a.restOwed = true
+  a.cancelPace = a.ctx.setTimeout(() => {
+    a.cancelPace = null
+    if (wantsFrame(a.v, idleSince(a.clock))) a.loop.wake()
+  }, FRAME_GAP_MS)
+}
+
+/** Write the owned <style> only when its text really changed: an identical rewrite still makes the engine
+ *  re-parse the sheet and re-decode the whole data-URI layer, and at rest NOTHING may re-render. */
 function paintField(a          )       {
-  a.holder.css = fieldCss(a.v)
-  if (a.holder.el !== null) a.holder.el.textContent = a.holder.css
+  const css = fieldCss(a.v)
+  const stale = css !== a.holder.css
+  a.holder.css = css
+  if (a.holder.el !== null && (stale || a.holder.el.textContent !== css)) a.holder.el.textContent = css
 }
 
 function paintRoot(v        )       {
@@ -404,8 +529,9 @@ function armBloom(a          )       {
 }
 
 function applyInput(a          , input           )       {
+  const before = a.v.version
   if (applyFeed(a.v, input)) armBloom(a)
-  paint(a)
+  if (a.v.version !== before) paint(a)
 }
 
 /** C5: a config maps to settings via the domain resolver; only a real change blooms. */
@@ -442,6 +568,8 @@ function wireReduce(v        , repaint            )             {
 
 /** Undo everything: reverse the registrations, drop the style, clear the root attributes. */
 function teardown(a          , offs                )       {
+  a.cancelPace?.()
+  a.cancelPace = null
   a.loop.dispose()
   for (const off of offs.reverse()) off()
   if (a.holder.el !== null) a.holder.el.remove()
@@ -457,11 +585,11 @@ function attach(ctx               )       {
   const v         = initialView(env)
   const clock = initialClock()
   const holder         = { el: null, css: '' }
-  const loop = createBudgetedLoop(
-    now => draw({ v, clock, loop, holder }, now),
-    { fps: LOOP_FPS, idleWhen: () => !wantsFrame(v, idleSince(clock)) },
+  const a = { v, clock, holder, restOwed: false, cancelPace: null, ctx }                       
+  a.loop = createBudgetedLoop(
+    now => draw(a, now),
+    { fps: LOOP_FPS, idleWhen: () => idleNow(a) },
   )
-  const a           = { v, clock, loop, holder }
   const offs                 = []
 
   const atoms             = {
@@ -493,11 +621,12 @@ function attach(ctx               )       {
   offs.push(wireReduce(v, () => paint(a)))
   offs.push(registerSurfaces(ctx, v, () => mountStyle(a)))
   applyInput(a, stateSnapshot(atoms, Date.now()))
+  paint(a) // the first sight always paints, even when it changes nothing
 
   ctx.onDispose(() => teardown(a, offs))
 }
 
-Object.assign(exports, { attach });
+Object.assign(exports, { frameTime, attach });
 };
 
 __cf_defs["src/adapters/surfaces.ts"] = (exports) => {
@@ -508,15 +637,26 @@ __cf_defs["src/adapters/surfaces.ts"] = (exports) => {
 // view's version (useSyncExternalStore) and re-reads on render, so a render is
 // always pure observation and never wakes the loop (P3.2b). The titlebar mount
 // is the plugin's permanent style owner; it renders nothing itself.
-const { useEffect, useSyncExternalStore } = __cf_ext("react");const { jsx } = __cf_ext("react/jsx-runtime");const { COMPOSER_AREAS, SESSION_ROW_AREAS, STATUSBAR_AREAS, TITLEBAR_AREAS } = __cf_ext("@hermes/plugin-sdk");const { allocate, renderStrip, renderSwatch, signalsOf, stateFor } = __cf_require("src/domain/index.ts");const { bandElement, svgElement } = __cf_require("src/adapters/svg.ts");const { safePattern, seedOfStored } = __cf_require("src/adapters/view.ts");/** The composer rim's height in px (brief: a 4–6 px band). */
-const RIM_HEIGHT = 5
-function useLive(v        )       {
-  useSyncExternalStore((cb            ) => v.listen(cb), () => v.version)
+const { useEffect, useSyncExternalStore } = __cf_ext("react");const { jsx } = __cf_ext("react/jsx-runtime");const { COMPOSER_AREAS, SESSION_ROW_AREAS, STATUSBAR_AREAS, TITLEBAR_AREAS } = __cf_ext("@hermes/plugin-sdk");const { allocate, renderStrip, renderSwatch, signalsOf, stateFor } = __cf_require("src/domain/index.ts");const { rimElement } = __cf_require("src/adapters/rim.ts");const { svgElement } = __cf_require("src/adapters/svg.ts");const { safePattern, seedOfStored } = __cf_require("src/adapters/view.ts");/** The composer rim's height in px (brief: a 4–6 px band; the top of that range, so the cues read). */
+const RIM_HEIGHT = 6
+/** Re-render when — and only when — this surface's own derived key changes (React compares the snapshot by value). */
+function useLive(v        , key              )       {
+  useSyncExternalStore((cb            ) => v.listen(cb), key)
+}
+
+/** A row swatch's whole input: its own state and how things look. Another session's change leaves it alone. */
+function swatchKey(v        , sessionId        )         {
+  return `${stateFor(v.settings, signalsOf(v.feed, sessionId))}|${v.styleKey}`
+}
+
+/** The strip's and the rim's whole input: the focused state, who is focused, how things look. */
+function chromeKey(v        )         {
+  return `${v.focusedState}|${v.focusedStored ?? ''}|${v.styleKey}`
 }
 
 /** The sidebar row swatch: the session's OWN state and identity, never the focused one's. */
 function SwatchView({ v, sessionId }                                     )          {
-  useLive(v)
+  useLive(v, () => swatchKey(v, sessionId))
   const state = stateFor(v.settings, signalsOf(v.feed, sessionId))
   const out = renderSwatch({
     seed: sessionId,
@@ -528,10 +668,11 @@ function SwatchView({ v, sessionId }                                     )      
   return svgElement(jsx, out, { 'data-cf-session': sessionId, 'data-cf-state': state }, out.dots)
 }
 
-/** The focused state's words, or '' when the settings do not name it — never a throw. */
+/** The focused state's words; when its label is empty (resting's locked default) or the settings do not name it, the
+ *  state's own name — the strip always says where the session stands, and never throws. */
 function labelOf(v        , state        )         {
   const found = v.settings.states[state]?.label
-  return found !== undefined ? found : ''
+  return found !== undefined && found !== '' ? found : state.replaceAll('_', ' ')
 }
 
 /** The focused state's strip dots (the status strip's and the rim's one source). */
@@ -549,20 +690,26 @@ function focusedStrip(v        )                                                
 
 /** The status strip: the focused state's dots and its words. */
 function StripView({ v }               )          {
-  useLive(v)
+  useLive(v, () => chromeKey(v))
   const { strip, state } = focusedStrip(v)
-  return jsx('div', { 'data-cf-state': state, 'data-cf-strip': 'cuttlefish', children: [svgElement(jsx, strip, {}, strip.dots), labelOf(v, state)] })
+  return jsx('div', {
+    'data-cf-state': state,
+    'data-cf-strip': 'cuttlefish',
+    // one nowrap row: the label must sit BESIDE the glyph — stacked below it, the status bar's fixed height clipped it
+    style: { display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1, flexShrink: 0 },
+    children: [svgElement(jsx, strip, { style: { display: 'block', flexShrink: 0 } }, strip.dots), labelOf(v, state)],
+  })
 }
 
-/** The composer rim: a 5 px full-width band of the same dots, no words, static. */
+/** The composer rim: one clean 6 px band echoing the state's glyph, no words, static. */
 function RimView({ v }               )          {
-  useLive(v)
-  const { strip, state } = focusedStrip(v)
+  useLive(v, () => chromeKey(v))
+  const state = v.focusedState
   return jsx('div', {
     'data-cf-state': state,
     'data-cf-rim': 'cuttlefish',
     style: { width: '100%', height: RIM_HEIGHT, overflow: 'hidden', lineHeight: 0, pointerEvents: 'none' },
-    children: bandElement(jsx, strip, RIM_HEIGHT, strip.dots),
+    children: rimElement(jsx, { base: safePattern(v.settings, state).base, hueDeg: v.hueDeg, ground: v.ground, intensity: v.settings.intensity, height: RIM_HEIGHT }),
   })
 }
 
@@ -594,7 +741,7 @@ function registerSurfaces(ctx               , v        , mountStyle             
   return () => { for (const off of offs) off() }
 }
 
-Object.assign(exports, { registerSurfaces });
+Object.assign(exports, { swatchKey, chromeKey, registerSurfaces });
 };
 
 __cf_defs["src/adapters/svg.ts"] = (exports) => {
@@ -696,8 +843,10 @@ function seedOfStored(stored               )         {
                                                                                   
              
                        
-                                             
+                                                                                                      
                  
+                                                                                                         
+                  
                                       
  
 
@@ -716,8 +865,17 @@ function safePattern(settings          , state        )              {
   return { ...settings.patterns.mottle }
 }
 
+/** Every session's resolved state plus the focus: the whole derived output of the feed, as one string. */
+function fingerprint(v        )         {
+  const parts = Object.keys(v.feed.sessions).sort().map(id => `${id}=${stateFor(v.settings, signalsOf(v.feed, id))}`)
+  return `${v.feed.focusedStored ?? ''}|${stateFor(v.settings, signalsOf(v.feed, v.feed.focusedStored ?? ''))}|${parts.join(',')}`
+}
+
+const PRINTS = new WeakMap                ()
+
 /** Recompute the derived fields from feed + settings, and bump the version. */
 function derive(v        )          {
+  PRINTS.set(v, fingerprint(v))
   const before = v.focusedState
   const stored = v.feed.focusedStored
   v.focusedStored = stored
@@ -746,6 +904,7 @@ function initialView(env       )         {
     tMs: 0,
     sinceChangeMs: 0,
     version: 0,
+    styleKey: 0,
     listen(fn) {
       const subs = SUBS.get(this)
       if (!subs) return () => {}
@@ -760,7 +919,12 @@ function initialView(env       )         {
 
 /** One feed input in. Returns true when the FOCUSED STATE NAME moved (arm the bloom). */
 function applyFeed(v        , input           )          {
-  v.feed = reduceFeed(v.feed, input)
+  const next = reduceFeed(v.feed, input)
+  if (next === v.feed) return false   // the reducer returns its model untouched when nothing changed: nothing to re-derive or repaint
+  v.feed = next
+  // A burst of host events that leaves every session's state and the focus as they were changes nothing anyone can see:
+  // no derive, no version bump, no notification — so no surface re-renders and no paint follows.
+  if (fingerprint(v) === PRINTS.get(v)) return false
   return derive(v)
 }
 
@@ -768,6 +932,7 @@ function applyFeed(v        , input           )          {
 function applySettings(v        , settings          )          {
   v.settings = settings
   v.motion = settings.motion
+  v.styleKey += 1
   return derive(v)
 }
 
@@ -777,6 +942,7 @@ function applyEnv(v        , patch            )       {
   if (patch.height !== undefined) v.height = patch.height
   if (patch.ground !== undefined) v.ground = patch.ground
   if (patch.reducedMotion !== undefined) v.reducedMotion = patch.reducedMotion
+  v.styleKey += 1
   v.version += 1
   notify(v)
 }
@@ -1013,6 +1179,18 @@ function learn(model           , rt        , stored        )            {
   return m
 }
 
+/** The host's two focus atoms move one after the other, so a snapshot can carry a MIXED pair (the old runtime id
+ *  with the new stored id, or the reverse). A pair is learned only when it contradicts nothing known: its runtime
+ *  id is unmapped or already maps to that stored id, and its stored id has no other runtime mapped. Anything else is
+ *  a transient; session.info / the active_list poll carry the authoritative mapping. */
+function learnFocusedPair(m           , rt        , stored        )            {
+  if (!idOk(rt) || !idOk(stored)) return m
+  const mapped = own(m.storedOf, rt)
+  if (mapped !== undefined) return m
+  const other = Object.keys(m.storedOf).some(r => m.storedOf[r] === stored)
+  return other ? m : learn(m, rt, stored)
+}
+
 /** A turn's end closes every tool call of that runtime (a killed backend sends no tool.complete). */
 function turnBoundary(m           , rt        , kind        )            {
   let next = m
@@ -1051,7 +1229,7 @@ function reduceState(m           , input           , p                         )
   let next = m
   if (isStr(p.gateway)) next = { ...next, gateway: p.gateway }
   if (isStr(p.focused_stored_session_id) && isStr(p.focused_session_id)) {
-    next = learn(next, p.focused_session_id, p.focused_stored_session_id)
+    next = learnFocusedPair(next, p.focused_session_id, p.focused_stored_session_id)
   }
   if (isStr(input.session) && isStr(p.stored_session_id)) next = learn(next, input.session, p.stored_session_id)
   next = { ...next, busyRt: busySnapshot(next.busyRt, input, p) }
@@ -1069,12 +1247,21 @@ function busySnapshot(current                         , input           , p     
   return current
 }
 
+/** The stored id a snapshot names as focused: its own, else the focused runtime's mapped one. */
+function focusedStoredOf(m           , p                         )                {
+  if (idOk(p.focused_stored_session_id)) return p.focused_stored_session_id
+  return idOk(p.focused_session_id) ? own(m.storedOf, p.focused_session_id) ?? null : null
+}
+
+/** Ctrl+N: a focused runtime with an explicit null stored id and no mapping is a new empty chat. */
+const isNewEmptyChat = (p                         )          =>
+  p.focused_stored_session_id === null && idOk(p.focused_session_id)
+
 /** Resolve the focused session of a state snapshot; focusing a session clears its `unseen`. */
 function focus(m           , p                         )            {
-  let stored                = null
-  if (idOk(p.focused_stored_session_id)) stored = p.focused_stored_session_id
-  else if (idOk(p.focused_session_id)) stored = own(m.storedOf, p.focused_session_id) ?? null
-  if (stored === null || m.focusedStored === stored) return m
+  const stored = focusedStoredOf(m, p)
+  if (stored === null) return isNewEmptyChat(p) && m.focusedStored !== null ? { ...m, focusedStored: null } : m
+  if (m.focusedStored === stored) return m
   const rec = session(m, stored)
   return { ...m, focusedStored: stored, sessions: put(m.sessions, stored, { ...rec, unseen: false }) }
 }
@@ -1153,7 +1340,7 @@ const reduceSessionInfo          = (m, input, p) =>
 const reduceMessage          = (m, input, p) =>
   idOk(input.session) ? applyRuntime(m, input.kind, input.session, p, input.t) : m
 
-const reduceHealth          = (m, _i, p) => ({ ...m, healthOk: p.ok === true })
+const reduceHealth          = (m, _i, p) => (m.healthOk === (p.ok === true) ? m : { ...m, healthOk: p.ok === true })
 
 /** One reducer per event kind; an unknown kind (or garbage) falls through to the identity. */
 const REDUCERS                          = {
@@ -1238,11 +1425,10 @@ __cf_defs["src/domain/field.ts"] = (exports) => {
 // pattern.ts; this module turns a target |dL| into an alpha by exact inversion of the sRGB
 // source-over composite the browser (and the acceptance instruments) perform. Pure throughout:
 // same input, same dots, bit for bit.
-const { effectiveDl, inkTargets, MAX_DL, planGround, twinkleFactor } = __cf_require("src/domain/pattern.ts");const { bloomFactor } = __cf_require("src/domain/motion.ts");const { constellation, eyeSpotAt } = __cf_require("src/domain/organs.ts");const { deltaLOf, hexToRgb, rgbToHex } = __cf_require("src/domain/oklch.ts");const FIELD_TARGET = 190        // organs on a desktop-sized surface (~12 per classifier bin)
+const { effectiveDl, inkTargets, MAX_DL, planGround, radiusFactors, twinkleFactor } = __cf_require("src/domain/pattern.ts");const { bloomFactor } = __cf_require("src/domain/motion.ts");const { constellation, eyeSpotAt } = __cf_require("src/domain/organs.ts");const { GLYPH_H, GLYPH_W, glyphOf } = __cf_require("src/domain/glyph.ts");const { deltaLOf, hexToRgb, rgbToHex } = __cf_require("src/domain/oklch.ts");const FIELD_TARGET = 190        // organs on a desktop-sized surface (~12 per classifier bin)
 const FIELD_R = [0.062, 0.098]
-const SWATCH_W = 24, SWATCH_H = 12, SWATCH_TARGET = 16, SWATCH_R = [0.30, 0.42]         
-const STRIP_W = 64, STRIP_H = 12, STRIP_TARGET = 20, STRIP_R = [0.24, 0.34]         
-const BLANCH_CONTRACT = 0.55    // error closes the organs: expansion shrinks, position holds
+const SWATCH_W = GLYPH_W, SWATCH_H = GLYPH_H
+const STRIP_W = GLYPH_W, STRIP_H = GLYPH_H
 const SPOT_SCALE_FIELD = 5.4, SPOT_SCALE_SMALL = 2.6
 const SPOT_DL = 0.156
 
@@ -1265,12 +1451,11 @@ function alphaFor(target        , pigRgb     , plan            , maxDl        ) 
  
 
 function organDots(spec             , core            , seed        , intensity        , bloom        ,
-                   tMs        , motion                           , targets          )        {
+                   tMs        , motion                           , targets          , scales          )        {
   const pig = core.pigmentFor(organPigmentOf(spec.base))
-  const contracted = spec.base === 'blanch'
   return core.cons.organs.map((o, i)      => ({
     x: o.x, y: o.y,
-    r: contracted ? o.r * BLANCH_CONTRACT : o.r,
+    r: o.r * scales[i],
     color: pig.hex,
     alpha: alphaFor(effectiveDl(targets[i], intensity, bloom, twinkleFactor(o, i, seed, tMs, motion)), pig.rgb, core.plan, pig.maxDl),
     role: 'organ',
@@ -1314,30 +1499,41 @@ function renderField(input            )        {
   const core             = { cons, plan, pigmentFor: k => pigment(plan, k) }
   // reduced motion is `off` for every time-dependent term (bloom above, twinkle here)
   const motion = input.reducedMotion ? 'off' : input.motion
-  const dots = organDots(input.pattern, core, input.seed, input.intensity, bloom, input.tMs, motion, targets)
+  const scales = radiusFactors(input.pattern, cons, input.width, input.height)
+  const dots = organDots(input.pattern, core, input.seed, input.intensity, bloom, input.tMs, motion, targets, scales)
   if (input.pattern.base === 'eyespot') dots.push(eyeDot(core, input.seed, input.width, input.height, input.intensity, bloom, false))
   return dots
 }
 
-function renderSmall(input             , w        , h        , target        , rLo        , rHi        ) 
+/** The glyph of a pattern as dots in a w×h box: `copies` side by side, centred (the strip tiles it, the swatch is one). */
+function renderSmall(input             , w        , h        , copies        ) 
                                                  {
   const plan = planGround(input.hueDeg, input.ground)
-  const cons = constellation(input.seed, w, h, target, rLo, rHi)
-  const targets = inkTargets(input.pattern, cons, w, h, plan, input.seed, { tMs: 0, motion: 'still', reducedMotion: false, small: true })
-  const core             = { cons, plan, pigmentFor: k => pigment(plan, k) }
-  const dots = organDots(input.pattern, core, input.seed, input.intensity, 1, 0, 'still', targets)
-  if (input.pattern.base === 'eyespot') dots.push(eyeDot(core, input.seed, w, h, input.intensity, 1, true))
+  const core             = { cons: { organs: [], medR: 0 }, plan, pigmentFor: k => pigment(plan, k) }
+  const glyph = glyphOf(input.pattern.base)
+  const dots        = []
+  for (let c = 0; c < copies; c++) {
+    const dx = (w - GLYPH_W * copies) / 2 + GLYPH_W * c
+    for (const g of glyph) {
+      const pig = core.pigmentFor(g.pigment)
+      dots.push({
+        x: g.x + dx, y: g.y + (h - GLYPH_H) / 2, r: g.r, color: pig.hex,
+        alpha: alphaFor(effectiveDl(g.ink, input.intensity, 1, 1), pig.rgb, plan, pig.maxDl),
+        role: g.pigment === 'spot' ? 'eyespot' : 'organ',
+      })
+    }
+  }
   return { dots, width: w, height: h }
 }
 
-/** The sidebar row swatch: the same language at swatch scale, visible at a glance. */
+/** The sidebar row swatch: the state's glyph in the session's hue, legible at a glance. */
 function renderSwatch(input             )                                                 {
-  return renderSmall(input, SWATCH_W, SWATCH_H, SWATCH_TARGET, SWATCH_R[0], SWATCH_R[1])
+  return renderSmall(input, SWATCH_W, SWATCH_H, 1)
 }
 
-/** The status-bar strip. */
+/** The status-bar strip: the same glyph, once, beside its words. */
 function renderStrip(input             )                                                 {
-  return renderSmall(input, STRIP_W, STRIP_H, STRIP_TARGET, STRIP_R[0], STRIP_R[1])
+  return renderSmall(input, STRIP_W, STRIP_H, 1)
 }
 
 /** Plain decimal, no exponent, no trailing zeros: safe inside an SVG attribute. */
@@ -1358,6 +1554,69 @@ function toSvg(dots                , width        , height        )         {
 }
 
 Object.assign(exports, { alphaFor, renderField, renderSwatch, renderStrip, toSvg });
+};
+
+__cf_defs["src/domain/glyph.ts"] = (exports) => {
+// The state GLYPHS: what a row swatch (28×14) and the status strip show. The field speaks the language in
+// texture, which is too fine at swatch size — a swatch there is a small PICTURE of the state, in the session's
+// identity hue, the same shape for every session so the state reads before the hue does:
+//   resting  = three soft dots (calm mottle)        working = a puffy cloud
+//   needs you = three bold diagonal bars (zebra)    error   = a hollow pale ring (washed out)
+//   finished unseen = one dark eye-spot in a pale halo
+// Pure geometry: each spec is a circle in the 24×12 box with the ink (|dL| on the ground) it should show.
+/** The swatch box: 28×14 (O2.9 allows 28×16) — design units below are 24×12, scaled up by K. */
+const GLYPH_W = 28
+const GLYPH_H = 14
+const K = GLYPH_W / 24
+/** The eye-spot's ink on the ground (the field's ocellus uses the same). */
+const SPOT_INK = 0.30
+
+const MOTTLE                      = [
+  { x: 6.5, y: 6.6, r: 2.3, ink: 0.24, pigment: 'chroma' },
+  { x: 12, y: 4.4, r: 1.7, ink: 0.20, pigment: 'chroma' },
+  { x: 17.5, y: 7.6, r: 2.1, ink: 0.22, pigment: 'chroma' },
+]
+
+const CLOUD                      = [
+  { x: 7, y: 7.6, r: 3.2, ink: 0.15, pigment: 'chroma' },
+  { x: 11.8, y: 5.4, r: 4.0, ink: 0.15, pigment: 'chroma' },
+  { x: 16.8, y: 6.4, r: 3.6, ink: 0.15, pigment: 'chroma' },
+  { x: 20.4, y: 8.2, r: 2.4, ink: 0.15, pigment: 'chroma' },
+]
+
+/** Three "/" bars, each a chain of four overlapping dots — bold, ink at the ceiling. */
+const BARS                      = [0, 1, 2].flatMap(k =>
+  [-3.6, -1.2, 1.2, 3.6].map((t)           => ({ x: 5.5 + 6.5 * k + 0.8 * t, y: 6 - 1.1 * t, r: 1.5, ink: 0.30, pigment: 'chroma' })))
+
+/** A hollow dashed oval of pale beads: the washed-out outline (twelve beads, clear gaps between them). */
+const RING                      = Array.from({ length: 12 }, (_, i)           => {
+  const a = (2 * Math.PI * i) / 12
+  return { x: 12 + 9.4 * Math.cos(a), y: 6 + 4.2 * Math.sin(a), r: 1.35, ink: 0.30, pigment: 'blanch' }
+})
+
+/** One bold dark eye-spot on a light chip: a pale block of small overlapping dots, the spot (LAST entry, the only
+ *  'spot' pigment) at least twice the chip dots' radius. */
+const EYE                      = [
+  ...[3.2, 6, 8.8].flatMap(y => [4.6, 7.8, 11, 14.2, 17.4, 20.6].map((x)           => ({ x, y, r: 1.55, ink: 0.10, pigment: 'chroma' }))),
+  { x: 12, y: 6, r: 3.7, ink: SPOT_INK, pigment: 'spot' },
+]
+
+/** Design units (24×12) to the swatch box. */
+function scaled(g                     )                      {
+  return g.map(d => ({ ...d, x: d.x * K, y: d.y * K, r: d.r * K }))
+}
+
+const GLYPHS                                           = {
+  mottle: scaled(MOTTLE), clouds: scaled(CLOUD), zebra: scaled(BARS), blanch: scaled(RING), eyespot: scaled(EYE),
+}
+
+/** The glyph of a pattern base, in the 28×14 box. An unknown base degrades to the calm mottle, never a throw. */
+function glyphOf(base             )                      {
+  return Object.hasOwn(GLYPHS, base) ? GLYPHS[base] : GLYPHS.mottle
+}
+
+
+Object.assign(exports, { GLYPH_W, GLYPH_H, glyphOf });
 };
 
 __cf_defs["src/domain/identity.ts"] = (exports) => {
@@ -1443,8 +1702,8 @@ __cf_defs["src/domain/index.ts"] = (exports) => {
 // Everything the adapter lane may use is re-exported here, and nothing under desktop/src/domain
 // is reachable except through it (test_S2). The domain is PURE: no SDK, no DOM, no clock, no
 // randomness — time arrives as tMs/nowMs, entropy only from seeded blake2b.
-const { blake2b, seededStream, utf8 } = __cf_require("src/domain/blake2b.ts");const { allocate, ARC_END, ARC_START, hueDistance, hueOfSlot, preferredSlot, SLOTS } = __cf_require("src/domain/identity.ts");const { blanchDl, hashUnit, inkTargets, MAX_DL, planGround, REST_HI, REST_LO, REST_MEAN, twinkleFactor } = __cf_require("src/domain/pattern.ts");const { alphaFor, renderField, renderStrip, renderSwatch, toSvg } = __cf_require("src/domain/field.ts");const { constellation, eyeSpotAt } = __cf_require("src/domain/organs.ts");const { BLOOM_MS, bloomFactor, motionPlan } = __cf_require("src/domain/motion.ts");const { DEFAULT_SETTINGS, patternOf, resolveSettings, stateFor } = __cf_require("src/domain/settings.ts");const { initialFeed, knownSessions, POLL_INTERVAL_MS, pollPlan, reduceFeed, signalsOf } = __cf_require("src/domain/feed.ts");const { configPlan, initialConfigWatch } = __cf_require("src/domain/configwatch.ts");const { oklchToHex, rgbToHex, rgbToOklab } = __cf_require("src/domain/oklch.ts");const { PATTERN_KINDS, SIGNALS } = __cf_require("src/domain/types.ts");
-Object.assign(exports, { blake2b, seededStream, utf8, allocate, ARC_END, ARC_START, hueDistance, hueOfSlot, preferredSlot, SLOTS, blanchDl, hashUnit, inkTargets, MAX_DL, planGround, REST_HI, REST_LO, REST_MEAN, twinkleFactor, alphaFor, renderField, renderStrip, renderSwatch, toSvg, constellation, eyeSpotAt, BLOOM_MS, bloomFactor, motionPlan, DEFAULT_SETTINGS, patternOf, resolveSettings, stateFor, initialFeed, knownSessions, POLL_INTERVAL_MS, pollPlan, reduceFeed, signalsOf, configPlan, initialConfigWatch, oklchToHex, rgbToHex, rgbToOklab, PATTERN_KINDS, SIGNALS });
+const { blake2b, seededStream, utf8 } = __cf_require("src/domain/blake2b.ts");const { allocate, ARC_END, ARC_START, hueDistance, hueOfSlot, preferredSlot, SLOTS } = __cf_require("src/domain/identity.ts");const { blanchDl, CLOUD_TRAVEL_MS, hashUnit, inkTargets, MAX_DL, planGround, REST_HI, REST_LO, REST_MEAN, twinkleFactor } = __cf_require("src/domain/pattern.ts");const { alphaFor, renderField, renderStrip, renderSwatch, toSvg } = __cf_require("src/domain/field.ts");const { constellation, eyeSpotAt } = __cf_require("src/domain/organs.ts");const { BLOOM_MS, bloomFactor, motionPlan } = __cf_require("src/domain/motion.ts");const { DEFAULT_SETTINGS, patternOf, resolveSettings, stateFor } = __cf_require("src/domain/settings.ts");const { initialFeed, knownSessions, POLL_INTERVAL_MS, pollPlan, reduceFeed, signalsOf } = __cf_require("src/domain/feed.ts");const { configPlan, initialConfigWatch } = __cf_require("src/domain/configwatch.ts");const { hexToRgb, oklchToHex, rgbToHex, rgbToOklab } = __cf_require("src/domain/oklch.ts");const { PATTERN_KINDS, SIGNALS } = __cf_require("src/domain/types.ts");
+Object.assign(exports, { blake2b, seededStream, utf8, allocate, ARC_END, ARC_START, hueDistance, hueOfSlot, preferredSlot, SLOTS, blanchDl, CLOUD_TRAVEL_MS, hashUnit, inkTargets, MAX_DL, planGround, REST_HI, REST_LO, REST_MEAN, twinkleFactor, alphaFor, renderField, renderStrip, renderSwatch, toSvg, constellation, eyeSpotAt, BLOOM_MS, bloomFactor, motionPlan, DEFAULT_SETTINGS, patternOf, resolveSettings, stateFor, initialFeed, knownSessions, POLL_INTERVAL_MS, pollPlan, reduceFeed, signalsOf, configPlan, initialConfigWatch, hexToRgb, oklchToHex, rgbToHex, rgbToOklab, PATTERN_KINDS, SIGNALS });
 };
 
 __cf_defs["src/domain/motion.ts"] = (exports) => {
@@ -1676,6 +1935,10 @@ const MAX_DL = 0.30
 const FULL_DL = 0.40
 const CHROMA_C = 0.105, BLANCH_C = 0.02, SPOT_C = 0.09
 const TWINKLE_AMP = 0.55, TWINKLE_P_MIN = 7000, TWINKLE_P_SPAN = 5000
+/** Stripe count across the surface. The field's 8 (4 cycles ≈ 2 dot pitches per band) survives the chat region being a
+ *  crop of the window — at 6 the fundamental sat between spectral bins 2 and 3 and read 0.49 in real pixels. */
+const FIELD_CYCLES = 4
+const ZEBRA_SWELL = 2.2, ZEBRA_SHRINK = 0.55, BLANCH_SWELL = 3.2
 const CLOUD_TRAVEL_MS = 18000                                  // one band pass across the height
 /** Direction the chromatic organs sit relative to the ground: toward white on dark, toward black on light. */
 const dirOf = (lg        )         => (lg < 0.5 ? 1 : -1)
@@ -1754,12 +2017,30 @@ function cloudRankDl(rank        , centre        , sigmaR        , j        )   
 
 const cloudJitter = (seed        )               => seededStream(seed, 'cloud-ink')
 
-function zebraDl(x        , width        , u        , scale        , small         )         {
-  const bands = Math.min(12, Math.max(3, Math.round(6 * scale)))
-  const bright = small ? SWATCH_ZEBRA_BRIGHT : ZEBRA_BRIGHT
-  const dim = small ? SWATCH_ZEBRA_DIM : ZEBRA_DIM
-  return Math.floor((x / width) * bands) % 2 === 0 ? bright * jitter(u, 0.14) : dim * (1 + u * 0.5)
+const DIAG = Math.SQRT1_2
+
+/** Which stripe an organ sits in: the position along the 45° axis the classifier projects on, in `cycles` bright+dim
+ *  pairs across the whole surface. Bright when the phase is in the first half of its cycle. */
+function zebraBright(o       , width        , height        , scale        )          {
+  const hi = (width + height) * DIAG
+  const cycles = Math.min(8, Math.max(2, Math.round(FIELD_CYCLES * scale)))
+  return (((o.x + o.y) * DIAG) / hi * cycles) % 1 < 0.5
 }
+
+function zebraDl(bright         , u        )         {
+  return bright ? ZEBRA_BRIGHT * jitter(u, 0.14) : ZEBRA_DIM * (1 + u * 0.5)
+}
+
+/** Per-organ size on the field: stripe organs swell inside a band and shrink in the gap (so the eye sees bands of
+ *  big dots, not a scatter); error organs swell into soft pale blobs (washed out) instead of crisp dots. Positions
+ *  never change. */
+function radiusFactors(spec             , cons               , width        , height        )           {
+  if (spec.base === 'zebra') return cons.organs.map(o => (zebraBright(o, width, height, spec.scale) ? ZEBRA_SWELL : ZEBRA_SHRINK))
+  if (spec.base === 'blanch') return cons.organs.map(() => BLANCH_SWELL)
+  return cons.organs.map(() => 1)
+}
+
+/** Swatch stripes are drawn by the glyph; the field's zebra is diagonal. */
 
                              
              
@@ -1811,7 +2092,7 @@ function inkTargets(spec             , cons               , width        , heigh
     case 'clouds':
       return opts.small ? smallCloudInk(cons, seed, shape) : fieldCloudInk(spec, cons, height, seed, opts, shape)
     case 'zebra':
-      return cons.organs.map(o => shape(zebraDl(o.x, width, o.u, spec.scale, opts.small)))
+      return cons.organs.map(o => shape(zebraDl(zebraBright(o, width, height, spec.scale), o.u)))
     case 'blanch':
       return cons.organs.map(() => blanchDl(plan, opts.small))
     case 'mottle':
@@ -1842,7 +2123,7 @@ function hashUnit(seed        , domain        )         {
   return n / 2 ** 64
 }
 
-Object.assign(exports, { REST_LO, REST_HI, REST_MEAN, MAX_DL, planGround, blanchDl, inkTargets, twinkleFactor, effectiveDl, hashUnit });
+Object.assign(exports, { REST_LO, REST_HI, REST_MEAN, MAX_DL, CLOUD_TRAVEL_MS, planGround, blanchDl, zebraBright, radiusFactors, inkTargets, twinkleFactor, effectiveDl, hashUnit });
 };
 
 __cf_defs["src/domain/settings.ts"] = (exports) => {

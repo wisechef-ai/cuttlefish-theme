@@ -9,7 +9,7 @@ export {
   allocate, ARC_END, ARC_START, hueDistance, hueOfSlot, preferredSlot, SLOTS, type Allocation,
 } from './identity.ts'
 export {
-  blanchDl, hashUnit, inkTargets, MAX_DL, planGround, REST_HI, REST_LO, REST_MEAN,
+  blanchDl, CLOUD_TRAVEL_MS, hashUnit, inkTargets, MAX_DL, planGround, REST_HI, REST_LO, REST_MEAN,
   twinkleFactor, type GroundPlan, type InkOptions,
 } from './pattern.ts'
 export {
@@ -30,7 +30,7 @@ export {
   configPlan, initialConfigWatch, type ConfigWatch,
 } from './configwatch.ts'
 export {
-  oklchToHex, rgbToHex, rgbToOklab, type Lab, type Lch, type Rgb,
+  hexToRgb, oklchToHex, rgbToHex, rgbToOklab, type Lab, type Lch, type Rgb,
 } from './oklch.ts'
 export type {
   Dot, FieldInput, Motion, PatternKind, PatternSpec, Settings, Signal, StateSpec, SwatchInput, Warning,

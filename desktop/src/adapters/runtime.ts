@@ -7,7 +7,7 @@
 // parked; the loop only exists to animate (working clouds, the bloom). attach
 // itself stays straight-line wiring: every decision lives in a named helper.
 import { createBudgetedLoop, host, type BudgetedLoop, type PluginContext } from '@hermes/plugin-sdk'
-import { pollPlan, resolveSettings, type FeedInput, type Settings } from '../domain/index.ts'
+import { CLOUD_TRAVEL_MS, pollPlan, resolveSettings, type FeedInput, type Settings } from '../domain/index.ts'
 import { eventToFeed, stateSnapshot, type StateAtoms } from './feedmap.ts'
 import { parseGround } from './ground.ts'
 import { wireWatch } from './configwatch.ts'
@@ -18,7 +18,15 @@ import { applyEnv, applyFeed, applySettings, initialView, type CfEnv, type CfVie
 
 const FALLBACK_GROUND = '#141416'
 const REDUCE_QUERY = '(prefers-reduced-motion: reduce)'
-const LOOP_FPS = 8
+/** The budgeted loop's OWN budget is set high on purpose: it parks after every frame (its rAF would otherwise spin at
+ *  60 Hz for as long as a session works — measured +2.2 pp of renderer CPU on the real Desktop) and a scoped timer
+ *  wakes it FRAME_GAP_MS later, so the timer paces the frames (~5/s) and the loop never skips one. */
+const LOOP_FPS = 10
+const FRAME_GAP_MS = 190
+/** Frame times sit on this grid (below the loop's frame interval, so no frame is ever dropped), and — outside `alive`,
+ *  where time only moves the clouds — wrap at the cloud cycle: the painted text then repeats exactly, and the engine
+ *  re-uses the decoded image of a data-URI it has already seen instead of parsing a new SVG at every frame. */
+const FRAME_GRID_MS = 200
 
 type Holder = { el: HTMLStyleElement | null; css: string }
 
@@ -28,6 +36,10 @@ interface Attached {
   clock: LoopClock
   loop: BudgetedLoop
   holder: Holder
+  /** Set by a frame, spent by the loop's own post-draw idle check: that one check says "park", every other says what the state wants. */
+  restOwed: boolean
+  cancelPace: (() => void) | null
+  ctx: PluginContext
 }
 
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -61,16 +73,46 @@ function viewportOf(vp: { width: number; height: number } = host.state.viewport.
   return { width: vp.width > 0 ? vp.width : 1200, height: vp.height > 0 ? vp.height : 800 }
 }
 
-/** One animation frame: advance the clock, repaint the field CSS in place. */
-function draw(a: Attached, now: number): void {
-  a.v.tMs = now
-  a.v.sinceChangeMs = drawClock(a.clock, now)
-  paintField(a)
+/** The time a frame paints with: on the grid, and wrapped at the cloud cycle unless `alive` twinkles run on their own periods. */
+export function frameTime(now: number, motion: string): number {
+  const onGrid = Math.floor(now / FRAME_GRID_MS) * FRAME_GRID_MS
+  return motion === 'alive' ? onGrid : onGrid % CLOUD_TRAVEL_MS
 }
 
+/** One animation frame: advance the clock, repaint the field CSS in place. */
+function draw(a: Attached, now: number): void {
+  a.v.tMs = frameTime(now, a.v.motion)
+  a.v.sinceChangeMs = drawClock(a.clock, now)
+  paintField(a)
+  restUntilNextFrame(a)
+}
+
+/** The loop's idle check: right after a frame it answers "park" once (the timer wakes it), then it reports the state's wants. */
+function idleNow(a: Attached): boolean {
+  if (a.restOwed) {
+    a.restOwed = false
+    return true
+  }
+  return !wantsFrame(a.v, idleSince(a.clock))
+}
+
+/** Park the loop until the next frame is due; one timer at a time. */
+function restUntilNextFrame(a: Attached): void {
+  a.cancelPace?.()
+  a.restOwed = true
+  a.cancelPace = a.ctx.setTimeout(() => {
+    a.cancelPace = null
+    if (wantsFrame(a.v, idleSince(a.clock))) a.loop.wake()
+  }, FRAME_GAP_MS)
+}
+
+/** Write the owned <style> only when its text really changed: an identical rewrite still makes the engine
+ *  re-parse the sheet and re-decode the whole data-URI layer, and at rest NOTHING may re-render. */
 function paintField(a: Attached): void {
-  a.holder.css = fieldCss(a.v)
-  if (a.holder.el !== null) a.holder.el.textContent = a.holder.css
+  const css = fieldCss(a.v)
+  const stale = css !== a.holder.css
+  a.holder.css = css
+  if (a.holder.el !== null && (stale || a.holder.el.textContent !== css)) a.holder.el.textContent = css
 }
 
 function paintRoot(v: CfView): void {
@@ -116,8 +158,9 @@ function armBloom(a: Attached): void {
 }
 
 function applyInput(a: Attached, input: FeedInput): void {
+  const before = a.v.version
   if (applyFeed(a.v, input)) armBloom(a)
-  paint(a)
+  if (a.v.version !== before) paint(a)
 }
 
 /** C5: a config maps to settings via the domain resolver; only a real change blooms. */
@@ -154,6 +197,8 @@ function wireReduce(v: CfView, repaint: () => void): () => void {
 
 /** Undo everything: reverse the registrations, drop the style, clear the root attributes. */
 function teardown(a: Attached, offs: (() => void)[]): void {
+  a.cancelPace?.()
+  a.cancelPace = null
   a.loop.dispose()
   for (const off of offs.reverse()) off()
   if (a.holder.el !== null) a.holder.el.remove()
@@ -169,11 +214,11 @@ export function attach(ctx: PluginContext): void {
   const v: CfView = initialView(env)
   const clock = initialClock()
   const holder: Holder = { el: null, css: '' }
-  const loop = createBudgetedLoop(
-    now => draw({ v, clock, loop, holder }, now),
-    { fps: LOOP_FPS, idleWhen: () => !wantsFrame(v, idleSince(clock)) },
+  const a = { v, clock, holder, restOwed: false, cancelPace: null, ctx } as unknown as Attached
+  a.loop = createBudgetedLoop(
+    now => draw(a, now),
+    { fps: LOOP_FPS, idleWhen: () => idleNow(a) },
   )
-  const a: Attached = { v, clock, loop, holder }
   const offs: (() => void)[] = []
 
   const atoms: StateAtoms = {
@@ -205,6 +250,7 @@ export function attach(ctx: PluginContext): void {
   offs.push(wireReduce(v, () => paint(a)))
   offs.push(registerSurfaces(ctx, v, () => mountStyle(a)))
   applyInput(a, stateSnapshot(atoms, Date.now()))
+  paint(a) // the first sight always paints, even when it changes nothing
 
   ctx.onDispose(() => teardown(a, offs))
 }

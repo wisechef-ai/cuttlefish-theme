@@ -93,6 +93,18 @@ function learn(model: FeedModel, rt: string, stored: string): FeedModel {
   return m
 }
 
+/** The host's two focus atoms move one after the other, so a snapshot can carry a MIXED pair (the old runtime id
+ *  with the new stored id, or the reverse). A pair is learned only when it contradicts nothing known: its runtime
+ *  id is unmapped or already maps to that stored id, and its stored id has no other runtime mapped. Anything else is
+ *  a transient; session.info / the active_list poll carry the authoritative mapping. */
+function learnFocusedPair(m: FeedModel, rt: string, stored: string): FeedModel {
+  if (!idOk(rt) || !idOk(stored)) return m
+  const mapped = own(m.storedOf, rt)
+  if (mapped !== undefined) return m
+  const other = Object.keys(m.storedOf).some(r => m.storedOf[r] === stored)
+  return other ? m : learn(m, rt, stored)
+}
+
 /** A turn's end closes every tool call of that runtime (a killed backend sends no tool.complete). */
 function turnBoundary(m: FeedModel, rt: string, kind: string): FeedModel {
   let next = m
@@ -131,7 +143,7 @@ function reduceState(m: FeedModel, input: FeedInput, p: Record<string, unknown>)
   let next = m
   if (isStr(p.gateway)) next = { ...next, gateway: p.gateway }
   if (isStr(p.focused_stored_session_id) && isStr(p.focused_session_id)) {
-    next = learn(next, p.focused_session_id, p.focused_stored_session_id)
+    next = learnFocusedPair(next, p.focused_session_id, p.focused_stored_session_id)
   }
   if (isStr(input.session) && isStr(p.stored_session_id)) next = learn(next, input.session, p.stored_session_id)
   next = { ...next, busyRt: busySnapshot(next.busyRt, input, p) }
@@ -149,12 +161,21 @@ function busySnapshot(current: Record<string, boolean>, input: FeedInput, p: Rec
   return current
 }
 
+/** The stored id a snapshot names as focused: its own, else the focused runtime's mapped one. */
+function focusedStoredOf(m: FeedModel, p: Record<string, unknown>): string | null {
+  if (idOk(p.focused_stored_session_id)) return p.focused_stored_session_id
+  return idOk(p.focused_session_id) ? own(m.storedOf, p.focused_session_id) ?? null : null
+}
+
+/** Ctrl+N: a focused runtime with an explicit null stored id and no mapping is a new empty chat. */
+const isNewEmptyChat = (p: Record<string, unknown>): boolean =>
+  p.focused_stored_session_id === null && idOk(p.focused_session_id)
+
 /** Resolve the focused session of a state snapshot; focusing a session clears its `unseen`. */
 function focus(m: FeedModel, p: Record<string, unknown>): FeedModel {
-  let stored: string | null = null
-  if (idOk(p.focused_stored_session_id)) stored = p.focused_stored_session_id
-  else if (idOk(p.focused_session_id)) stored = own(m.storedOf, p.focused_session_id) ?? null
-  if (stored === null || m.focusedStored === stored) return m
+  const stored = focusedStoredOf(m, p)
+  if (stored === null) return isNewEmptyChat(p) && m.focusedStored !== null ? { ...m, focusedStored: null } : m
+  if (m.focusedStored === stored) return m
   const rec = session(m, stored)
   return { ...m, focusedStored: stored, sessions: put(m.sessions, stored, { ...rec, unseen: false }) }
 }
@@ -233,7 +254,7 @@ const reduceSessionInfo: Reducer = (m, input, p) =>
 const reduceMessage: Reducer = (m, input, p) =>
   idOk(input.session) ? applyRuntime(m, input.kind, input.session, p, input.t) : m
 
-const reduceHealth: Reducer = (m, _i, p) => ({ ...m, healthOk: p.ok === true })
+const reduceHealth: Reducer = (m, _i, p) => (m.healthOk === (p.ok === true) ? m : { ...m, healthOk: p.ok === true })
 
 /** One reducer per event kind; an unknown kind (or garbage) falls through to the identity. */
 const REDUCERS: Record<string, Reducer> = {
