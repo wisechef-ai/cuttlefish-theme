@@ -36,11 +36,13 @@ test('what each state fills the pill with: hairline outline, cloud trains, diago
   assert.match(String(stripes.attrs.patternTransform), /skewX\(-45\)/, 'stripes are slanted')
   assert.equal(flat(rimNodes(input('zebra'))).find(n => n.tag === 'rect' && n.attrs.width === 6)?.attrs.width, 6, 'a stripe is six wide')
   const blanch = body('blanch')
-  assert.ok(flat(blanch).some(n => n.tag === 'rect' && n.attrs['fill-opacity'] === 0.38), 'error: a pale wash')
+  // §4c ruling 2 (changed from v2.1's .38 wash and 3 px double dash): one line, one break, lighter
+  assert.ok(flat(blanch).some(n => n.tag === 'rect' && n.attrs['fill-opacity'] === 0.16), 'error: a pale wash')
   assert.ok(pill('blanch')!.attrs['stroke-dasharray'] !== undefined, 'and a broken outline')
-  assert.equal(pill('blanch')!.attrs['stroke-width'], 3, 'a firmer frame')
+  assert.equal(pill('blanch')!.attrs['stroke-width'], 1.6, 'one fine line')
+  // §4c ruling 4 (changed from v2.1's ring): a lens, an iris and a pupil
   const eye = body('eyespot').filter(n => n.tag === 'circle')
-  assert.deepEqual(eye.map(n => n.attrs.r), [3.9, 2.4], 'finished: an iris ring and one dark pupil')
+  assert.deepEqual(eye.map(n => n.attrs.r), [2.6, 1.6], 'finished: an iris and one dark pupil')
   assert.equal(eye[1].attrs.fill, palette(200, '#fefefe').spot, 'the pupil is the spot pigment')
 })
 

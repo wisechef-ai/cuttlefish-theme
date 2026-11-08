@@ -120,13 +120,13 @@ test('swatch and strip radii are exactly their tuned deterministic ranges; toSvg
   const radii = (dots: { r: number; alpha: number }[]): number[] =>
     dots.filter(d => d.alpha > 0).map(d => d.r).sort((a, b) => a - b)
   const sw = radii(renderSwatch({ seed: ROOTS[0], hueDeg: hue, ground: GROUNDS[0], pattern: patternOf(DEFAULT_SETTINGS, 'working'), intensity: 1 }).dots)
-  // v2.1 §2: the working mark is three lobes (4.4, 5.6, 4.0) on the 24×16 box, the strip is ×0.875
-  assert.equal(sw[0].toFixed(3), '4.000', 'the working mark: smallest lobe')
-  assert.equal(sw[sw.length - 1].toFixed(3), '5.600', 'the working mark: largest lobe')
+  // §4c ruling 3 (changed from v2.1's lobes 4.4/5.6/4.0): the r4 cloud lobes are 3.3/4.4/3.1
+  assert.equal(sw[0].toFixed(3), '3.100', 'the working mark: smallest lobe')
+  assert.equal(sw[sw.length - 1].toFixed(3), '4.400', 'the working mark: largest lobe')
   const st = radii(renderStrip({ seed: ROOTS[0], hueDeg: hue, ground: GROUNDS[0], pattern: patternOf(DEFAULT_SETTINGS, 'working'), intensity: 1 }).dots)
   assert.equal(st.length, 3, 'the strip carries the glyph once')
-  assert.equal(st[0].toFixed(3), '3.500')
-  assert.equal(st[st.length - 1].toFixed(3), '4.900')
+  assert.equal(st[0].toFixed(3), '2.712')
+  assert.equal(st[st.length - 1].toFixed(3), '3.850')
   const strip = renderStrip({ seed: ROOTS[0], hueDeg: hue, ground: GROUNDS[0], pattern: patternOf(DEFAULT_SETTINGS, 'working'), intensity: 1 })
   const visible = strip.dots.filter(d => d.alpha > 0 && d.r > 0)
   assert.equal((toSvg(strip.dots, strip.width, strip.height).match(/<circle\b/g) ?? []).length, visible.length)
@@ -140,7 +140,7 @@ test('renderField golden digest: one settled render, bit-identical forever', () 
   }
   assert.equal(input.hueDeg > 110 && input.hueDeg < 340, true)
   const digest = Buffer.from(blake2b(utf8(JSON.stringify(renderField(input))), 32)).toString('hex')
-  assert.equal(digest, '3ea72693633cf0b8d72c2a03993c138849c74c8e1219469f8ea2fa46c783d88a')
+  assert.equal(digest, '97c4fc0c25ec72b049d8e08ef17ebce6b92f6a8b1733b8dfce9afec89226b57a')
 })
 
 // Round-2 pins. The first golden digest ran with every dial at 1 (intensity 1, settled bloom 1,
@@ -208,7 +208,7 @@ test('renderField golden digest: zebra at scale 2 (the band count follows the di
     motion: 'still' as const, reducedMotion: false, tMs: 0, sinceChangeMs: SETTLED_MS,
   }
   assert.equal(Buffer.from(blake2b(utf8(JSON.stringify(renderField(input))), 32)).toString('hex'),
-    '2d4c97e8ebd6717faa6628afeb7643db847c47cccac9e079af71a6147e6da04b')
+    'e9c8380d8246bb008dca3fc4544b45dfb02857cf5d52094697747f33850a40d1')
 })
 
 test('renderField golden digest: resting mottle, settled', () => {
@@ -218,7 +218,7 @@ test('renderField golden digest: resting mottle, settled', () => {
     motion: 'still' as const, reducedMotion: false, tMs: 0, sinceChangeMs: SETTLED_MS,
   }
   assert.equal(Buffer.from(blake2b(utf8(JSON.stringify(renderField(input))), 32)).toString('hex'),
-    '58bdf2d710ddcca84ae46ec91599665a43480fd562dca1190b426e3a439e8621')
+    '4baa8f5e7f367ce99b5a2e2dced9109d15ca0e8b010df3e3e48c6373a5f26a87')
 })
 
 test('renderField golden digest: alive clouds with every dial off unity', () => {
@@ -228,15 +228,15 @@ test('renderField golden digest: alive clouds with every dial off unity', () => 
     motion: 'alive' as const, reducedMotion: false, tMs: 4321, sinceChangeMs: Math.floor(BLOOM_MS / 3),
   }
   assert.equal(Buffer.from(blake2b(utf8(JSON.stringify(renderField(input))), 32)).toString('hex'),
-    '3702653fd4db7a2491fe383ed1f2658e8af36359b4c7cf7ac5315077b110ad6b')
+    'b50dd7fbac717936f3bda2acd41035326f0538d7e8fad4aa728db41002f7f8cb')
 })
 
 test('renderSwatch golden digests: working clouds and resting mottle', () => {
   const base = { seed: ROOTS[0], hueDeg: allocate(ROOTS[0], []).hue_deg, ground: GROUNDS[0], intensity: 1 }
   const clouds = Buffer.from(blake2b(utf8(JSON.stringify(renderSwatch({ ...base, pattern: patternOf(DEFAULT_SETTINGS, 'working') }).dots)), 32)).toString('hex')
-  assert.equal(clouds, '4cc97e07b00d8af0c7f504557126d0107b694d8a38bf6d69f2d6cda563dbe554')
+  assert.equal(clouds, '59ba20269457688fe82eac8eed68d79322350197e168a52c66929b620c971355')
   const mottle = Buffer.from(blake2b(utf8(JSON.stringify(renderSwatch({ ...base, pattern: patternOf(DEFAULT_SETTINGS, 'resting') }).dots)), 32)).toString('hex')
-  assert.equal(mottle, 'd7c33b383de888dfa072c567904fb10c61053ec543a423535177e90846f04411')
+  assert.equal(mottle, '8d157fc5b1eb41377dc200d3adcf0d6f243c4f18f28dbba47d801c2478d7ad99')
 })
 
 // Every earlier digest used dials at 1, where `*` and `/` agree. These two render with
@@ -258,7 +258,7 @@ test('renderField golden digests: clouds and eyespot with the dials off unity', 
     pattern, intensity: 1, motion: 'still' as const, reducedMotion: false, tMs: 0, sinceChangeMs: SETTLED_MS,
   })
   assert.equal(Buffer.from(blake2b(utf8(JSON.stringify(renderField(input(patternOf(tuned.settings, 'dc'))))), 32)).toString('hex'),
-    '6146af34a9aa539d4c1ef54879bf64df4c922409a4025f2a41f828804b9cb237')
+    '2bcd2a9b60c76ae6933910e265be76cbf4ee33452ef88a42901aeb2944b5e596')
   assert.equal(Buffer.from(blake2b(utf8(JSON.stringify(renderField(input(patternOf(tuned.settings, 'de'))))), 32)).toString('hex'),
-    '83064719a5324feca83a70666eb36c33629c409f7ad5693b1a35f9443c0cbf33')
+    '3e4b80c52b08f3415215aaa1083186902387a1c8df7bb54c2620fd05790f8489')
 })

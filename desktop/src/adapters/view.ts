@@ -8,7 +8,7 @@
 // settings reload that lands on the same state never blooms (C7 blooms state
 // CHANGES only), and the runtime arms the bloom clock from applyFeed's return.
 import {
-  allocate, DEFAULT_SETTINGS, initialFeed, patternOf, reduceFeed, signalsOf, stateFor,
+  allocate, hueOfSlot, knownSessions, DEFAULT_SETTINGS, initialFeed, patternOf, reduceFeed, signalsOf, stateFor,
   type FeedInput, type FeedModel, type Motion, type PatternSpec, type Settings,
 } from '../domain/index.ts'
 
@@ -58,6 +58,21 @@ function notify(v: CfView): void {
   if (subs !== undefined) for (const fn of subs) fn()
 }
 
+const SLOTS = new WeakMap<CfView, Map<string, number>>()
+
+/** A session's identity hue, allocated WITH its live peers (v2.1 r4): two live sessions never share a slot and sit as far apart as the 20-slot
+ *  arc allows (≥ 34.5° for up to 5 sessions, ≥ 23° for 7, ≥ 11.5° beyond). Every session the feed knows (sorted) that has no slot yet gets one in
+ *  that order, so the same set of sessions always gets the same hues; a slot is held while its session is known. The old code asked
+ *  `allocate(id, [])` per row (no peers): 4.8 % of session pairs shared a hue and 24 % sat < 30° apart. */
+export function hueFor(v: CfView, id: string): number {
+  let m = SLOTS.get(v)
+  if (m === undefined) { m = new Map(); SLOTS.set(v, m) }
+  const live = new Set([...knownSessions(v.feed), id])
+  for (const k of [...m.keys()]) if (!live.has(k)) m.delete(k)
+  for (const k of [...live].sort()) if (!m.has(k)) m.set(k, allocate(k, [...m.values()]).slot)
+  return hueOfSlot(m.get(id) as number)
+}
+
 /** The pattern a state renders with, never throwing: an unknown state degrades to mottle. */
 export function safePattern(settings: Settings, state: string): PatternSpec {
   const ref = settings.states[state]?.pattern
@@ -79,7 +94,7 @@ function derive(v: CfView): boolean {
   const before = v.focusedState
   const stored = v.feed.focusedStored
   v.focusedStored = stored
-  v.hueDeg = allocate(seedOfStored(stored), []).hue_deg
+  v.hueDeg = stored === null ? allocate(NO_FOCUS_SEED, []).hue_deg : hueFor(v, stored)
   v.focusedState = stateFor(v.settings, signalsOf(v.feed, stored === null ? '' : stored))
   v.pattern = safePattern(v.settings, v.focusedState)
   v.version += 1

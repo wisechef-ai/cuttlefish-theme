@@ -32,6 +32,8 @@ const TWINKLE_AMP = 0.55, TWINKLE_P_MIN = 7000, TWINKLE_P_SPAN = 5000
 /** Stripe count across the surface. The field's 8 (4 cycles ≈ 2 dot pitches per band) survives the chat region being a
  *  crop of the window — at 6 the fundamental sat between spectral bins 2 and 3 and read 0.49 in real pixels. */
 const FIELD_CYCLES = 4
+/** Working field blobs: ×1.8 everywhere, +×1.6 where the band is brightest. */
+const CLOUD_SWELL_BASE = 1.8, CLOUD_SWELL_BAND = 1.6
 const ZEBRA_SWELL = 1.8, ZEBRA_SHRINK = 0.45, BLANCH_SWELL = 1.0
 export const CLOUD_TRAVEL_MS = 18000                                  // one band pass across the height
 
@@ -132,7 +134,12 @@ export const BLANCH_HIDDEN = 0.4
 /** Per-organ size on the field: stripe organs swell inside a band and shrink in the gap (so the eye sees bands of
  *  big dots, not a scatter); error organs swell into soft pale blobs (washed out) instead of crisp dots. Positions
  *  never change. */
-export function radiusFactors(spec: PatternSpec, cons: Constellation, width: number, height: number): number[] {
+export function radiusFactors(spec: PatternSpec, cons: Constellation, width: number, height: number, targets?: readonly number[]): number[] {
+  // working (r4): SOFT CLOUD BLOBS, not particles: every organ swells (×1.8) and the ones the band lights swell most (up to ×3.4), so the
+  // translucent discs overlap into cloud masses. Sizes follow the ink, never the position.
+  if (spec.base === 'clouds' && targets !== undefined) {
+    return cons.organs.map((_, i) => CLOUD_SWELL_BASE + CLOUD_SWELL_BAND * Math.min(1, Math.max(0, (targets[i] - CLOUD_BASE) / CLOUD_AMP)))
+  }
   if (spec.base === 'zebra') return cons.organs.map(o => (zebraBright(o, width, height, spec.scale) ? ZEBRA_SWELL : ZEBRA_SHRINK))
   if (spec.base === 'blanch') return cons.organs.map(() => BLANCH_SWELL)
   return cons.organs.map(() => 1)

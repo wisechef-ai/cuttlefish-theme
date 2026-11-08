@@ -58,7 +58,8 @@ const { attach, frameTime } = await import('../../../src/adapters/runtime.ts')
 const GROUND_RGB = 'rgb(1, 2, 3)'
 const GROUND = '#010203'
 dom.ground = GROUND_RGB
-const ENV = { width: 1200, height: 800, ground: GROUND, reducedMotion: false }
+// §4c ruling 7: the field canvas is the chat surface — the window's fallback 1200 × 800 minus the sidebar and the bars = 940 × 744
+const ENV = { width: 940, height: 744, ground: GROUND, reducedMotion: false }
 
 interface Mount { el: FakeElement; cleanup(): void }
 
@@ -108,9 +109,9 @@ test('runtime: the first paint is byte-exact for the sampled ground, and the roo
 
 test('runtime: a degenerate viewport falls back to the window size; a 1px viewport is real', async () => {
   const zero = await boot({ width: 0, height: 0 })
-  assert.ok(zero.mount().el.textContent.includes('1200px 800px'), '0 falls back')
+  assert.ok(zero.mount().el.textContent.includes('940px 744px'), '0 falls back to the window size, then the surface')
   const one = await boot({ width: 1, height: 1 })
-  assert.ok(one.mount().el.textContent.includes('1px 1px'), '1 is a viewport')
+  assert.ok(one.mount().el.textContent.includes('480px 360px'), '1 is a viewport: the surface never shrinks below 480 × 360')
 })
 
 test('runtime: focus paints the stored id on the root and the live style follows every apply', async () => {
@@ -288,10 +289,10 @@ test('runtime: a live viewport of 0 keeps the window-size fallback, like the fir
   const { el } = mount()
   host.state.viewport.set({ width: 0, height: 0 })
   await flush()
-  assert.ok(el.textContent.includes('1200px 800px'), 'not a 0px field')
+  assert.ok(el.textContent.includes('940px 744px'), 'not a 0px field')
   host.state.viewport.set({ width: 900, height: 700 })
   await flush()
-  assert.ok(el.textContent.includes('900px 700px'))
+  assert.ok(el.textContent.includes('640px 644px'), 'a 900 × 700 window paints the 640 × 644 surface (sidebar 260, bars 56)')
 })
 
 test('runtime: dispose leaves no style, attribute, timer, listener, loop or live contribution; a second life never doubles (hot reload)', async () => {

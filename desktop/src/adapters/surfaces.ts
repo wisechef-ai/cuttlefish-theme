@@ -14,7 +14,7 @@ import {
 import { allocate, renderStrip, renderSwatch, signalsOf, stateFor } from '../domain/index.ts'
 import { RIM_HEIGHT, rimElement } from './rim.ts'
 import { svgElement } from './svg.ts'
-import { safePattern, seedOfStored, type CfView } from './view.ts'
+import { hueFor, safePattern, seedOfStored, type CfView } from './view.ts'
 
 /** Re-render when — and only when — this surface's own derived key changes (React compares the snapshot by value). */
 function useLive(v: CfView, key: () => string): void {
@@ -37,7 +37,7 @@ function SwatchView({ v, sessionId }: { v: CfView } & SessionRowSlotProps): unkn
   const state = stateFor(v.settings, signalsOf(v.feed, sessionId))
   const out = renderSwatch({
     seed: sessionId,
-    hueDeg: allocate(sessionId, []).hue_deg,
+    hueDeg: hueFor(v, sessionId),
     ground: v.ground,
     pattern: safePattern(v.settings, state),
     intensity: v.settings.intensity,

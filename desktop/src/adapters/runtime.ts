@@ -69,8 +69,12 @@ function resampleGround(a: Attached): void {
 }
 
 /** The window the field paints for: the host's viewport atom, window size as the fallback. */
+/** The field canvas is the chat SURFACE, not the window: the window minus the sidebar (260 px) and the title/status bars (56 px), measured on the
+ *  real Desktop (surface 1340 × 944 at 1600 × 1000). Painting the whole window overshot the surface and clipped the gutter. */
+export const SIDEBAR_PX = 260, CHROME_PX = 56
 function viewportOf(vp: { width: number; height: number } = host.state.viewport.get()): { width: number; height: number } {
-  return { width: vp.width > 0 ? vp.width : 1200, height: vp.height > 0 ? vp.height : 800 }
+  const w = vp.width > 0 ? vp.width : 1200, h = vp.height > 0 ? vp.height : 800
+  return { width: Math.max(480, w - SIDEBAR_PX), height: Math.max(360, h - CHROME_PX) }
 }
 
 /** The time a frame paints with: on the grid, and wrapped at the cloud cycle unless `alive` twinkles run on their own periods. */

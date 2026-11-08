@@ -17,6 +17,8 @@ const FIELD_R = [0.062, 0.098] as const
 const SPOT_SCALE_FIELD = 4.3
 const SPOT_DL = 0.50
 /** Reading lane: organs left of this fraction of the width are drawn smaller (radius only: the locked tests are per-dot ink; the median organ must stay near the right half's). */
+/** Falloff: the radius window's ramp widths (share of the region) and its floor. */
+const FALL_X = 0.30, FALL_RIGHT = 0.08, FALL_Y = 0.12, FALL_MIN = 0.7
 const LANE_FRAC = 0.60, LANE_PX = 704, LANE_MAX = 0.70, TOP_PX = 64, BOTTOM = 0.12, DENSITY = 1.6
 
 /** Invert the composite: the alpha at which `pigment` shows `target` |dL| on the ground. */
@@ -96,8 +98,17 @@ export function renderField(input: FieldInput): Dot[] {
   const core: RenderCore = { cons, plan, pigmentFor: k => pigment(plan, k) }
   // reduced motion is `off` for every time-dependent term (bloom above, twinkle here)
   const motion = input.reducedMotion ? 'off' : input.motion
-  const scales = radiusFactors(input.pattern, cons, input.width, input.height)
+  const scales = radiusFactors(input.pattern, cons, input.width, input.height, targets)
+  // soft deliberate FALLOFF (r4): organs shrink toward the edges of the open region (to ×0.7 at the lane edge, the top, the bottom and the far
+  // right), so the gutter reads as an even mottle that fades at its borders, not a hard-cut clump. Radius only (the locked tests are per-dot ink).
+  const fall = (o: { x: number; y: number }): number => {
+    const ramp = (t: number, edge: number): number => { const u = Math.min(1, Math.max(0, t / edge)); return u * u * (3 - 2 * u) }
+    const fx = Math.min(ramp(o.x - lane, FALL_X * rw), ramp(input.width - o.x, FALL_RIGHT * rw))
+    const fy = Math.min(ramp(o.y - top, FALL_Y * rh), ramp(top + rh - o.y, FALL_Y * rh))
+    return FALL_MIN + (1 - FALL_MIN) * Math.min(fx, fy)
+  }
   const dots = organDots(input.pattern, core, input.seed, input.intensity, bloom, input.tMs, motion, targets, scales)
+    .map((d, i) => ({ ...d, r: d.r * fall(cons.organs[i]) }))
   if (input.pattern.base === 'eyespot') dots.push(eyeDot(core, input.seed, input.width, input.height, input.intensity, bloom))
   return dots
 }

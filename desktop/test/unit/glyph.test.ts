@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import { GLYPH_H, GLYPH_W, glyphExtras, glyphOf, type GlyphExtra, STRIP_K } from '../../src/domain/glyph.ts'
 import { contrast, palette } from '../../src/domain/ink.ts'
 import { allocate, DEFAULT_SETTINGS, patternOf, renderStrip, renderSwatch } from '../../src/domain/index.ts'
-import { hexToRgb, rgbToOklab } from '../../src/domain/oklch.ts'
+import { composite, hexToRgb, rgbToHex, rgbToOklab } from '../../src/domain/oklch.ts'
 import { PATTERN_KINDS, type PatternKind } from '../../src/domain/types.ts'
 
 const STATES: PatternKind[] = ['mottle', 'clouds', 'zebra', 'blanch', 'eyespot']
@@ -67,22 +67,6 @@ function raster(base: PatternKind): boolean[] {
     const r = Math.min(e.rx ?? 0, e.w / 2, e.h / 2)
     const cx = Math.min(Math.max(x, e.x + r), e.x + e.w - r), cy = Math.min(Math.max(y, e.y + r), e.y + e.h - r)
     return (x - cx) ** 2 + (y - cy) ** 2 <= r * r
-  }
-  const segDist = (x: number, y: number, a: [number, number], b: [number, number]) => {
-    const [dx, dy] = [b[0] - a[0], b[1] - a[1]]
-    const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy || 1)))
-    return Math.hypot(x - (a[0] + t * dx), y - (a[1] + t * dy))
-  }
-  const pathPts = (d: string): Array<[number, number]> => {
-    const pts: Array<[number, number]> = []
-    let cur: [number, number] = [0, 0]
-    for (const cmd of d.matchAll(/([MHVL])\s*([-\d.\s]*)/g)) {
-      const nums = cmd[2].trim().split(/\s+/).filter(Boolean).map(Number)
-      if (cmd[1] === 'M' || cmd[1] === 'L') for (let i = 0; i < nums.length; i += 2) { cur = [nums[i], nums[i + 1]]; pts.push(cur) }
-      if (cmd[1] === 'H') for (const x of nums) { cur = [x, cur[1]]; pts.push(cur) }
-      if (cmd[1] === 'V') for (const y of nums) { cur = [cur[0], y]; pts.push(cur) }
-    }
-    return pts
   }
   const layers = glyphExtras(base)
   const dots = glyphOf(base)
@@ -156,20 +140,22 @@ test('error is the only grey mark: its organs are near-achromatic, every other s
   }
 })
 
-test('finished-unseen: exactly one eye-spot dot (core r 4.5, ≥ 7× the median organ radius), a pale disc and a ring BELOW the dots; error: a plate and an open frame with the top-right corner empty', () => {
+// §4c (changed by r4 from v2.1): the eye is an almond with a pupil of r 2.8 over two corner flecks of r 0.7 (ratio 4.0 ≥ 2), the
+// iris ring and the lens. The corner-gap check moved with the frame (the r4 frame ends its right edge at y 9).
+test('finished-unseen: exactly one eye-spot dot (pupil r 2.8, ≥ 2× the median organ fleck), a pale lens and an iris ring BELOW; error: a plate and an open frame with the top-right corner empty', () => {
   const eye = glyphOf('eyespot')
   const spots = eye.filter(d => d.pigment === 'spot')
   assert.equal(spots.length, 1, 'one eye-spot')
-  assert.equal(spots[0].r, 4.5)
+  assert.equal(spots[0].r, 2.8)
   const organR = eye.filter(d => d.pigment !== 'spot').map(d => d.r)
-  assert.ok(spots[0].r >= 7 * organR.sort((a, b) => a - b)[organR.length >> 1], 'the core dwarfs the flecks')
+  assert.ok(spots[0].r >= 2 * organR.sort((a, b) => a - b)[organR.length >> 1], 'the pupil dwarfs the flecks (spotRatios first ≥ 2)')
   const ex = glyphExtras('eyespot')
-  assert.ok(ex.some(e => e.k === 'ellipse' && e.rx === 7 && !e.stroke && e.alpha === 0.3 && !e.above), 'a pale disc below')
-  assert.ok(ex.some(e => e.k === 'ellipse' && e.rx === 7 && e.stroke === 1.6 && !e.above), 'a crisp ring below')
+  assert.ok(ex.some(e => e.k === 'path' && e.alpha === 0.3 && !e.above), 'a pale lens below')
+  assert.ok(ex.some(e => e.k === 'ellipse' && e.rx === 4.4 && e.stroke === 1.5 && !e.above), 'an iris ring below')
   const err = glyphExtras('blanch')
   assert.ok(!err.some(e => e.k === 'ellipse'), 'error has no ellipse')
   const plate = err.find(e => e.k === 'rect')
-  assert.ok(plate && plate.alpha === 0.14, 'error has a pale plate')
+  assert.ok(plate && plate.alpha === 0.16, 'error has a pale plate')
   const frame = err.find(e => e.k === 'path')!
   assert.match(frame.d ?? '', /^M[\d. ]+(?:[HV][\d. ]+)+$/, 'the frame is M H V only')
   const pts = [...(frame.d ?? '').matchAll(/([HV])\s*([\d.]+)|M\s*([\d.]+)\s+([\d.]+)/g)]
@@ -181,7 +167,7 @@ test('finished-unseen: exactly one eye-spot dot (core r 4.5, ≥ 7× the median 
     verts.push([x, y])
   }
   assert.notDeepEqual(verts[0], verts[verts.length - 1], 'open: the frame does not close')
-  assert.ok(!verts.some(([vx, vy]) => vx > 13.2 && vy < 9.9), 'the top-right corner is missing')
+  assert.ok(!verts.some(([vx, vy]) => vx > 13 && vy < 9), 'the top-right corner is missing')
 })
 
 test('the swatch is opaque (intensity 0 switches it off); the strip is the swatch × 0.875', () => {
@@ -206,20 +192,25 @@ test('extras are never circles: every extra is a rect, an ellipse or a path', ()
   assert.ok(sw.extras.length >= 2 && sw.extras.every(e => e.tag === 'rect' || e.tag === 'ellipse' || e.tag === 'path'))
 })
 
-test('coarse features at 1×: resting is one blob; working a flat-bottomed cloud; needs you a filled chip with paper bars; error hollow', () => {
+// §4c (changed by r4 from v2.1): resting is an UPRIGHT oval (taller than wide), working a WIDE cloud on a flat base, needs you a
+// filled chip with TWO bars, error still hollow. The lobe radii grew (3.3/4.4/3.1), so the lobe count test is ≥ 3 at r ≥ 3.
+test('coarse features at 1×: resting is one upright oval; working a wide cloud on a flat base; needs you a filled chip with two paper bars; error hollow', () => {
   const rest = glyphOf('mottle')
   for (let i = 0; i + 1 < rest.length; i++) {
     assert.ok(Math.hypot(rest[i].x - rest[i + 1].x, rest[i].y - rest[i + 1].y) < rest[i].r + rest[i + 1].r, 'neighbouring resting dots overlap into one oval')
   }
-  const xs = rest.flatMap(d => [d.x - d.r, d.x + d.r]), ys = rest.flatMap(d => [d.y - d.r, d.y + d.r])
-  assert.ok(Math.max(...xs) - Math.min(...xs) <= 13 && Math.max(...ys) - Math.min(...ys) <= 7, 'a small oval, smaller than the cloud')
-  const cloud = glyphExtras('clouds')
-  assert.ok(cloud.some(e => e.k === 'rect' && !e.above), 'working: a flat bottom below')
-  assert.ok(glyphOf('clouds').filter(d => d.r >= 4).length >= 3, 'and three big lobes')
+  const box = (ds: readonly { x: number; y: number; r: number }[]) => {
+    const xs = ds.flatMap(d => [d.x - d.r, d.x + d.r]), ys = ds.flatMap(d => [d.y - d.r, d.y + d.r])
+    return { w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) }
+  }
+  const r = box(rest), c = box(glyphOf('clouds'))
+  assert.ok(r.h > r.w, `resting is upright (${r.w.toFixed(1)} × ${r.h.toFixed(1)})`)
+  assert.ok(c.w > c.h, `working is wide (${c.w.toFixed(1)} × ${c.h.toFixed(1)})`)
+  assert.ok(glyphExtras('clouds').some(e => e.k === 'rect' && !e.above), 'working: a flat base below')
+  assert.ok(glyphOf('clouds').filter(d => d.r >= 3).length >= 3, 'and three lobes of r ≥ 3')
   const chip = glyphExtras('zebra')
   assert.ok(chip.some(e => e.k === 'rect' && e.alpha === 1 && e.fill && !e.stroke && !e.above), 'needs you: a filled plate below')
-  const bars = chip.filter(e => e.k === 'path' && e.pigment === 'paper' && e.above)
-  assert.equal(bars.length, 3, 'three paper bars above')
+  assert.equal(chip.filter(e => e.k === 'path' && e.pigment === 'paper' && e.above).length, 2, 'two paper bars above')
   const err = glyphExtras('blanch')
   assert.ok(!err.some(e => e.alpha === 1 && e.fill && (e.pigment === 'chroma' || e.pigment === 'blanch')), 'error is hollow: no solid plate')
   assert.ok(glyphOf('blanch').every(d => d.pigment === 'blanch'), 'error dots are the pale pigment')
@@ -265,8 +256,70 @@ test('r4 marks (ruling 1–4): the exact dot and extra lists', () => {
     ['ellipse', 'paper', true, true, 1, null, 13.3, 6.6, 0.9, 0.9, 0.9, null]], 'an almond with an iris ring and a catch-light')
 })
 
-test('r4 optical footprint (ruling 6): each mark\'s ink area is within ±25 % of the five-mark mean', () => {
-  const area = (base: PatternKind): number => raster(base).filter(Boolean).length / 16     // 96×64 samples = 4×4 per design px
+/** Top-level path and segment helpers (M, H, V, L, Q sampled along the curve, Z ignored: the lens closes on its start). */
+function segDist(x: number, y: number, a: [number, number], b: [number, number]): number {
+  const [dx, dy] = [b[0] - a[0], b[1] - a[1]]
+  const t = Math.max(0, Math.min(1, ((x - a[0]) * dx + (y - a[1]) * dy) / (dx * dx + dy * dy || 1)))
+  return Math.hypot(x - (a[0] + t * dx), y - (a[1] + t * dy))
+}
+function pathPts(d: string): Array<[number, number]> {
+  const pts: Array<[number, number]> = []
+  let cur: [number, number] = [0, 0]
+  for (const cmd of d.matchAll(/([MHVLQZ])\s*([-\d.\s]*)/g)) {
+    const nums = cmd[2].trim().split(/\s+/).filter(Boolean).map(Number)
+    if (cmd[1] === 'M' || cmd[1] === 'L') for (let i = 0; i + 1 < nums.length; i += 2) { cur = [nums[i], nums[i + 1]]; pts.push(cur) }
+    if (cmd[1] === 'Q') for (let i = 0; i + 3 < nums.length; i += 4) {
+      const [p0, c, p1] = [cur, [nums[i], nums[i + 1]], [nums[i + 2], nums[i + 3]]] as const
+      for (let k = 1; k <= 12; k++) {
+        const t = k / 12, u = 1 - t
+        pts.push([u * u * p0[0] + 2 * u * t * c[0] + t * t * p1[0], u * u * p0[1] + 2 * u * t * c[1] + t * t * p1[1]])
+      }
+      cur = [p1[0], p1[1]]
+    }
+    if (cmd[1] === 'H') for (const x of nums) { cur = [x, cur[1]]; pts.push(cur) }
+    if (cmd[1] === 'V') for (const y of nums) { cur = [cur[0], y]; pts.push(cur) }
+  }
+  return pts
+}
+
+/** Colour-aware footprint (§4c ruling 6, contrast-table.md): every sample is composited layer by layer in its real colour
+ *  (pale fills at their alpha included), and it counts as ink when it reaches 2:1 against the light ground. */
+function inkMask(base: PatternKind, ground: string, hue: number): boolean[] {
+  const pal = palette(hue, ground)
+  const bg = hexToRgb(ground)
+  const S = 4, W = 96, H = 64
+  const col: Array<{ r: number; g: number; b: number }> = new Array(W * H).fill(bg)
+  const hit = (e: GlyphExtra, x: number, y: number): boolean => {
+    if (e.k === 'rect') {
+      const rx = e.rx ?? 0, cx = Math.min(Math.max(x, (e.x ?? 0) + rx), (e.x ?? 0) + (e.w ?? 0) - rx)
+      const cy = Math.min(Math.max(y, (e.y ?? 0) + rx), (e.y ?? 0) + (e.h ?? 0) - rx)
+      return x >= (e.x ?? 0) && x <= (e.x ?? 0) + (e.w ?? 0) && y >= (e.y ?? 0) && y <= (e.y ?? 0) + (e.h ?? 0) && (x - cx) ** 2 + (y - cy) ** 2 <= rx * rx
+    }
+    if (e.k === 'ellipse') {
+      const q = Math.hypot((x - (e.cx ?? 0)) / (e.rx ?? 1), (y - (e.cy ?? 0)) / (e.ry ?? 1))
+      return e.stroke !== undefined ? Math.abs(q - 1) * Math.min(e.rx ?? 1, e.ry ?? 1) <= e.stroke / 2 : q <= 1
+    }
+    const pts = pathPts(e.d ?? ''), half = (e.stroke ?? 0) / 2
+    return pts.slice(1).some((p, i) => segDist(x, y, pts[i], p) <= half)
+  }
+  const paintExtra = (e: GlyphExtra) => {
+    const c = hexToRgb(pal[e.pigment]), a = e.stroke !== undefined ? 1 : (e.alpha ?? 1)
+    for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+      if (!hit(e, (px + 0.5) / S, (py + 0.5) / S)) continue
+      col[py * W + px] = e.pigment === 'paper' ? bg : composite(c, a, col[py * W + px])
+    }
+  }
+  glyphExtras(base).filter(e => !e.above).forEach(paintExtra)
+  for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
+    const x = (px + 0.5) / S, y = (py + 0.5) / S
+    for (const d of glyphOf(base)) if ((x - d.x) ** 2 + (y - d.y) ** 2 <= d.r * d.r) col[py * W + px] = composite(hexToRgb(pal[d.pigment]), 1, col[py * W + px])
+  }
+  glyphExtras(base).filter(e => e.above).forEach(paintExtra)
+  return col.map(c => contrast(rgbToHex(c), ground) >= 2)
+}
+
+test('r4 optical footprint (ruling 6): each mark\'s ink area (pixels ≥ 2:1 on the light ground) is within ±25 % of the five-mark mean', () => {
+  const area = (base: PatternKind): number => inkMask(base, '#fefefe', 205).filter(Boolean).length / 16     // 96×64 samples = 4×4 per design px
   const a = STATES.map(area)
   const mean = a.reduce((s, v) => s + v, 0) / a.length
   STATES.forEach((s, i) => assert.ok(Math.abs(a[i] / mean - 1) <= 0.25, `${s}: ${a[i].toFixed(0)} px² vs mean ${mean.toFixed(0)}`))

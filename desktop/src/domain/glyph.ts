@@ -25,7 +25,7 @@ export interface GlyphExtra {
   stroke?: number
   x?: number; y?: number; w?: number; h?: number   // rect (rx = corner radius)
   cx?: number; cy?: number; rx?: number; ry?: number // ellipse
-  d?: string                                       // path (M, H, V, L only)
+  d?: string                                       // path (M, H, V, L, Q, Z; no arcs)
 }
 
 /** A rendered extra: a plain SVG node (tag + raw attributes), already in the mark's scale and colour. */
@@ -43,44 +43,45 @@ const strokeOf = (pigment: ExtraPigment, width: number, above = false): Pick<Gly
   ({ pigment, stroke: width, above })
 
 const GLYPHS: Record<PatternKind, { dots: GlyphDot[]; extras: GlyphExtra[] }> = {
+  // resting (r4): one soft UPRIGHT oval (10 wide, ~15 tall) with a visible mottle of paper holes; quiet ink
   mottle: {
-    dots: [circ(8.4, 8.4, 2.9, 'soft'), circ(12, 8, 3.3, 'soft'), circ(15.6, 8.4, 2.9, 'soft')],
+    dots: [circ(12, 4.7, 4.3, 'soft'), circ(12, 8, 5.0, 'soft'), circ(12, 11.3, 4.3, 'soft')],
     extras: [
-      { k: 'ellipse', cx: 10.6, cy: 7.2, rx: 0.8, ry: 0.8, ...fillOf('paper', 0.45, true) },
-      { k: 'ellipse', cx: 14.2, cy: 9.2, rx: 0.7, ry: 0.7, ...fillOf('paper', 0.45, true) },
+      { k: 'ellipse', cx: 10.6, cy: 4.6, rx: 1.0, ry: 1.0, ...fillOf('paper', 0.9, true) },
+      { k: 'ellipse', cx: 13.2, cy: 8.4, rx: 1.1, ry: 1.1, ...fillOf('paper', 0.9, true) },
+      { k: 'ellipse', cx: 11, cy: 11.6, rx: 0.9, ry: 0.9, ...fillOf('paper', 0.9, true) },
     ],
   },
+  // working (r4): a solid cloud, three lobes on a flat base (≈ 17 × 10)
   clouds: {
-    dots: [circ(6.4, 8.9, 4.4, 'chroma'), circ(12.6, 6.6, 5.6, 'chroma'), circ(18.2, 9.2, 4.0, 'chroma')],
-    extras: [{ k: 'rect', x: 2.4, y: 9, w: 19.8, h: 4.9, rx: 2.4, ...fillOf('chroma') }],
+    dots: [circ(6.8, 9.6, 3.3, 'chroma'), circ(12.4, 7.8, 4.4, 'chroma'), circ(17.6, 9.8, 3.1, 'chroma')],
+    extras: [{ k: 'rect', x: 3.8, y: 9.8, w: 16.2, h: 3.9, rx: 1.9, ...fillOf('chroma') }],
   },
+  // needs you (r4): a FILLED chip with TWO bold paper bars (they survive at 1×)
   zebra: {
-    dots: [[5, 5], [12, 5], [19, 5], [5, 11], [12, 11], [19, 11]].map(([x, y]) => circ(x, y, 3, 'chroma')),
+    dots: [[6, 5.5], [12, 5.5], [18, 5.5], [6, 10.5], [12, 10.5], [18, 10.5]].map(([x, y]) => circ(x, y, 2.8, 'chroma')),
     extras: [
-      { k: 'rect', x: 0.75, y: 0.75, w: 22.5, h: 14.5, rx: 3.5, ...fillOf('chroma') },
-      { k: 'path', d: 'M2.5 11.5 L11.5 2.5', ...strokeOf('paper', 2.4, true) },
-      { k: 'path', d: 'M6.5 13.5 L17.5 2.5', ...strokeOf('paper', 2.4, true) },
-      { k: 'path', d: 'M12.5 13.5 L21.5 4.5', ...strokeOf('paper', 2.4, true) },
+      { k: 'rect', x: 2.5, y: 2, w: 19, h: 12, rx: 3, ...fillOf('chroma') },
+      { k: 'path', d: 'M4 12 L12 4', ...strokeOf('paper', 3.4, true) },
+      { k: 'path', d: 'M11.5 12 L19.5 4', ...strokeOf('paper', 3.4, true) },
     ],
   },
+  // error (r4): a HOLLOW pale frame, the top-right corner missing (a gap of 9 px of top edge + 7.5 px of right edge); never filled
   blanch: {
-    dots: [circ(13.4, 1.5, 1.6, 'blanch'), circ(22.5, 9.9, 1.6, 'blanch')],
+    dots: [circ(13, 1.5, 1.5, 'blanch'), circ(22, 9, 1.5, 'blanch')],
     extras: [
-      { k: 'rect', x: 2, y: 2, w: 20, h: 12, rx: 1, ...fillOf('wash', 0.14) },
-      { k: 'path', d: 'M13.2 1.5 H1.5 V14.5 H22.5 V9.9', ...strokeOf('blanch', 2.4) },
+      { k: 'rect', x: 2, y: 1.5, w: 20, h: 13, rx: 1, ...fillOf('wash', 0.16) },
+      { k: 'path', d: 'M13 1.5 H2 V14.5 H22 V9', ...strokeOf('blanch', 2.2) },
     ],
   },
+  // finished unseen (r4): an almond / lens EYE: pale lens, crisp outline, iris ring, dark pupil, catch-light
   eyespot: {
-    dots: [
-      ...[45, 135, 225, 315].map(a => {
-        const t = (a * Math.PI) / 180
-        return circ(12 + 5.5 * Math.cos(t), 8 + 5.5 * Math.sin(t), 0.6, 'chroma')
-      }),
-      circ(12, 8, 4.5, 'spot'),                                   // LAST: the only 'spot' dot, role eyespot
-    ],
+    dots: [circ(3, 8, 0.7, 'chroma'), circ(21, 8, 0.7, 'chroma'), circ(12, 8, 2.8, 'spot')],   // LAST: the only 'spot' dot, role eyespot
     extras: [
-      { k: 'ellipse', cx: 12, cy: 8, rx: 7, ry: 7, ...fillOf('chroma', 0.3) },
-      { k: 'ellipse', cx: 12, cy: 8, rx: 7, ry: 7, stroke: 1.6, pigment: 'chroma' },
+      { k: 'path', d: 'M2 8 Q12 -2 22 8 Q12 18 2 8 Z', ...fillOf('chroma', 0.3) },
+      { k: 'path', d: 'M2 8 Q12 -2 22 8 Q12 18 2 8 Z', ...strokeOf('chroma', 1.6) },
+      { k: 'ellipse', cx: 12, cy: 8, rx: 4.4, ry: 4.4, ...strokeOf('chroma', 1.5) },
+      { k: 'ellipse', cx: 13.3, cy: 6.6, rx: 0.9, ry: 0.9, ...fillOf('paper', 1, true) },
     ],
   },
 }
