@@ -28,6 +28,8 @@ import type { PluginContext } from '@hermes/plugin-sdk'
 import { applyFeed, initialView, type CfView } from '../../../src/adapters/view.ts'
 
 const { registerSurfaces } = await import('../../../src/adapters/surfaces.ts')
+const { allocate, DEFAULT_SETTINGS, patternOf, renderSwatch } = await import('../../../src/domain/index.ts')
+const { GLYPH_W } = await import('../../../src/domain/glyph.ts')
 
 const view = (): CfView => initialView({ width: 1200, height: 800, ground: '#141416', reducedMotion: false })
 
@@ -89,7 +91,7 @@ test('surfaces D4: the status strip ALWAYS names the state — a resting (empty-
   assert.ok(text.includes('"resting"'))
 })
 
-test('surfaces: the composer rim is one clean 4–6 px full-width band, no words, no grain (legibility)', () => {
+test('surfaces: the composer rim is one 10 px full-width pill, no words, no grain (legibility)', () => {
   const h = fakeCtx()
   const v = view()
   registerSurfaces(h.ctx, v, () => () => {})
@@ -97,7 +99,7 @@ test('surfaces: the composer rim is one clean 4–6 px full-width band, no words
     { type: string; props: { style: { height: number; width: string; lineHeight: number; overflow: string; pointerEvents: string }; children: unknown; 'data-cf-state': string; 'data-cf-rim': string } }
   assert.equal(rim.props['data-cf-state'], 'resting')
   assert.equal(rim.props['data-cf-rim'], 'cuttlefish')
-  assert.ok(rim.props.style.height >= 4 && rim.props.style.height <= 6, `rim is ${rim.props.style.height}px tall`)
+  assert.equal(rim.props.style.height, 10, `rim is ${rim.props.style.height}px tall`)
   assert.equal(rim.props.style.width, '100%', 'full width')
   assert.equal(rim.props.style.lineHeight, 0, 'no inline baseline gap can grow the band')
   assert.equal(rim.props.style.overflow, 'hidden')
@@ -105,7 +107,7 @@ test('surfaces: the composer rim is one clean 4–6 px full-width band, no words
   const kids = ([] as unknown[]).concat(rim.props.children)
   assert.ok(kids.every(k => typeof k === 'object' && k !== null), 'no label text node in the rim')
   const json = JSON.stringify(rim.props.children)
-  assert.ok(json.includes('"type":"rect"') && !json.includes('"type":"circle"'), 'a resting rim is a hairline, not dots')
+  assert.ok(json.includes('"type":"rect"') && !json.includes('"type":"circle"'), 'a resting rim is the pill, not dots')
   assert.ok(!json.includes('"type":"pattern"'), 'and not a tiled texture')
   const strip = JSON.stringify(expand((h.contributions.get('strip')!.render as () => unknown)()).tree)
   assert.ok(!strip.includes('"type":"pattern"'), 'the status strip keeps its own look')
@@ -123,6 +125,38 @@ test('surfaces D5: the strip is ONE nowrap row — glyph beside the words, never
   assert.equal(glyph.props.style.display, 'block', 'the svg is a flex item, not an inline box that opens a line')
   assert.equal(glyph.props.height <= 16, true, 'and short enough for a status bar')
   assert.equal(chip.props.children[1], 'resting')
+})
+
+test('surfaces D5 (v2.1): the strip is one nowrap row of ×0.875 mark + label; it cannot clip inside the 20 px status bar', () => {
+  const h = fakeCtx()
+  registerSurfaces(h.ctx, view(), () => () => {})
+  const chip = expand((h.contributions.get('strip')!.render as () => unknown)()).tree as
+    { props: { style: Record<string, unknown>; children: Array<{ props: { height: number; width: number } } | string> } }
+  assert.deepEqual(
+    { display: chip.props.style.display, alignItems: chip.props.style.alignItems, whiteSpace: chip.props.style.whiteSpace,
+      flexShrink: chip.props.style.flexShrink, lineHeight: chip.props.style.lineHeight },
+    { display: 'inline-flex', alignItems: 'center', whiteSpace: 'nowrap', flexShrink: 0, lineHeight: 1 })
+  const svg = chip.props.children[0] as { props: { height: number; width: number } }
+  assert.equal(svg.props.width, 21, 'the mark is 21 px wide at ×0.875')
+  assert.equal(svg.props.height, 14)
+  assert.ok(svg.props.height + 2 <= 20, 'the svg plus the label line fits the 20 px status bar')
+  assert.equal(typeof chip.props.children[1], 'string', 'the label beside it')
+})
+
+test('surfaces D6 (v2.1): the mark never costs sidebar title room (24 px ≤ the 28 px it replaces)', () => {
+  assert.ok(GLYPH_W <= 28)
+})
+
+test('surfaces D7 (v2.1): the swatch tree draws exactly the domain dots as circles; its extras are never circles', () => {
+  const h = fakeCtx()
+  registerSurfaces(h.ctx, view(), () => () => {})
+  const contrib = h.contributions.get('swatch')!.data as { render: (p: { sessionId: string }) => unknown }
+  const tree = expand(contrib.render({ sessionId: 's-7' })).tree
+  const json = JSON.stringify(tree)
+  const circles = (json.match(/"type":"circle"/g) ?? []).length
+  const want = renderSwatch({ seed: 's-7', hueDeg: allocate('s-7', []).hue_deg, ground: '#141416', pattern: patternOf(DEFAULT_SETTINGS, 'resting'), intensity: DEFAULT_SETTINGS.intensity })
+    .dots.filter(d => d.alpha > 0 && d.r > 0).length
+  assert.equal(circles, want)
 })
 
 test('surfaces D3: a swatch re-renders only for its OWN state; the chrome only for the focused one; settings/ground move every key', async () => {
