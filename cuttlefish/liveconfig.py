@@ -15,8 +15,6 @@ import os
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 try:  # the normal case: loaded as part of the cuttlefish package (tests, the CLI)
     from .settings import resolve_settings
 except ImportError:  # by-path load (the dashboard's plugin_api.py) has no parent package
@@ -38,6 +36,28 @@ _UNREADABLE = {"path": "config", "code": "type",
                "message": "config.yaml is not valid YAML; using the default settings"}
 
 
+def _parse_yaml(text: str) -> tuple[bool, Any]:
+    """``(True, data)`` for YAML we can read, else ``(False, None)``. Never raises.
+
+    PyYAML is NOT a guaranteed dependency of a Hermes runtime (Python 3.14 installs lack it), so importing it at module
+    level broke the whole plugin. Order: core's public ``hermes_yaml`` (the parser core itself reads config with, present
+    in every release we support), then PyYAML only when it happens to be installed (standalone runs, the dev venv).
+    Neither available is the same as unreadable: the caller degrades to the defaults with a warning.
+    """
+    try:
+        from hermes_yaml import safe_load as parse  # core's public door, lazy: only when the host has it
+    except ImportError:
+        try:
+            import yaml  # optional: standalone/dev only, never required at import time
+        except ImportError:
+            return False, None
+        parse = yaml.safe_load
+    try:
+        return True, parse(text)
+    except Exception:  # core raises ruamel's YAMLError, PyYAML its own; both mean "not YAML we can read"
+        return False, None
+
+
 def hermes_home() -> Path:
     """The Hermes home this process serves (core's resolver, else env/default)."""
     try:
@@ -55,9 +75,9 @@ def config_path(home: Path | None = None) -> Path:
 
 
 def plugin_version() -> str:
-    """The version from plugin.yaml — the one file both halves report."""
-    data = yaml.safe_load((Path(__file__).resolve().parents[1] / "plugin.yaml").read_text(encoding="utf-8"))
-    return str(data.get("version", ""))
+    """The version from plugin.yaml — the one file both halves report. Empty when no YAML reader is available."""
+    ok, data = _parse_yaml((Path(__file__).resolve().parents[1] / "plugin.yaml").read_text(encoding="utf-8"))
+    return str(data.get("version", "")) if ok and isinstance(data, dict) else ""
 
 
 def read_raw_settings(home: Path) -> tuple[Any, list[dict[str, str]]]:
@@ -72,9 +92,8 @@ def read_raw_settings(home: Path) -> tuple[Any, list[dict[str, str]]]:
         return None, []
     except UnicodeDecodeError:
         return None, [_UNREADABLE]
-    try:
-        data = yaml.safe_load(text)
-    except (yaml.YAMLError, RecursionError):  # a hostile nesting depth is "not YAML we can read" too
+    ok, data = _parse_yaml(text)  # a hostile nesting depth is "not YAML we can read" too
+    if not ok:
         return None, [_UNREADABLE]
     entry = data.get("plugins") if isinstance(data, dict) else None
     entry = entry.get("entries") if isinstance(entry, dict) else None
