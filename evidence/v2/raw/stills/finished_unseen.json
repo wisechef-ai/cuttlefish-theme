@@ -1,13 +1,13 @@
 {
   "schema": "cf2-still/1",
   "state": "finished_unseen",
-  "png_sha256": "fa0c126e75891a8c234b2cff3e775d39041aaf51474c67abd3a28976ddeac3d0",
-  "taken_at": 1794158251.223,
+  "png_sha256": "52aefcf87f0ba57b05f68544bb8870f19efd2a04d6e88c6a3e106ab21016fbde",
+  "taken_at": 1794165992.985,
   "region": [
     260,
     34,
     1339,
-    879
+    870
   ],
   "exclude": [
     [
@@ -114,10 +114,10 @@
     ],
     [
       865,
-      870,
+      862,
       129,
       36
     ]
   ],
-  "focused_stored_id": "local-a7a3ad44531eb1905b29222a43413c4b1245c71463a66017909cd4d020155641"
+  "focused_stored_id": "local-ef07b789a4be632f144408d946c8cac5373165dada505d1f3d9ff0013297b41c"
 }
