@@ -32,13 +32,15 @@ export function inkFor(hue, chroma, ground, minContrast = MIN_CONTRAST) {
   for (let i = 0; i < 24; i++) { const m = (a + b) / 2; if (ok(m)) b = m; else a = m }
   return oklchToHex(b, chroma, hue)
 }
+export const SOFT_CONTRAST = 3.5
 export const CHROMA_C = 0.115, BLANCH_C = 0.012, BLANCH_CONTRAST = 4.5   // error is a bold dark-grey frame, never a faint one
 export function palette(hue, ground) {
   const lab = hexToLab(ground), dir = lab.L < 0.5 ? 1 : -1
   const chroma = inkFor(hue, CHROMA_C, ground)
+  const soft = inkFor(hue, CHROMA_C, ground, SOFT_CONTRAST)        // resting: quieter than the rest, still ≥ 3:1
   const blanch = inkFor(hue, BLANCH_C, ground, BLANCH_CONTRAST)
   const spot = oklchToHex(dir > 0 ? 0.07 : 0.17, 0.03, hue)      // the pupil: near-black, ≥ 3:1 on the iris ink on both grounds
-  return { chroma, blanch, spot, wash: blanch }
+  return { chroma, soft, blanch, spot, wash: blanch, paper: ground }
 }
 
 // ---- glyph geometry (design units = px at 1×; the strip scales by STRIP_K) --------------------------------------------
@@ -59,25 +61,43 @@ const ring = (n, cx, cy, rx, ry, r, pig, phase = 0) =>
   Array.from({ length: n }, (_, i) => { const a = phase + (2 * Math.PI * i) / n; return circ(cx + rx * Math.cos(a), cy + ry * Math.sin(a), r, pig) })
 
 export const GLYPHS = {
-  resting: { dots: [circ(6, 9.6, 2.6), circ(12.4, 5.8, 2.0), circ(18, 10, 2.4)], extras: [] },
-  working: {
-    dots: [circ(4.6, 10.6, 3.0), circ(8.8, 9.0, 3.6), circ(13.6, 8.2, 3.9), circ(18, 9.6, 3.4), circ(20.6, 11.4, 2.2), circ(11, 11.6, 3.2), circ(16, 12, 2.8)], extras: [],
-  },
-  needs_you: { dots: bars(), extras: [{ k: 'rect', x: 0.75, y: 0.75, w: 22.5, h: 14.5, rx: 3.5, pig: 'chroma', stroke: 1.5 }] },
-  // error: a hollow, pale, SQUARE chip whose frame is broken on the right (a clear notch); two round ends where it breaks
-  error: {
-    dots: [circ(22, 4.4, 1.8, 'blanch'), circ(22, 11.6, 1.8, 'blanch')],
+  // resting: ONE soft, small oval blob (three merged circles), the quietest ink, two paper flecks for the mottle. Not separate dots.
+  resting: {
+    dots: [circ(8.4, 8.4, 2.9, 'soft'), circ(12, 8, 3.3, 'soft'), circ(15.6, 8.4, 2.9, 'soft')],
     extras: [
-      { k: 'rect', x: 2, y: 2, w: 20, h: 12, rx: 1, pig: 'wash', alpha: 0.14, fill: true },
-      { k: 'path', d: 'M22 4.4 V1.5 H1.5 V14.5 H22 V11.6', pig: 'blanch', stroke: 2.2 },
+      { k: 'ellipse', cx: 10.6, cy: 7.2, rx: 0.8, ry: 0.8, pig: 'paper', alpha: 0.45, above: true },
+      { k: 'ellipse', cx: 14.2, cy: 9.2, rx: 0.7, ry: 0.7, pig: 'paper', alpha: 0.45, above: true },
     ],
   },
-  // finished unseen: a pale disc with a crisp ring and ONE big dark core (+ four iris flecks, the small 'organs' the contract compares to)
-  finished_unseen: {
-    dots: [...[45, 135, 225, 315].map(a => circ(12 + 5.1 * Math.cos((a * Math.PI) / 180), 8 + 5.1 * Math.sin((a * Math.PI) / 180), 0.7)), circ(12, 8, 4.0, 'spot', 'eyespot')],
+  // working: a large solid cloud, flat bottom, three lobes (the base rect under them is the flat bottom)
+  working: {
+    dots: [circ(6.4, 8.9, 4.4), circ(12.6, 6.6, 5.6), circ(18.2, 9.2, 4.0)],
+    extras: [{ k: 'rect', x: 2.4, y: 9, w: 19.8, h: 4.9, rx: 2.4, pig: 'chroma', alpha: 1, fill: true }],
+  },
+  // needs you: a FILLED, saturated chip with three bold diagonal paper-coloured bars (the loudest mark)
+  needs_you: {
+    dots: [[5, 5], [12, 5], [19, 5], [5, 11], [12, 11], [19, 11]].map(([x, y]) => circ(x, y, 3)),
     extras: [
-      { k: 'ellipse', cx: 12, cy: 8, rx: 6.8, ry: 6.8, pig: 'chroma', alpha: 0.30, fill: true },
-      { k: 'ellipse', cx: 12, cy: 8, rx: 6.8, ry: 6.8, pig: 'chroma', stroke: 1.6 },
+      { k: 'rect', x: 0.75, y: 0.75, w: 22.5, h: 14.5, rx: 3.5, pig: 'chroma', alpha: 1, fill: true },
+      { k: 'path', d: 'M2.5 11.5 L11.5 2.5', pig: 'paper', stroke: 2.4, above: true },
+      { k: 'path', d: 'M6.5 13.5 L17.5 2.5', pig: 'paper', stroke: 2.4, above: true },
+      { k: 'path', d: 'M12.5 13.5 L21.5 4.5', pig: 'paper', stroke: 2.4, above: true },
+    ],
+  },
+  // error: a HOLLOW pale chip with a big missing corner (top right), never filled; two round ends where the frame breaks
+  error: {
+    dots: [circ(13.4, 1.5, 1.6, 'blanch'), circ(22.5, 9.9, 1.6, 'blanch')],
+    extras: [
+      { k: 'rect', x: 2, y: 2, w: 20, h: 12, rx: 1, pig: 'wash', alpha: 0.14, fill: true },
+      { k: 'path', d: 'M13.2 1.5 H1.5 V14.5 H22.5 V9.9', pig: 'blanch', stroke: 2.4 },
+    ],
+  },
+  // finished unseen: pale disc, crisp ring, ONE big dark core, four iris flecks (round)
+  finished_unseen: {
+    dots: [...[45, 135, 225, 315].map(a => circ(12 + 5.5 * Math.cos((a * Math.PI) / 180), 8 + 5.5 * Math.sin((a * Math.PI) / 180), 0.6)), circ(12, 8, 4.5, 'spot', 'eyespot')],
+    extras: [
+      { k: 'ellipse', cx: 12, cy: 8, rx: 7, ry: 7, pig: 'chroma', alpha: 0.30, fill: true },
+      { k: 'ellipse', cx: 12, cy: 8, rx: 7, ry: 7, pig: 'chroma', stroke: 1.6 },
     ],
   },
 }
@@ -88,14 +108,15 @@ const f = v => Number(v.toFixed(3))
 export function glyphSvg(state, hue, ground, k = 1) {
   const pal = palette(hue, ground), g = GLYPHS[state]
   const w = BOX.w * k, h = BOX.h * k
-  const ex = g.extras.map(e => {
+  const render = e => {
     const paint = e.stroke ? `fill="none" stroke="${pal[e.pig]}" stroke-width="${f(e.stroke * k)}" stroke-linejoin="miter"` : `fill="${pal[e.pig]}" fill-opacity="${e.alpha ?? 1}"`
     if (e.k === 'rect') return `<rect x="${f(e.x * k)}" y="${f(e.y * k)}" width="${f(e.w * k)}" height="${f(e.h * k)}" rx="${f((e.rx ?? 0) * k)}" ${e.stroke ? `fill="none" stroke="${pal[e.pig]}" stroke-width="${f(e.stroke * k)}"` : paint}/>`
     if (e.k === 'path') return `<path d="${e.d.replace(/-?\d*\.?\d+/g, m => f(Number(m) * k))}" ${paint}/>`
     return `<ellipse cx="${f(e.cx * k)}" cy="${f(e.cy * k)}" rx="${f(e.rx * k)}" ry="${f(e.ry * k)}" ${paint}/>`
-  }).join('')
+  }
+  const below = g.extras.filter(e => !e.above).map(render).join(''), above = g.extras.filter(e => e.above).map(render).join('')
   const dots = g.dots.map(d => `<circle cx="${f(d.x * k)}" cy="${f(d.y * k)}" r="${f(d.r * k)}" fill="${pal[d.pig]}"/>`).join('')
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${f(w)}" height="${f(h)}" viewBox="0 0 ${f(w)} ${f(h)}">${ex}${dots}</svg>`
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${f(w)}" height="${f(h)}" viewBox="0 0 ${f(w)} ${f(h)}">${below}${dots}${above}</svg>`
 }
 
 export const RIM_H = 10
@@ -120,7 +141,7 @@ export function rimSvg(state, hue, ground, width) {
     body = `<defs><pattern id="s" width="12" height="${h}" patternUnits="userSpaceOnUse" patternTransform="skewX(-45)"><rect width="6" height="${h}" fill="${c}"/></pattern></defs><rect width="${width}" height="${h}" fill="url(#s)" clip-path="url(#cap)"/>${pill(`stroke="${c}" stroke-width="1.5"`)}`
   }
   if (state === 'error') {
-    body = `<rect width="${width}" height="${h}" fill="${pal.wash}" fill-opacity=".30" clip-path="url(#cap)"/>${pill(`stroke="${b}" stroke-width="2.6" stroke-dasharray="${Math.round(width * 0.42)} 14"`)}`
+    body = `<rect width="${width}" height="${h}" fill="${pal.wash}" fill-opacity=".38" clip-path="url(#cap)"/>${pill(`stroke="${b}" stroke-width="3" stroke-dasharray="${Math.round(width * 0.42)} 14"`)}`
   }
   if (state === 'finished_unseen') {
     body = `${pill(`stroke="${c}" stroke-width="1"`)}<circle cx="14" cy="5" r="3.9" fill="${c}" fill-opacity=".3" stroke="${c}" stroke-width="1.2"/><circle cx="14" cy="5" r="2.4" fill="${pal.spot}"/>`

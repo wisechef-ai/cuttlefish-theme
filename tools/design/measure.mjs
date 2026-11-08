@@ -80,7 +80,7 @@ if (process.argv[1] && path.basename(process.argv[1]) === 'measure.mjs') {
     for (const cell of cells) {
       const pal = palette(cell.hue, GROUNDS[cell.ground].chat)
       const gl = GLYPHS[cell.state]
-      const pigments = [...new Set([...gl.dots.map(d => d.pig), ...gl.extras.filter(e => e.pig !== 'wash' && e.alpha === undefined).map(e => e.pig)])]
+      const pigments = [...new Set([...gl.dots.map(d => d.pig), ...gl.extras.filter(e => e.pig !== 'wash' && e.pig !== 'paper' && (e.alpha === undefined || e.alpha === 1)).map(e => e.pig)])]
       const m = measureCell(img, cell, dpr, pal, pigments)
       rows.push({ ...cell, dpr, ratio: m.worst, coreN: 0 })
       if (m.worst < MIN_RATIO) fails.push(`${cell.state} ${cell.ground}${cell.sel ? '/sel' : ''} hue ${cell.hue} @${dpr}x = ${m.worst.toFixed(2)}`)

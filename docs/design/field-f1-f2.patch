@@ -1,17 +1,18 @@
 --- a/desktop/src/domain/organs.ts	2026-11-08 18:00:56.278115724 +0100
-+++ b/desktop/src/domain/organs.ts	2026-11-08 19:07:48.608646476 +0100
-@@ -73,7 +73,7 @@
++++ b/desktop/src/domain/organs.ts	2026-11-08 19:25:42.901973194 +0100
+@@ -72,8 +72,6 @@
+ 
  /** Where the single ocellus sits: central band, seeded — one spot, never on the edge. */
  export function eyeSpotAt(seed: string, width: number, height: number): { x: number; y: number } {
-   const rnd = seededStream(seed, 'eyespot')
+-  const rnd = seededStream(seed, 'eyespot')
 -  const x = width * (0.32 + 0.36 * rnd())
 -  const y = height * (0.30 + 0.40 * rnd())
-+  const x = width * (0.80 + 0.12 * rnd())
-+  const y = height * (0.52 + 0.16 * rnd())
-   return { x, y }
+-  return { x, y }
++  // anchored, the same for every session: the right gutter, a third of the way down
++  return { x: width * 0.90, y: height * 0.30 }
  }
 --- a/desktop/src/domain/pattern.ts	2026-11-08 18:00:56.278115724 +0100
-+++ b/desktop/src/domain/pattern.ts	2026-11-08 19:09:49.722045451 +0100
++++ b/desktop/src/domain/pattern.ts	2026-11-08 19:28:27.754102086 +0100
 @@ -19,7 +19,7 @@
  const CLOUD_BASE = 0.020, CLOUD_AMP = 0.125, CLOUD_SIGMA = 118
  /** Error sits this much LIGHTER than resting (dark grounds can afford more); light grounds keep dl >= 0.012. */
@@ -39,8 +40,23 @@
    const plan: GroundPlan = {
      groundRgb: rgb, groundL: gl, dir, chroma, blanch, spot,
      chromaMaxDl: dlAt(chroma, gl), blanchMaxDl: dlAt(blanch, gl), spotMaxDl: dlAt(spot, gl),
+@@ -161,10 +161,12 @@
+ /** The passing cloud on the field: one soft band travelling at constant speed (no dead spots). */
+ function fieldCloudInk(spec: PatternSpec, cons: Constellation, height: number, seed: string, opts: InkOptions, shape: Shaper): number[] {
+   const sigma = CLOUD_SIGMA * spec.scale
+-  const travel = height + 2 * sigma
++  // the band stays wholly inside the region (0.9σ in from each edge) and wraps: no phase of the cycle has the cloud half off the organs
++  const pad = Math.min(0.9 * sigma, height * 0.3)
++  const travel = Math.max(1, height - 2 * pad)
+   const y0 = height * (0.28 + 0.44 * hashUnit(seed, 'cloud'))
+   const moving = opts.motion !== 'off' && !opts.reducedMotion
+-  const center = moving ? -sigma + (((y0 + sigma) + (travel * opts.tMs) / CLOUD_TRAVEL_MS) % travel) : y0
++  const center = moving ? pad + ((((y0 - pad) % travel) + travel + (travel * opts.tMs) / CLOUD_TRAVEL_MS) % travel) : y0
+   const draw = cloudJitter(seed)
+   return cons.organs.map(o => shape(cloudDl(o.y, center, sigma, draw(), false)))
+ }
 --- a/desktop/src/domain/field.ts	2026-11-08 18:00:56.273115816 +0100
-+++ b/desktop/src/domain/field.ts	2026-11-08 19:09:14.069906647 +0100
++++ b/desktop/src/domain/field.ts	2026-11-08 19:30:25.939251643 +0100
 @@ -15,8 +15,10 @@
  const FIELD_R = [0.062, 0.098] as const
  const SWATCH_W = GLYPH_W, SWATCH_H = GLYPH_H
@@ -50,7 +66,7 @@
 +const SPOT_SCALE_FIELD = 4.3, SPOT_SCALE_SMALL = 2.6
 +const SPOT_DL = 0.50
 +/** Reading lane: organs left of this fraction of the width are drawn smaller (radius only: the locked tests are per-dot ink; the median organ must stay near the right half's). */
-+const GUTTER = 0.6, TOP = 0.05, BOTTOM = 0.12, DENSITY = 1.6
++const LANE_FRAC = 0.60, LANE_PX = 704, LANE_MAX = 0.70, TOP_PX = 64, BOTTOM = 0.12, DENSITY = 1.6
  
  /** Invert the composite: the alpha at which `pigment` shows `target` |dL| on the ground. */
  export function alphaFor(target: number, pigRgb: Rgb, plan: GroundPlan, maxDl: number): number {
@@ -63,16 +79,27 @@
      role: 'eyespot',
    }
  }
-@@ -77,7 +79,11 @@
+@@ -77,10 +79,19 @@
  /** The background field: a sparse organ scatter on the user's own ground, never a fill. */
  export function renderField(input: FieldInput): Dot[] {
    const plan = planGround(input.hueDeg, input.ground)
 -  const cons = constellation(input.seed, input.width, input.height, FIELD_TARGET, FIELD_R[0], FIELD_R[1])
-+  // the reading lane: organs live only right of GUTTER·width (the text is on the left; the title above and the composer below stay clear); a lattice of the same density over the remaining area
-+  const lane = GUTTER * input.width
-+  const top = TOP * input.height
-+  const raw = constellation(input.seed, input.width - lane, input.height * (1 - TOP - BOTTOM), Math.round(FIELD_TARGET * (1 - GUTTER) * (1 - TOP - BOTTOM) * DENSITY), FIELD_R[0], FIELD_R[1])
-+  const cons = { ...raw, organs: raw.organs.map(o => ({ ...o, x: o.x + lane, y: o.y + top })) }
-   const targets = inkTargets(input.pattern, cons, input.width, input.height, plan, input.seed, {
-     tMs: input.tMs, motion: input.motion, reducedMotion: input.reducedMotion, small: false,
-   })
+-  const targets = inkTargets(input.pattern, cons, input.width, input.height, plan, input.seed, {
+-    tMs: input.tMs, motion: input.motion, reducedMotion: input.reducedMotion, small: false,
+-  })
++  // THE READING LANE. Organs live only in the open region of the surface: right of `lane` (the text and cards sit on the left;
++  // measured on the real Desktop: cards end 680 px from the surface's left edge), below the header (64 px) and above the composer (12 %).
++  const laneFrac = Math.min(LANE_MAX, Math.max(LANE_FRAC, LANE_PX / input.width))
++  const lane = laneFrac * input.width
++  const top = Math.min(0.12 * input.height, Math.max(0.05 * input.height, TOP_PX))
++  const rw = input.width - lane, rh = input.height * (1 - BOTTOM) - top
++  const local = constellation(input.seed, rw, rh, Math.round(FIELD_TARGET * (rw * rh) / (input.width * input.height) * DENSITY), FIELD_R[0], FIELD_R[1])
++  const cons = { ...local, organs: local.organs.map(o => ({ ...o, x: o.x + lane, y: o.y + top })) }
++  // clouds travel over the open region only; every other pattern is read by the classifier against the whole surface, so it keeps whole-surface coordinates
++  const clouds = input.pattern.base === 'clouds'
++  const targets = clouds
++    ? inkTargets(input.pattern, local, rw, rh, plan, input.seed, { tMs: input.tMs, motion: input.motion, reducedMotion: input.reducedMotion, small: false })
++    : inkTargets(input.pattern, cons, input.width, input.height, plan, input.seed, { tMs: input.tMs, motion: input.motion, reducedMotion: input.reducedMotion, small: false })
+   const bloom = bloomFactor(input.sinceChangeMs, input.motion, input.reducedMotion)
+   const core: RenderCore = { cons, plan, pigmentFor: k => pigment(plan, k) }
+   // reduced motion is `off` for every time-dependent term (bloom above, twinkle here)

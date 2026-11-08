@@ -92,16 +92,16 @@ export function appHtml(g, focus) {
   <div style="position:absolute;left:${SB}px;top:34px;width:${CW}px;height:${CH}px;background:${field} 0 0/${CW}px ${CH}px no-repeat,${G.chat};">
     ${chatHtml(g, G, focus)}
     <div style="position:absolute;left:12px;right:12px;bottom:10px"><div style="overflow:hidden">${rimHtml(g, focus, hue, CW - 24)}</div>
-      <div style="height:46px;border:1px solid ${G.edge};background:${G.card};border-radius:10px;padding:13px 14px;color:${G.mute};font-size:14px;margin-top:4px">What should we tackle?</div></div></div>
+      <div style="height:46px;border:1px solid ${G.edge};background:${G.card};border-radius:10px;padding:13px 14px;color:${G.mute};font-size:14px;margin-top:5px">What should we tackle?</div></div></div>
   <div style="position:absolute;left:${SB}px;top:${H - 22}px;width:${CW}px;height:22px;background:${G.bar};border-top:1px solid ${G.edge};display:flex;justify-content:flex-end;align-items:center;gap:18px;padding:0 14px;font-size:11px;color:${G.mute}"><span>Smart</span><span>v0.22.7</span>${stripHtml(g, focus, hue)}</div>
   </body></html>`
 }
 
 const WORDS = {
-  resting: ['resting', 'three small dots, nothing else', 'calm: a hairline pill above the composer'],
-  working: ['working', 'one solid cloud', 'a train of cloud lobes in the pill'],
-  needs_you: ['needs you', 'a striped, outlined chip', 'bold diagonal stripes fill the pill'],
-  error: ['error', 'a pale hollow square, frame broken at the right, grey', 'pale wash, dashed frame with gaps'],
+  resting: ['resting', 'one small, soft, quiet blob', 'calm: a hairline pill above the composer'],
+  working: ['working', 'a large solid cloud with a flat bottom', 'a train of cloud lobes in the pill'],
+  needs_you: ['needs you', 'a FILLED chip with three bold bars (the loudest)', 'bold diagonal stripes fill the pill'],
+  error: ['error', 'a HOLLOW pale grey square with a big missing corner', 'pale wash, dashed frame with gaps'],
   finished_unseen: ['finished, unseen', 'a pale disc, crisp ring, one big dark core', 'a hairline pill with one dark eye'],
 }
 /** The sixth cell: the legend (state → mark → rim). */

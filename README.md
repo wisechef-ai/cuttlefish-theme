@@ -8,15 +8,15 @@ cuttlefish-theme 2.0 is desktop-first, one plugin in two halves: a Desktop plugi
 
 | state | pattern | row mark (24×16 chip) | what it means |
 |---|---|---|---|
-| `resting` | calm mottle | three small dots, nothing else | idle; the session's quiet hue |
-| `working` | slow passing clouds | one solid, puffy cloud | busy; leave it alone |
-| `needs you` | high-contrast zebra stripes | an outlined chip filled with bold diagonal stripes | blocked on your answer (approval or clarify) |
-| `error` | blanching to pale | a pale **grey hollow square**, its frame broken at the right (no hue left) | something failed — an errored turn or model call |
+| `resting` | calm mottle | one small, soft oval | idle; the session's quiet hue |
+| `working` | slow passing clouds | a large solid cloud, flat bottom | busy; leave it alone |
+| `needs you` | high-contrast zebra stripes | a **filled** chip with three bold bars (loudest) | blocked on your answer (approval or clarify) |
+| `error` | blanching to pale | a pale **grey hollow square** with a big missing corner (no hue left) | something failed — an errored turn or model call |
 | `finished` (unseen) | one dark eye-spot | a pale disc, crisp ring and one big dark core | a turn completed in a session you are not looking at |
 
 ![The five marks on light and dark](docs/design/contact-marks.png)
 
-In the chat field the organs live only on the right 40 % of the page, never behind the text, the title or the composer: stripes are diagonal bands of big dots, error is fewer, paler, colourless blobs, finished-unseen is one dark disc in the gutter. The composer rim is one pill, the same picture drawn full width: stripes, a train of cloud lobes, a pale wash inside a broken outline, one dark eye.
+In the chat field the organs live only in the open region at the right (right of ~60 % of the width, below the header, above the composer), never behind the text, cards or composer: stripes are diagonal bands of big dots, error is fewer, paler, colourless blobs, finished-unseen is one dark disc in the gutter. The composer rim is one pill, the same picture drawn full width: stripes, a train of cloud lobes, a pale wash inside a broken outline, one dark eye.
 
 Hue is **which session** — its identity, held for the session's life. Pattern and brightness are **its state**. A state change never touches the hue.
 
