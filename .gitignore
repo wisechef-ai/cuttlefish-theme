@@ -13,3 +13,4 @@ coverage/
 desktop/node_modules/
 tools/node_modules/
 .coverage
+.design-out/
