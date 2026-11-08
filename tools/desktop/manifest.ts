@@ -1,10 +1,14 @@
 /** The manifest of evidence/v2 (shape: tests/acceptance/test_o7_desktop_evidence.py + contract/RAW-EVIDENCE.md + PARTS-2.md). Pure. */
-import type { Box, Rect } from './evidence_lib.ts'
+import type { Box, Rect, StripVerdict } from './evidence_lib.ts'
 
 export interface SessionSpec { stored_id: string; expected: string; dom_state: string; dom_dump: string; title: string }
 export interface StillSpec { state: string; path: string; sha256: string; meta?: string; dom_dump?: string }
 export interface CpuWindowSpec { file: string; dom_dump: string; roles: Record<string, string> }
-export interface Pixels { organs_detected: number; p95_dL: number; mean_dL: number; lowK: number; highK: number; ground?: string }
+export interface Pixels { organs_detected: number; p95_dL: number; mean_dL: number; lowK: number; highK: number; ground?: string; exclusion?: Exclusion }
+export interface Exclusion { area: number; excluded_px: number; measured_px: number; share: number; reason: string | null }
+export interface StripState extends StripVerdict { session: string; state: string }
+export interface StripCheck { viewport: { w: number; h: number }; states: StripState[] }
+export interface SidebarCrop { state: string; path: string; sha256: string; source: string }
 export interface Measured {
   pixels: Record<string, Pixels>
   cpu: Record<string, { mean_pct: number; window_s: number }>
@@ -16,12 +20,23 @@ export interface ManifestInput {
   video: { path: string; sha256: string; start_epoch: number }
   sessions: SessionSpec[]; stills: StillSpec[]; windows: Record<string, CpuWindowSpec>; order: string[]
   rows: number; timeline: unknown[]; measured: Measured; files: { path: string; sha256: string }[]; capturedAt: string
+  /** the evidence directory relative to the repo: 'evidence/v2' (default) or e.g. 'evidence/v2-1280x800' */
+  rel?: string
+  stripCheck: StripCheck
+  sidebarCrops?: SidebarCrop[]
 }
 
 const FIELD_STATES = ['resting', 'working', 'needs_you', 'error']
 const BUDGET = { idle_pp: 1.0, working_pp: 6.0 } // fixed before measuring (PLAN.md §4); never moved here
 
 export function buildManifest(i: ManifestInput): Record<string, unknown> {
+  const rel = i.rel ?? 'evidence/v2'
+  if (i.stripCheck.states.length === 0) throw new Error('the strip check has no focused state: nothing was checked')
+  const strip_check = {
+    viewport: i.stripCheck.viewport, states: i.stripCheck.states,
+    all_inside: i.stripCheck.states.every(s => s.inside), any_clipped: i.stripCheck.states.some(s => s.clipped),
+  }
+  const exclusions = Object.fromEntries(Object.entries(i.measured.pixels).filter(([, p]) => p.exclusion).map(([k, p]) => [k, p.exclusion]))
   const field_pixels: Record<string, Pixels> = {}
   for (const s of FIELD_STATES) {
     if (!(s in i.measured.pixels)) throw new Error(`no measured pixels for ${s}`)
@@ -37,7 +52,7 @@ export function buildManifest(i: ManifestInput): Record<string, unknown> {
     schema: 'cf2-evidence/1', captured_at: i.capturedAt, commit: i.commit, plugin_js_sha256: i.pluginSha, core: i.core, isolation: i.isolation,
     capture: {
       video: i.video.path, video_sha256: i.video.sha256, video_start_epoch: i.video.start_epoch, rows_total: i.rows, rows_with_swatch: i.rows,
-      sessions: i.sessions, stills: i.stills, timeline: i.timeline,
+      sessions: i.sessions, stills: i.stills, timeline: i.timeline, strip_check, sidebar_crops: i.sidebarCrops ?? [],
     },
     field_pixels,
     perf: {
@@ -51,9 +66,10 @@ export function buildManifest(i: ManifestInput): Record<string, unknown> {
       grounds: groundsOf(i.measured.pixels),
       bloom: Object.fromEntries(Object.entries(i.measured.pixels).filter(([k]) => k.endsWith('.bloom'))),
       field_sampler: i.measured.field,
+      exclusions,
     },
     raw: {
-      root: 'evidence/v2/raw', files: i.files,
+      root: `${rel}/raw`, files: i.files,
       idle_window: { dom_dump: 'dom/idle-window.json' },
       cpu: { idle_on: i.windows.idle_on.file, idle_off: i.windows.idle_off.file, working_on: i.windows.working_on.file, working_off: i.windows.working_off.file,
         working_field: 'cpu/working.field.csv' },

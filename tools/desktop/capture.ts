@@ -12,24 +12,46 @@
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process'
 import * as fs from 'node:fs'
 import * as net from 'node:net'
+import * as os from 'node:os'
 import * as path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import type { Page } from '@playwright/test'
 
-import { buildManifest, uncovered, type CpuWindowSpec, type SessionSpec, type StillSpec } from './manifest.ts'
-import { clipRects, cpuPct, csvOf, listRawFiles, parseStatTicks, roleOf, sha256Hex, unionCoverage, type Rect, type Role } from './evidence_lib.ts'
+import { buildManifest, uncovered, type CpuWindowSpec, type SessionSpec, type SidebarCrop, type StillSpec, type StripState } from './manifest.ts'
+import {
+  centreDistance, clipRects, cpuPct, cropFilter, csvOf, exclusionVerdict, listRawFiles, parseStatTicks, roleOf, sha256Hex, sidebarRect,
+  stripVerdict, unionCoverage, type Box, type ExclusionVerdict, type Rect, type Role,
+} from './evidence_lib.ts'
 import { createSandbox, launchDesktop, listenNow, send, startXvfb, waitForShell, type Launched } from './harness.ts'
 import * as P from './pagecode.ts'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 const REPO = path.resolve(HERE, '..', '..')
-const OUT = path.join(REPO, 'evidence', 'v2')
+
+/** `1280x800` → {w, h}; no argument → the default window. Refuses what the private screen cannot show. */
+function windowSize(arg: string | undefined): { w: number; h: number } {
+  if (arg === undefined) return DEFAULT_WIN
+  const m = /^(\d{3,4})x(\d{3,4})$/.exec(arg)
+  if (!m) throw new Error(`window size must be WxH, got ${JSON.stringify(arg)}`)
+  const w = Number(m[1]), h = Number(m[2])
+  if (w < 640 || h < 480 || w > 1600 || h > 1000) throw new Error(`window ${w}x${h} is outside 640x480 .. 1600x1000 (the private screen)`)
+  return { w, h }
+}
+let tmpSeq = 0
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'cf-frames-')) // candidate frames, outside the evidence tree
+// The window size is the one optional argument (default 1600x1000 = evidence/v2). Any other size writes evidence/v2-<W>x<H>.
+const DEFAULT_WIN = { w: 1600, h: 1000 }
+const XVFB = { w: 1600, h: 1000 } // the private screen; the window is pinned to WIN inside it (harness pinWindow)
+const WIN = windowSize(process.argv[2])
+const OUT_REL = WIN.w === DEFAULT_WIN.w && WIN.h === DEFAULT_WIN.h ? 'evidence/v2' : `evidence/v2-${WIN.w}x${WIN.h}`
+const OUT = path.join(REPO, ...OUT_REL.split('/'))
 const STAGE = `${OUT}.staging`
 const RAW = path.join(STAGE, 'raw')
 const DISPLAY = process.env.CF_DISPLAY ?? ':93'
 const MOCK_PORT = Number(process.env.CF_MOCK_PORT ?? 18931)
-const SCREEN = { w: 1600, h: 1000 }
+const PYTHON = process.env.CF_PYTHON ?? 'python3'
+const MEASURE = path.join(HERE, 'measure.py')
 const WINDOW_S = 62 // each CPU window samples a little over the 60 s the budget names
 const SETTLE_PERF_S = 20 // after a toggle or a focus change, before a CPU window opens
 const SETTLE_S = 8 // a state change blooms for a few seconds; stills are taken after it settled (C7)
@@ -53,12 +75,12 @@ const portFree = (p: number) => new Promise<boolean>(res => {
 
 function grab(file: string): void {
   fs.mkdirSync(path.dirname(file), { recursive: true })
-  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'x11grab', '-draw_mouse', '0', '-video_size', `${SCREEN.w}x${SCREEN.h}`, '-i', DISPLAY, '-frames:v', '1', '-pix_fmt', 'rgb24', file])
+  execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'x11grab', '-draw_mouse', '0', '-video_size', `${WIN.w}x${WIN.h}`, '-i', DISPLAY, '-frames:v', '1', '-pix_fmt', 'rgb24', file])
 }
 
 function startVideo(file: string): ChildProcess {
   fs.mkdirSync(path.dirname(file), { recursive: true })
-  return spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'x11grab', '-draw_mouse', '0', '-framerate', '10', '-video_size', `${SCREEN.w}x${SCREEN.h}`, '-i', DISPLAY,
+  return spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'x11grab', '-draw_mouse', '0', '-framerate', '10', '-video_size', `${WIN.w}x${WIN.h}`, '-i', DISPLAY,
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '32', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', file], { stdio: ['pipe', 'ignore', 'inherit'] })
 }
 async function stopVideo(p: ChildProcess): Promise<void> {
@@ -150,7 +172,7 @@ async function focusRow(page: Page, title: string): Promise<void> {
   await page.keyboard.press('Control+n')
   await sleep(900)
   await rowLocator(page, title).click()
-  await page.mouse.move(SCREEN.w - 5, SCREEN.h / 2) // park the pointer: no hover tooltip in a still
+  await page.mouse.move(WIN.w - 5, WIN.h / 2) // park the pointer: no hover tooltip in a still
   await sleep(500)
 }
 async function newSession(page: Page, firstMessage: string): Promise<void> {
@@ -191,23 +213,56 @@ async function domDump(page: Page, title: string, stored: string, state: string,
   }
 }
 
-interface Taken { state: string; rel: string; png: string; meta: string; region: Rect; exclude: Rect[]; at: number; geo: P.Geometry }
-/** A screen still of the focused session + its sidecar. The PNG comes from the REAL screen (x11grab), not from the page. */
-async function still(page: Page, state: string, key = state): Promise<Taken> {
-  const geo = await page.evaluate(P.readGeometry)
+interface Taken { state: string; rel: string; png: string; meta: string; region: Rect; exclude: Rect[]; at: number; geo: P.Geometry; exclusion: ExclusionVerdict }
+interface Frame { file: string; geo: P.Geometry; at: number }
+
+/** The chat field of a geometry: the region above the composer, and the exclusions inside it. */
+function fieldOf(geo: P.Geometry): { region: Rect; exclude: Rect[] } {
   if (geo.surface === null) throw new Error('no chat surface on screen')
   if (geo.offset[0] !== 0 || geo.offset[1] !== 0) throw new Error(`the window is offset ${geo.offset} on the screen: client pixels are not screen pixels`)
-  // the region is the chat surface above the composer (the composer is excluded by leaving it out of the region, ≥ 50% of the still stays)
   const [sx, sy, sw, sh] = geo.surface as Rect
   const region: Rect = [sx, sy, sw, Math.min(sh, Math.max(1, (geo.composerTop ?? sy + sh) - 4 - sy))]
-  const png = `stills/${key}.png`
+  return { region, exclude: clipRects(geo.boxes, region, 3) }
+}
+/** One full-frame grab of the window (x11grab, no mouse), with the geometry read just before it. */
+async function frame(page: Page, file: string): Promise<Frame> {
+  const geo = await page.evaluate(P.readGeometry)
+  fieldOf(geo)
   const at = now()
-  grab(path.join(RAW, png))
-  const exclude = clipRects(geo.boxes, region, 3)
-  if (unionCoverage(exclude) > 0.25 * region[2] * region[3]) throw new Error(`${key}: exclusions cover more than 25% of the region: ${JSON.stringify(geo.boxes)} -> ${JSON.stringify(exclude)}`)
+  grab(file)
+  return { file, geo, at }
+}
+/** The still (stills/<key>.png, the full frame) and its sidecar. The exclusion rule is the honest one (evidence_lib exclusionVerdict). */
+function finishStill(f: Frame, state: string, key: string, extra: Record<string, unknown> = {}): Taken {
+  const { region, exclude } = fieldOf(f.geo)
+  const exclusion = exclusionVerdict(region[2] * region[3], unionCoverage(exclude))
+  if (!exclusion.ok) throw new Error(`${key}: ${exclusion.reason}: ${JSON.stringify(f.geo.boxes).slice(0, 300)}`)
+  const png = `stills/${key}.png`
+  fs.mkdirSync(path.join(RAW, 'stills'), { recursive: true })
+  fs.copyFileSync(f.file, path.join(RAW, png))
   const meta = `stills/${key}.json`
-  wj(meta, { schema: 'cf2-still/1', state, png_sha256: sha256Hex(fs.readFileSync(path.join(RAW, png))), taken_at: at, region, exclude })
-  return { state, rel: png, png: `evidence/v2/raw/${png}`, meta, region, exclude, at, geo }
+  wj(meta, { schema: 'cf2-still/1', state, png_sha256: sha256Hex(fs.readFileSync(path.join(RAW, png))), taken_at: f.at, region, exclude, ...extra })
+  return { state, rel: png, png: `${OUT_REL}/raw/${png}`, meta, region, exclude, at: f.at, geo: f.geo, exclusion }
+}
+async function still(page: Page, state: string, key = state, extra: Record<string, unknown> = {}): Promise<Taken> {
+  return finishStill(await frame(page, path.join(TMP, `f${tmpSeq++}.png`)), state, key, extra)
+}
+/** A moving field (working: the cloud band moves): a few frames, keep the one whose field-ink centre is nearest the middle of the field. */
+async function centralStill(page: Page, state: string, key = state, frames = 8): Promise<Taken> {
+  let best: { f: Frame; d: number; i: number } | null = null
+  const ds: number[] = []
+  for (let i = 0; i < frames; i++) {
+    if (i > 0) await sleep(400)
+    const f = await frame(page, path.join(TMP, `f${tmpSeq++}.png`))
+    const { region, exclude } = fieldOf(f.geo)
+    const c = JSON.parse(execFileSync(PYTHON, [MEASURE, 'centroid', f.file, JSON.stringify({ region, exclude })], { encoding: 'utf8' })) as { cx: number; cy: number } | null
+    const d = c === null ? Infinity : centreDistance(c.cx, c.cy, region)
+    ds.push(Number.isFinite(d) ? Number(d.toFixed(3)) : -1)
+    if (best === null || d < best.d) best = { f, d, i }
+  }
+  if (best === null || !Number.isFinite(best.d)) throw new Error(`${key}: no field ink in any of ${frames} frames`)
+  log(`${key}: frame ${best.i} of ${frames} picked, centre distance ${best.d.toFixed(3)} (all ${JSON.stringify(ds)})`)
+  return finishStill(best.f, state, key)
 }
 
 /** EXTRA ground (best effort, report only): Desktop colour mode → dark through the command palette, the plugin re-attached so it samples
@@ -253,7 +308,7 @@ async function main(): Promise<void> {
   let launched: Launched | undefined
   let video: ChildProcess | undefined
   try {
-    const xvfb = await startXvfb(DISPLAY, `${SCREEN.w}x${SCREEN.h}x24`); started.push(xvfb.proc)
+    const xvfb = await startXvfb(DISPLAY, `${XVFB.w}x${XVFB.h}x24`); started.push(xvfb.proc)
     if (!(await portFree(MOCK_PORT))) throw new Error(`mock port ${MOCK_PORT} busy`)
     const mock = spawn(process.env.CF_MOCK_PYTHON ?? 'python3', [path.join(HERE, 'mock_llm.py'), String(MOCK_PORT)], {
       stdio: 'ignore', env: { ...process.env, CF_MOCK_WORK_S: '7200', CF_MOCK_BRIEF_S: '6' } })
@@ -261,7 +316,7 @@ async function main(): Promise<void> {
 
     const sandbox = createSandbox('evidence')
     installPackage(sandbox.hermesHome)
-    launched = await launchDesktop({ sandbox, display: xvfb.display, width: SCREEN.w, height: SCREEN.h, modelBaseUrl: `http://127.0.0.1:${MOCK_PORT}/v1`,
+    launched = await launchDesktop({ sandbox, display: xvfb.display, width: WIN.w, height: WIN.h, modelBaseUrl: `http://127.0.0.1:${MOCK_PORT}/v1`,
       extraConfig: 'plugins:\n  enabled:\n    - cuttlefish-theme\n' })
     const page = launched.page
     const appPid = launched.app.process().pid!
@@ -302,6 +357,9 @@ async function main(): Promise<void> {
     const sessions: SessionSpec[] = []
     const stills: StillSpec[] = []
     const timeline: { session: string; state: string; start_s: number; end_s: number }[] = []
+    const stripStates: StripState[] = [] // the status strip of every FOCUSED state, read from the DOM after it settled
+    let stripViewport: { w: number; h: number } | null = null
+    const takenByState: Record<string, Taken> = {} // the measured still of each state (its sidebar crop is cut from it)
     const take = async (key: string, state: string, focused: boolean, measure: boolean): Promise<void> => {
       const title = TITLES[key as keyof typeof TITLES]
       const t0 = now()
@@ -309,9 +367,13 @@ async function main(): Promise<void> {
         await focusRow(page, title)
         // a state change blooms for a few seconds (C7): one extra, unmeasured-by-the-contract still while it blooms, then the settled one
         if (measure && state !== 'resting') { await sleep(1500); await still(page, state, `${state}.bloom`); await sleep((SETTLE_S - 1.5) * 1000) } else await sleep(SETTLE_S * 1000)
+        const sr = await page.evaluate(P.readStrip)
+        stripViewport ??= sr.viewport
+        stripStates.push({ session: ids[key], state, ...stripVerdict(sr) })
       }
       const geo = await page.evaluate(P.readGeometry)
-      const st = measure ? await still(page, state) : null
+      const st = measure ? (state === 'working' ? await centralStill(page, state) : await still(page, state)) : null
+      if (st) takenByState[state] = st
       const dump = await domDump(page, title, ids[key], state, focused, st, geo)
       const rel = `dom/${ids[key]}.${state}.json`
       wj(rel, dump)
@@ -320,21 +382,40 @@ async function main(): Promise<void> {
       timeline.push({ session: ids[key], state, start_s: t0 - videoStart, end_s: now() - videoStart })
       log(`${title}: ${state} dom=${(dump.row as { 'data-cf-state': string })['data-cf-state']} strip="${dump.strip.text}"`)
     }
-    // D first, while it is still unseen and unfocused (focusing it would clear the state)
+    // D first, while it is still unseen and unfocused (focusing it would clear the state). Its finished-unseen still is taken
+    // now too: r4 holds the focus, so the sidebar shows D's row in the finished-unseen state (the focused field is r4's).
+    const fu = await still(page, 'finished_unseen', 'finished_unseen', { focused_stored_id: ids.r4 })
     await take('d', 'finished_unseen', false, false)
+    stills.push({ state: 'finished_unseen', path: fu.png, sha256: sha256Hex(fs.readFileSync(path.join(RAW, fu.rel))), meta: fu.meta, dom_dump: `dom/${ids.d}.finished_unseen.json` })
+    takenByState.finished_unseen = fu
     await take('r4', 'resting', true, true)
     for (const k of ['r1', 'r2', 'r3']) await take(k, 'resting', true, false)
     await take('b', 'needs_you', true, true)
     await take('c', 'error', true, true)
     // full-frame stills for the visual check of the composer rim + field behind the transcript (hashed only, not measured)
-    const rimStill = (name: string) => { grab(path.join(RAW, `stills/${name}.png`)); stills.push({ state: name, path: `evidence/v2/raw/stills/${name}.png`, sha256: sha256Hex(fs.readFileSync(path.join(RAW, `stills/${name}.png`))) }) }
+    const rimStill = (name: string) => { grab(path.join(RAW, `stills/${name}.png`)); stills.push({ state: name, path: `${OUT_REL}/raw/stills/${name}.png`, sha256: sha256Hex(fs.readFileSync(path.join(RAW, `stills/${name}.png`))) }) }
     rimStill('rim-error')
     await take('a', 'working', true, true)
     rimStill('rim-working')
     await focusRow(page, TITLES.r4); await sleep(SETTLE_S * 1000)
+    const overviewGeo = await page.evaluate(P.readGeometry)
     grab(path.join(RAW, 'stills/overview.png'))
-    stills.push({ state: 'overview', path: 'evidence/v2/raw/stills/overview.png', sha256: sha256Hex(fs.readFileSync(path.join(RAW, 'stills/overview.png'))) })
+    stills.push({ state: 'overview', path: `${OUT_REL}/raw/stills/overview.png`, sha256: sha256Hex(fs.readFileSync(path.join(RAW, 'stills/overview.png'))) })
     await stopVideo(video); video = undefined
+
+    // SIDEBAR CROPS for reviewers: the sidebar's rows cut from the same full frame and upscaled 2x with nearest-neighbour (crisp pixels;
+    // the screen itself is 1x, so this is an upscale of the captured pixels, not a render at 2x device scale)
+    const sidebarCrops: SidebarCrop[] = []
+    const cropOf = (srcRel: string, dstName: string, boxes: Box[], state: string) => {
+      const r = sidebarRect(boxes, WIN, 6)
+      if (r === null) throw new Error(`${state}: no sidebar rows to crop`)
+      const dst = path.join(RAW, 'stills', dstName)
+      execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', path.join(RAW, srcRel), '-vf', cropFilter(r, 2), '-frames:v', '1', dst])
+      sidebarCrops.push({ state, path: `${OUT_REL}/raw/stills/${dstName}`, sha256: sha256Hex(fs.readFileSync(dst)), source: `${OUT_REL}/raw/${srcRel}` })
+    }
+    for (const [state, st] of Object.entries(takenByState)) cropOf(st.rel, `sidebar-${state}.png`, st.geo.sidebar, state)
+    cropOf('stills/overview.png', 'sidebar-all.png', overviewGeo.sidebar, 'all')
+    log(`sidebar crops: ${sidebarCrops.map(c => c.path.split('/').pop()).join(' ')}`)
 
     // 3. PERF: 8 sessions, 60 s windows, the plugin toggled for real. Focus r4 (resting) for idle, a (working) for working.
     const rows8 = (await page.evaluate(P.readRows)).length
@@ -383,17 +464,19 @@ async function main(): Promise<void> {
     const order4 = ['idle_on', 'idle_off', 'working_off', 'working_on']
 
     // 4. manifest (numbers come from the contract's own instruments: measure.py recomputes everything from the raw files)
-    const measured = JSON.parse(execFileSync(process.env.CF_PYTHON ?? 'python3', [path.join(HERE, 'measure.py'), STAGE], { encoding: 'utf8', maxBuffer: 1 << 26 }))
+    const measured = JSON.parse(execFileSync(PYTHON, [MEASURE, STAGE], { encoding: 'utf8', maxBuffer: 1 << 26 }))
     const manifest = buildManifest({
       commit, pluginSha: PLUGIN_SHA, core: { version: 'v0.22.7', sha: launched.sha, desktop_build: 'source' },
       isolation: { hermes_home: iso.hermes_home, user_data_dir: iso.electron_user_data, gateway_port: gatewayPort, live_gateway_ports: live.map(l => l.port),
         display: iso.display, isolated_backend: iso.isolated_backend, sandbox_ports: iso.gateway_ports, ss_snapshot: listenNow() },
-      video: { path: 'evidence/v2/capture.mp4', sha256: sha256Hex(fs.readFileSync(videoPath)), start_epoch: videoStart }, sessions, stills, windows, order: order4,
+      rel: OUT_REL, stripCheck: { viewport: stripViewport ?? WIN, states: stripStates }, sidebarCrops,
+      video: { path: `${OUT_REL}/capture.mp4`, sha256: sha256Hex(fs.readFileSync(videoPath)), start_epoch: videoStart }, sessions, stills, windows, order: order4,
       rows: (await page.evaluate(P.readRows)).length, timeline, measured, files: listRawFiles(RAW), capturedAt: new Date().toISOString(),
     })
     fs.writeFileSync(path.join(STAGE, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n')
     log('manifest written')
   } finally {
+    fs.rmSync(TMP, { recursive: true, force: true })
     if (video) await stopVideo(video).catch(() => undefined)
     if (launched) await launched.close()
     for (const p of started.reverse()) p.kill()
@@ -401,7 +484,7 @@ async function main(): Promise<void> {
   // run-twice / crash-halfway safe: the old tree is replaced only once the new one is complete
   fs.rmSync(OUT, { recursive: true, force: true })
   fs.renameSync(STAGE, OUT)
-  log(`evidence at ${OUT}`)
+  log(`evidence at ${OUT} (window ${WIN.w}x${WIN.h})`)
 }
 
 await main()

@@ -7,6 +7,7 @@ const px = (m: number): Pixels => ({ organs_detected: 30, p95_dL: 0.03, mean_dL:
 const input = (over: Partial<ManifestInput> = {}): ManifestInput => ({
   commit: 'c', pluginSha: 'p', core: { version: 'v0.22.7', sha: 'b200f5bc60e', desktop_build: 'source' }, isolation: { gateway_port: 5 },
   video: { path: 'evidence/v2/capture.mp4', sha256: 'v', start_epoch: 1 },
+  stripCheck: { viewport: { w: 1600, h: 1000 }, states: [{ session: 's', state: 'resting', box: { x: 1, y: 2, w: 3, h: 4 }, inside: true, clipped: false, text_overflow: '' }] },
   sessions: [{ stored_id: 's', expected: 'resting', dom_state: 'resting', dom_dump: 'dom/s.resting.json', title: 't' }], stills: [],
   windows: Object.fromEntries(['idle_on', 'idle_off', 'working_on', 'working_off'].map(n => [n, { file: `cpu/${n}.csv`, dom_dump: `dom/win.${n}.json`, roles: { '1': 'renderer' } }])),
   order: ['idle_on', 'idle_off', 'working_off', 'working_on'], rows: 8, timeline: [], files: [], capturedAt: 'now',
@@ -116,4 +117,36 @@ test('buildManifest keeps a legitimate zero / empty measurement instead of turni
   m.measured.pixels['dark.working'] = px(0)
   const d = (buildManifest(m) as Record<string, any>).extra.grounds.dark
   assert.equal(d.ground, ''); assert.equal(d.mean_dL.working, 0); assert.equal(d.mean_dL.resting, 0)
+})
+
+// ---- ev3: strip check per focused state, sidebar crops, the exclusion numbers, and a second window size -----------------------
+const strip = (state: string, inside: boolean, clipped: boolean) => ({
+  session: 's', state, box: { x: 10, y: 700, w: 900, h: 22 }, inside, clipped, text_overflow: 'ellipsis',
+})
+test('buildManifest: the strip check per focused state, with the verdicts derived (all inside, any clipped)', () => {
+  const ok = buildManifest(input({ stripCheck: { viewport: { w: 1280, h: 800 }, states: [strip('resting', true, false), strip('error', true, false)] } })) as Record<string, any>
+  assert.deepEqual(ok.capture.strip_check, { viewport: { w: 1280, h: 800 }, states: [strip('resting', true, false), strip('error', true, false)], all_inside: true, any_clipped: false })
+  const bad = buildManifest(input({ stripCheck: { viewport: { w: 1280, h: 800 }, states: [strip('working', false, true)] } })) as Record<string, any>
+  assert.equal(bad.capture.strip_check.all_inside, false); assert.equal(bad.capture.strip_check.any_clipped, true)
+})
+test('buildManifest: an empty strip check is refused, not written as a pass', () => {
+  assert.throws(() => buildManifest(input({ stripCheck: { viewport: { w: 1600, h: 1000 }, states: [] } })), /no focused state/)
+})
+test('buildManifest: sidebar crops are listed with their sha, the finished_unseen still is a still', () => {
+  const crops = [{ state: 'finished_unseen', path: 'evidence/v2/raw/stills/sidebar-finished_unseen.png', sha256: 'c', source: 'evidence/v2/raw/stills/finished_unseen.png' }]
+  const m = buildManifest(input({ sidebarCrops: crops })) as Record<string, any>
+  assert.deepEqual(m.capture.sidebar_crops, crops)
+})
+test('buildManifest: the exclusion numbers of each still (share and measured px) come from the measurement', () => {
+  const ex = { area: 800000, excluded_px: 224000, measured_px: 576000, share: 0.28, reason: 'small window' }
+  const i = input(); (i.measured.pixels as Record<string, any>).resting = { ...px(0.01), exclusion: ex }
+  const m = buildManifest(i) as Record<string, any>
+  assert.deepEqual(m.extra.exclusions, { resting: ex })
+})
+test('buildManifest: a second window size writes under its own directory (the default stays evidence/v2)', () => {
+  const d = buildManifest(input()) as Record<string, any>
+  assert.equal(d.raw.root, 'evidence/v2/raw')
+  const s = buildManifest(input({ rel: 'evidence/v2-1280x800', video: { path: 'evidence/v2-1280x800/capture.mp4', sha256: 'v', start_epoch: 1 } })) as Record<string, any>
+  assert.equal(s.raw.root, 'evidence/v2-1280x800/raw')
+  assert.equal(s.capture.video, 'evidence/v2-1280x800/capture.mp4')
 })

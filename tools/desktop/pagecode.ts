@@ -33,7 +33,7 @@ export const cssHash = async (): Promise<string> => {
 }
 
 export interface Box { x: number; y: number; w: number; h: number }
-export interface Geometry { surface: [number, number, number, number] | null; composerTop: number | null; boxes: Box[]; messages: Box[][]; offset: [number, number] }
+export interface Geometry { surface: [number, number, number, number] | null; composerTop: number | null; boxes: Box[]; messages: Box[][]; offset: [number, number]; sidebar: Box[] }
 
 /**
  * The chat surface and what on it is NOT the field. Transcript text is excluded as tightly as the text itself: one box per
@@ -69,7 +69,10 @@ export const readGeometry = (): Geometry => {
   const s = document.querySelector('[data-chat-surface]')
   const dock = document.querySelector('[data-slot="composer-dock"]')
   const sr = s ? s.getBoundingClientRect() : null
+  // every sidebar row's box (window coordinates): the sidebar crops are cut from these
+  const sidebar = [...document.querySelectorAll('[data-sessions-mode] [data-slot="context-menu-trigger"]')].map(r => rect(r.getBoundingClientRect()))
   return {
+    sidebar,
     surface: sr ? [Math.round(sr.x), Math.round(sr.y), Math.round(sr.width), Math.round(sr.height)] : null,
     composerTop: dock ? Math.floor(dock.getBoundingClientRect().y) : null,
     boxes: [...messages.flat(), ...others],
@@ -97,4 +100,16 @@ export const readChrome = async (): Promise<{ strip: string; rim: { 'data-cf-sta
 export const switchState = (): string | null => {
   const sw = document.querySelector('[role="switch"][aria-label="Cuttlefish"]')
   return sw ? sw.getAttribute('aria-checked') : null
+}
+
+/** The status strip's DOM box, the viewport, and whether any element in it scrolls wider than its box (its text is cut). */
+export const readStrip = (): { box: Box | null; viewport: { w: number; h: number }; truncated: boolean; textOverflow: string } => {
+  const viewport = { w: window.innerWidth, h: window.innerHeight }
+  const el = document.querySelector('[data-cf-strip]') as HTMLElement | null
+  if (!el) return { box: null, viewport, truncated: false, textOverflow: '' }
+  const r = el.getBoundingClientRect()
+  const els = [el, ...Array.from(el.querySelectorAll('*'))] as HTMLElement[]
+  const truncated = els.some(e => e.scrollWidth > e.clientWidth)
+  const kinds = [...new Set(els.map(e => getComputedStyle(e).textOverflow))].sort()
+  return { box: { x: r.x, y: r.y, w: r.width, h: r.height }, viewport, truncated, textOverflow: kinds.join(',') }
 }
