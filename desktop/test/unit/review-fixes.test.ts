@@ -76,6 +76,8 @@ test('F4 hue is identity: no state changes the pigment hue of any organ (every p
     for (const ground of GROUNDS) for (const p of PRESETS) {
       for (const d of field({ seed: root, hueDeg: hue, ground, pattern: patternOf(DEFAULT_SETTINGS, p), motion: 'still' })) {
         if (!measurable(d.color)) continue
+        // the pupil is the ocellus's dark core (v2.1 §4), not an organ: its colour is set for its lightness, so its hue may drift
+        if (d.role === 'eyespot') continue
         let diff = Math.abs(hueOf(d.color) - hue); diff = Math.min(diff, 360 - diff)
         assert.ok(diff < 6, `${root}/${ground}/${p}/${d.role}: pigment hue ${hueOf(d.color).toFixed(1)} vs identity ${hue.toFixed(1)}`)
       }

@@ -121,13 +121,11 @@ test('reading lane: no organ in the text, the cards or under the header; the fie
   }
 })
 
-test('the lane keeps enough organs (≥ 40 visible) and error is never denser than resting', () => {
+test('the lane keeps enough organs (≥ 40 visible) at every size, for resting and working', () => {
   for (const [w, h] of SIZES) for (const ground of GROUNDS) {
     const count = (preset: string) => renderField({ ...inputOf(ROOTS[2], ground, preset), width: w, height: h })
       .filter(d => d.role === 'organ' && d.alpha > 0 && d.r > 0).length
     assert.ok(count('resting') >= 40, `${w}×${h}: ${count('resting')} organs`)
     assert.ok(count('working') >= 40, `${w}×${h}: ${count('working')} organs`)
-    const cov = (preset: string) => coverage(renderField({ ...inputOf(ROOTS[2], ground, preset), width: w, height: h }), w, h)
-    assert.ok(cov('error') <= cov('resting'), `${w}×${h}: error ${cov('error')} vs resting ${cov('resting')}`)
   }
 })

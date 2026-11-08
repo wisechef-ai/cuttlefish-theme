@@ -15,6 +15,12 @@ export {
 export {
   alphaFor, renderField, renderStrip, renderSwatch, toSvg,
 } from './field.ts'
+export {
+  contrast, inkFor, palette, type Palette,
+} from './ink.ts'
+export {
+  GLYPH_H, GLYPH_W, glyphExtras, glyphOf, type GlyphDot, type GlyphExtra, type Shape, STRIP_K,
+} from './glyph.ts'
 export { constellation, eyeSpotAt, type Constellation, type Organ } from './organs.ts'
 export {
   BLOOM_MS, bloomFactor, motionPlan,

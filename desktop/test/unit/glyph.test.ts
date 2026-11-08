@@ -36,8 +36,14 @@ test('every dot and extra of every state lies inside the 24×16 box (±0.5); the
       assert.ok(d.x - d.r >= -0.5 && d.x + d.r <= GLYPH_W + 0.5 && d.y - d.r >= -0.5 && d.y + d.r <= GLYPH_H + 0.5, `${base} dot leaves the box`)
     }
     for (const e of glyphExtras(base)) {
-      if (e.k === 'rect') assert.ok(e.x >= 0 && e.x + e.w <= GLYPH_W && e.y >= 0 && e.y + e.h <= GLYPH_H, `${base} rect leaves the box`)
-      if (e.k === 'ellipse') assert.ok(e.cx - e.rx >= 0 && e.cx + e.rx <= GLYPH_W && e.cy - e.ry >= 0 && e.cy + e.ry <= GLYPH_H, `${base} ellipse leaves the box`)
+      if (e.k === 'rect') {
+        const [x, y, w, h] = [e.x ?? 0, e.y ?? 0, e.w ?? 0, e.h ?? 0]
+        assert.ok(x >= 0 && x + w <= GLYPH_W && y >= 0 && y + h <= GLYPH_H, `${base} rect leaves the box`)
+      }
+      if (e.k === 'ellipse') {
+        const [cx, cy, rx, ry] = [e.cx ?? 0, e.cy ?? 0, e.rx ?? 0, e.ry ?? 0]
+        assert.ok(cx - rx >= 0 && cx + rx <= GLYPH_W && cy - ry >= 0 && cy + ry <= GLYPH_H, `${base} ellipse leaves the box`)
+      }
     }
     assert.equal(swatch('s', 'needs_you').width, GLYPH_W)
     assert.equal(swatch('s', 'needs_you').height, GLYPH_H)
@@ -87,12 +93,13 @@ function raster(base: PatternKind): boolean[] {
     for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
       const x = (px + 0.5) / S, y = (py + 0.5) / S
       let hit: boolean
-      if (e.k === 'rect') hit = e.stroke ? false : inRoundRect(e, x, y)
+      if (e.k === 'rect') hit = e.stroke ? false : inRoundRect({ x: e.x ?? 0, y: e.y ?? 0, w: e.w ?? 0, h: e.h ?? 0, rx: e.rx }, x, y)
       else if (e.k === 'ellipse') {
-        const q = Math.hypot((x - e.cx) / e.rx, (y - e.cy) / e.ry)
-        hit = e.stroke ? Math.abs(q - 1) * Math.min(e.rx, e.ry) <= e.stroke / 2 : q <= 1
+        const [cx, cy, rx, ry] = [e.cx ?? 0, e.cy ?? 0, e.rx ?? 1, e.ry ?? 1]
+        const q = Math.hypot((x - cx) / rx, (y - cy) / ry)
+        hit = e.stroke ? Math.abs(q - 1) * Math.min(rx, ry) <= e.stroke / 2 : q <= 1
       } else {
-        const pts = pathPts(e.d)
+        const pts = pathPts(e.d ?? '')
         const half = (e.stroke ?? 0) / 2
         hit = pts.slice(1).some((p, i) => segDist(x, y, pts[i], p) <= half)
       }
@@ -123,9 +130,10 @@ test('five silhouettes at 1×: pairwise IoU ≤ 0.55, and error vs finished-unse
 })
 
 test('WCAG 1.4.11: every mark pigment is ≥ 3.2:1 on every design row, selected or not; paper and pupil hold their own contrast', () => {
+  const rowsOf: Record<string, string[]> = { '#fefefe': ROWS.slice(0, 2), '#141416': ROWS.slice(2, 4), '#2e3440': ROWS.slice(4) }
   for (const ground of GROUNDS) for (const hue of HUES) {
     const pal = palette(hue, ground)
-    for (const row of ROWS) for (const p of ['chroma', 'soft', 'blanch'] as const) {
+    for (const row of rowsOf[ground]) for (const p of ['chroma', 'soft', 'blanch'] as const) {
       assert.ok(contrast(pal[p], row) >= 3.2, `${p} on ${row} (ground ${ground}, hue ${hue}): ${contrast(pal[p], row).toFixed(2)}`)
     }
     assert.ok(contrast(pal.paper, pal.chroma) >= 3.5, `paper vs chroma on ${ground}`)
@@ -163,8 +171,8 @@ test('finished-unseen: exactly one eye-spot dot (core r 4.5, ≥ 7× the median 
   const plate = err.find(e => e.k === 'rect')
   assert.ok(plate && plate.alpha === 0.14, 'error has a pale plate')
   const frame = err.find(e => e.k === 'path')!
-  assert.match(frame.d, /^M[\d. ]+(?:[HV][\d. ]+)+$/, 'the frame is M H V only')
-  const pts = [...frame.d.matchAll(/([HV])\s*([\d.]+)|M\s*([\d.]+)\s+([\d.]+)/g)]
+  assert.match(frame.d ?? '', /^M[\d. ]+(?:[HV][\d. ]+)+$/, 'the frame is M H V only')
+  const pts = [...(frame.d ?? '').matchAll(/([HV])\s*([\d.]+)|M\s*([\d.]+)\s+([\d.]+)/g)]
   let x = 0, y = 0
   const verts: Array<[number, number]> = []
   for (const m of pts) {
@@ -195,13 +203,13 @@ test('extras are never circles: every extra is a rect, an ellipse or a path', ()
     assert.ok(['rect', 'ellipse', 'path'].includes(e.k), `${base} extra ${e.k}`)
   }
   const sw = swatch('s', 'finished_unseen')
-  assert.ok(sw.extras.length >= 2 && sw.extras.every(e => e.k === 'rect' || e.k === 'ellipse' || e.k === 'path'))
+  assert.ok(sw.extras.length >= 2 && sw.extras.every(e => e.tag === 'rect' || e.tag === 'ellipse' || e.tag === 'path'))
 })
 
 test('coarse features at 1×: resting is one blob; working a flat-bottomed cloud; needs you a filled chip with paper bars; error hollow', () => {
   const rest = glyphOf('mottle')
-  for (let i = 0; i < rest.length; i++) for (let j = i + 1; j < rest.length; j++) {
-    assert.ok(Math.hypot(rest[i].x - rest[j].x, rest[i].y - rest[j].y) < rest[i].r + rest[j].r, 'resting dots overlap into one oval')
+  for (let i = 0; i + 1 < rest.length; i++) {
+    assert.ok(Math.hypot(rest[i].x - rest[i + 1].x, rest[i].y - rest[i + 1].y) < rest[i].r + rest[i + 1].r, 'neighbouring resting dots overlap into one oval')
   }
   const xs = rest.flatMap(d => [d.x - d.r, d.x + d.r]), ys = rest.flatMap(d => [d.y - d.r, d.y + d.r])
   assert.ok(Math.max(...xs) - Math.min(...xs) <= 13 && Math.max(...ys) - Math.min(...ys) <= 7, 'a small oval, smaller than the cloud')

@@ -79,8 +79,8 @@ test('svg (v2.1): extras draw BELOW the dots, or ABOVE them when marked, as rect
   const jsx: Jsx = (type, props) => ({ type, props })
   const dots = [{ x: 1, y: 1, r: 1, color: '#123456', alpha: 1 }]
   const extras = [
-    { k: 'rect', x: 0, y: 0, w: 2, h: 2, rx: 0, color: '#abcdef', alpha: 1, fill: true },
-    { k: 'path', d: 'M0 0 L2 2', color: '#fedcba', stroke: 1, above: true },
+    { tag: 'rect', attrs: { x: 0, y: 0, width: 2, height: 2, fill: '#abcdef' }, above: false },
+    { tag: 'path', attrs: { d: 'M0 0 L2 2', stroke: '#fedcba' }, above: true },
   ]
   const el = svgElement(jsx, { width: 4, height: 4 }, {}, dots, extras) as { props: { children: Array<{ type: string }> } }
   assert.deepEqual(el.props.children.map(c => c.type), ['rect', 'circle', 'path'])

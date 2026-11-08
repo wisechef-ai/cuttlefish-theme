@@ -12,12 +12,9 @@ import {
   type PluginContribution, type PluginContext, type SessionRowSlotProps,
 } from '@hermes/plugin-sdk'
 import { allocate, renderStrip, renderSwatch, signalsOf, stateFor } from '../domain/index.ts'
-import { rimElement } from './rim.ts'
+import { RIM_HEIGHT, rimElement } from './rim.ts'
 import { svgElement } from './svg.ts'
 import { safePattern, seedOfStored, type CfView } from './view.ts'
-
-/** The composer rim's height in px (brief: a 4–6 px band; the top of that range, so the cues read). */
-const RIM_HEIGHT = 6
 
 /** Re-render when — and only when — this surface's own derived key changes (React compares the snapshot by value). */
 function useLive(v: CfView, key: () => string): void {
@@ -45,7 +42,7 @@ function SwatchView({ v, sessionId }: { v: CfView } & SessionRowSlotProps): unkn
     pattern: safePattern(v.settings, state),
     intensity: v.settings.intensity,
   })
-  return svgElement(jsx, out, { 'data-cf-session': sessionId, 'data-cf-state': state }, out.dots)
+  return svgElement(jsx, out, { 'data-cf-session': sessionId, 'data-cf-state': state }, out.dots, out.extras)
 }
 
 /** The focused state's words; when its label is empty (resting's locked default) or the settings do not name it, the
@@ -76,19 +73,20 @@ function StripView({ v }: { v: CfView }): unknown {
     'data-cf-state': state,
     'data-cf-strip': 'cuttlefish',
     // one nowrap row: the label must sit BESIDE the glyph — stacked below it, the status bar's fixed height clipped it
-    style: { display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1, flexShrink: 0 },
-    children: [svgElement(jsx, strip, { style: { display: 'block', flexShrink: 0 } }, strip.dots), labelOf(v, state)],
+    style: { display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1, flexShrink: 0, fontWeight: 600 },
+    children: [svgElement(jsx, strip, { style: { display: 'block', flexShrink: 0 } }, strip.dots, strip.extras), labelOf(v, state)],
   })
 }
 
-/** The composer rim: one clean 6 px band echoing the state's glyph, no words, static. */
+/** The composer rim: one 10 px pill echoing the state's mark, no words, static. */
 function RimView({ v }: { v: CfView }): unknown {
   useLive(v, () => chromeKey(v))
   const state = v.focusedState
   return jsx('div', {
     'data-cf-state': state,
     'data-cf-rim': 'cuttlefish',
-    style: { width: '100%', height: RIM_HEIGHT, overflow: 'hidden', lineHeight: 0, pointerEvents: 'none' },
+    // 5 px clear of the composer box, so the rim can never read as a doubled border
+    style: { width: '100%', height: RIM_HEIGHT, marginBottom: 5, overflow: 'hidden', lineHeight: 0, pointerEvents: 'none' },
     children: rimElement(jsx, { base: safePattern(v.settings, state).base, hueDeg: v.hueDeg, ground: v.ground, intensity: v.settings.intensity, height: RIM_HEIGHT }),
   })
 }

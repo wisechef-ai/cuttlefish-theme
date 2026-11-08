@@ -10,7 +10,7 @@ const input = (base: PatternKind, over = {}) => ({ base, hueDeg: 200, ground: '#
 const flat = (ns: RimNode[]): RimNode[] => ns.flatMap(n => [n, ...flat(n.children ?? [])])
 /** The body: everything after the <defs> (the clip and any tiles). */
 const body = (b: PatternKind, over = {}): RimNode[] => rimNodes(input(b, over)).filter(n => n.tag !== 'defs')
-const pill = (b: PatternKind): RimNode => body(b).find(n => n.tag === 'rect' && n.attrs.rx === 4.25)!
+const pill = (b: PatternKind, over = {}): RimNode => body(b, over).find(n => n.tag === 'rect' && n.attrs.rx === 4.25)!
 
 test('the rim is 10 px tall and every state draws the same pill (one system, not five bands)', () => {
   assert.equal(RIM_HEIGHT, 10)
@@ -28,7 +28,7 @@ test('the rim is 10 px tall and every state draws the same pill (one system, not
 test('what each state fills the pill with: hairline outline, cloud trains, diagonal stripes, pale wash in a broken frame, one eye', () => {
   assert.equal(body('mottle').length, 1, 'resting: the outline alone')
   assert.equal(pill('mottle')!.attrs.fill, 'none')
-  const trains = flat(body('clouds')).filter(n => n.tag === 'circle')
+  const trains = flat(rimNodes(input('clouds'))).filter(n => n.tag === 'circle')
   assert.ok(trains.length >= 12, `clouds: lobe trains (${trains.length} circles)`)
   assert.ok(flat(body('clouds')).some(n => n.tag === 'rect' && String(n.attrs.fill).startsWith('url(')), 'clouds: a track filled with the trains')
   const stripes = flat(rimNodes(input('zebra'))).find(n => n.tag === 'pattern')!
@@ -36,7 +36,7 @@ test('what each state fills the pill with: hairline outline, cloud trains, diago
   assert.match(String(stripes.attrs.patternTransform), /skewX\(-45\)/, 'stripes are slanted')
   assert.equal(flat(rimNodes(input('zebra'))).find(n => n.tag === 'rect' && n.attrs.width === 6)?.attrs.width, 6, 'a stripe is six wide')
   const blanch = body('blanch')
-  assert.ok(blanch.some(n => n.tag === 'rect' && n.attrs['fill-opacity'] === 0.38), 'error: a pale wash')
+  assert.ok(flat(blanch).some(n => n.tag === 'rect' && n.attrs['fill-opacity'] === 0.38), 'error: a pale wash')
   assert.ok(pill('blanch')!.attrs['stroke-dasharray'] !== undefined, 'and a broken outline')
   assert.equal(pill('blanch')!.attrs['stroke-width'], 3, 'a firmer frame')
   const eye = body('eyespot').filter(n => n.tag === 'circle')
@@ -45,10 +45,10 @@ test('what each state fills the pill with: hairline outline, cloud trains, diago
 })
 
 test('hue is identity: the bands carry the session pigment, error the near-achromatic one, the pupil the spot', () => {
-  const fill = (b: PatternKind, hue: number) => String(pill(b)!.attrs.stroke ?? pill(b)!.attrs.fill)
-  assert.notEqual(fill('clouds', 140), fill('clouds', 280))
-  assert.equal(fill('zebra', 200), palette(200, '#fefefe').chroma)
-  const [r, g, b] = [1, 3, 5].map(i => parseInt(String(pill('blanch')!.attrs.stroke).slice(i, i + 2), 16))
+  const stroke = (b: PatternKind, hue: number) => String(pill(b, { hueDeg: hue }).attrs.stroke)
+  assert.notEqual(stroke('clouds', 140), stroke('clouds', 280))
+  assert.equal(stroke('zebra', 200), palette(200, '#fefefe').chroma)
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(stroke('blanch', 200).slice(i, i + 2), 16))
   assert.ok(Math.max(r, g, b) - Math.min(r, g, b) < 24, 'pale, near-grey')
 })
 

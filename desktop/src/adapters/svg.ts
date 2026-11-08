@@ -23,19 +23,33 @@ export function dotElements(jsx: Jsx, dots: readonly DotLike[]): unknown[] {
   return out
 }
 
-/** The root <svg> carrying the surface attributes and the dots. */
+/** A non-circle shape of a mark: its SVG tag and raw attributes (the domain has already scaled and coloured it). */
+export interface ShapeLike {
+  tag: string
+  attrs: Record<string, unknown>
+  above: boolean
+}
+
+/** The root <svg> carrying the surface attributes, the mark's extras and its dots. Extras draw BELOW the dots unless marked
+ *  `above` (the paper bars and flecks sit on top of a filled mark); a mark with no extras is just its dots. */
 export function svgElement(
   jsx: Jsx,
   box: { width: number; height: number },
   attrs: Record<string, unknown>,
   dots: readonly DotLike[],
+  extras: readonly ShapeLike[] = [],
 ): unknown {
+  const shape = (x: ShapeLike): unknown => jsx(x.tag, x.attrs)
   return jsx('svg', {
     width: box.width,
     height: box.height,
     viewBox: `0 0 ${box.width} ${box.height}`,
     ...attrs,
-    children: dotElements(jsx, dots),
+    children: [
+      ...extras.filter(x => !x.above).map(shape),
+      ...dotElements(jsx, dots),
+      ...extras.filter(x => x.above).map(shape),
+    ],
   })
 }
 

@@ -316,51 +316,87 @@ Object.assign(exports, { ringOf, fieldCss });
 };
 
 __cf_defs["src/adapters/rim.ts"] = (exports) => {
-// The composer RIM (C1/C6): one clean thin band above the composer that echoes the state's glyph — never texture.
-//   resting = a hairline          working = a track with bold cloud segments   needs you = bold diagonal stripes
-//   error   = a pale wash inside a broken (dashed) outline — the swatch's hollow dashed oval    finished unseen = a hairline with one dark eye-spot
-// Identity hue throughout (error is the near-achromatic pale pigment); the state speaks through shape and ink.
-// The band is a tree of plain nodes, rendered as React elements (the surface) or as SVG text (the dev sheets).
-const { alphaFor, hexToRgb, planGround } = __cf_require("src/domain/index.ts");const SPOT_INK = 0.3
+// The composer RIM (v2.1 §3): ONE system. Every state draws the same 10 px pill (same placement, same round caps, 1 px
+// inset); only what fills the pill and how its outline is drawn changes, echoing the state's mark:
+//   resting          the outline alone (hairline)         working   lobe trains (cloud) filling the pill
+//   needs you        diagonal stripes, a firm outline      error     a pale wash in a broken, firmer outline
+//   finished unseen  the outline plus one eye (ring and pupil) at the left third
+// The band is a tree of plain nodes, rendered as React elements (the surface) or as SVG text (the dev sheets). Static:
+// rendering it never wakes the loop (P3.2b). Colours are opaque, from palette() in ink.ts (identity, never state).
+const { palette } = __cf_require("src/domain/index.ts");/** The composer rim's height in px (spec §3: the pill is 8.5 px tall inside it). */
+const RIM_HEIGHT = 10
+const CAP_ID = 'cf-rim-cap'
+const TRAINS_ID = 'cf-rim-trains'
 const STRIPE_ID = 'cf-rim-stripes'
-/** The fill + opacity that shows `ink` (|dL|) of a pigment on this ground. */
-function inkOf(plan            , hex        , maxDl        , ink        , intensity        )                                  {
-  const alpha = alphaFor(Math.min(0.3, ink * intensity), hexToRgb(hex), plan, maxDl)
-  return { fill: hex, opacity: Number(alpha.toFixed(3)) }
+/** The cloud trains repeat on this tile (the adapter does not know the composer's width; a 600 px period is the design's tile). */
+const TRAIN_TILE = 600
+/** Five train shapes (lobe radii), cycled; spacing between trains is 40 px plus a seeded-looking step (k·37 mod 70). */
+const TRAINS                                 = [[3.2, 4.6, 3.6], [3.8, 5, 4, 2.8], [3, 4.2], [3.6, 5, 4], [3, 4.4, 3.2]]
+
+/** The lobe circles of the cloud trains over one tile: lobe i of a train sits 1.15·r past the one before it. */
+function trainCircles(h        , c        )            {
+  const out            = []
+  let x = 26, k = 0
+  while (x < TRAIN_TILE - 40) {
+    const t = TRAINS[k++ % TRAINS.length]
+    let lx = x
+    for (const r of t) {
+      out.push({ tag: 'circle', attrs: { cx: Number(lx.toFixed(2)), cy: h / 2, r, fill: c } })
+      lx += 1.15 * r
+    }
+    x = lx + 40 + ((k * 37) % 70)
+  }
+  return out
 }
 
-/** The band's nodes for one pattern base; an unknown base degrades to the hairline. Width is '100%' of the composer. */
+/** The one pill every state shares: 1 px inside the rim, round caps. */
+function pillAttrs(h        )                                  {
+  return { x: 0.75, y: 0.75, width: '100%', height: h - 1.5, rx: (h - 1.5) / 2 }
+}
+
+/** The band's nodes for one pattern base; an unknown base degrades to the calm outline. */
 function rimNodes(i          )            {
-  const plan = planGround(i.hueDeg, i.ground)
+  const pal          = palette(i.hueDeg, i.ground)
   const h = i.height
-  const chroma = (ink        ) => inkOf(plan, plan.chroma, plan.chromaMaxDl, ink, i.intensity)
-  const hair          = { tag: 'rect', attrs: { x: 0, y: h - 1, width: '100%', height: 1, ...chroma(0.08) } }
+  const pill = (stroke        , width        , dash         )          => ({
+    tag: 'rect', attrs: { ...pillAttrs(h), fill: 'none', stroke, 'stroke-width': width, ...(dash ? { 'stroke-dasharray': dash } : {}) },
+  })
+  const clip          = { tag: 'clipPath', attrs: { id: CAP_ID }, children: [{ tag: 'rect', attrs: pillAttrs(h) }] }
+  const cap = (children           )          => ({ tag: 'g', attrs: { 'clip-path': `url(#${CAP_ID})` }, children })
+  const fillAll = (fill        , extra                                  = {})          => ({
+    tag: 'rect', attrs: { x: 0, y: 0, width: '100%', height: h, fill, ...extra },
+  })
+  let body           
   switch (i.base) {
-    case 'clouds':
-      return [
-        { tag: 'rect', attrs: { x: 0, y: h * 0.25, width: '100%', height: h * 0.5, ...chroma(0.09) } },
-        ...[['3%', '17%'], ['27%', '24%'], ['58%', '15%'], ['79%', '18%']].map(([x, w])          => (
-          { tag: 'rect', attrs: { x, y: 0, width: w, height: h, rx: h / 2, ...chroma(0.30) } })),
-      ]
-    case 'zebra':
-      return [
-        { tag: 'defs', attrs: {}, children: [{ tag: 'pattern', attrs: { id: STRIPE_ID, width: 12, height: h, patternUnits: 'userSpaceOnUse', patternTransform: 'skewX(-45)' },
-          children: [{ tag: 'rect', attrs: { x: 0, y: 0, width: 6, height: h, ...chroma(0.30) } }] }] },
-        { tag: 'rect', attrs: { x: 0, y: 0, width: '100%', height: h, fill: `url(#${STRIPE_ID})` } },
-      ]
-    case 'blanch': {
-      const wash = inkOf(plan, plan.blanch, plan.blanchMaxDl, 0.12, i.intensity)
-      const line = inkOf(plan, plan.blanch, plan.blanchMaxDl, 0.34, i.intensity)
-      return [
-        { tag: 'rect', attrs: { x: 0, y: 0, width: '100%', height: h, ...wash } },
-        { tag: 'rect', attrs: { x: 0.75, y: 0.75, width: '100%', height: h - 1.5, fill: 'none', stroke: String(line.fill), 'stroke-opacity': line.opacity, 'stroke-width': 1.5, 'stroke-dasharray': '7 5' } },
-      ]
+    case 'clouds': {
+      const trains          = { tag: 'pattern', attrs: { id: TRAINS_ID, width: TRAIN_TILE, height: h, patternUnits: 'userSpaceOnUse' }, children: trainCircles(h, pal.chroma) }
+      return finish([{ tag: 'defs', attrs: {}, children: [clip, trains] }, cap([fillAll(`url(#${TRAINS_ID})`)]), pill(pal.chroma, 1)], i)
     }
+    case 'zebra': {
+      const stripes          = { tag: 'pattern', attrs: { id: STRIPE_ID, width: 12, height: h, patternUnits: 'userSpaceOnUse', patternTransform: 'skewX(-45)' },
+        children: [{ tag: 'rect', attrs: { x: 0, y: 0, width: 6, height: h, fill: pal.chroma } }] }
+      return finish([{ tag: 'defs', attrs: {}, children: [clip, stripes] }, cap([fillAll(`url(#${STRIPE_ID})`)]), pill(pal.chroma, 1.5)], i)
+    }
+    case 'blanch':
+      // the pale wash fills the pill; the outline is the firmer, broken frame (the mark's hollow square, drawn as a band)
+      body = [{ tag: 'defs', attrs: {}, children: [clip] }, cap([fillAll(pal.blanch, { 'fill-opacity': 0.38 })]), pill(pal.blanch, 3, '40 14')]
+      break
     case 'eyespot':
-      return [hair, { tag: 'circle', attrs: { cx: h * 3, cy: h / 2, r: h * 0.46, ...inkOf(plan, plan.spot, plan.spotMaxDl, SPOT_INK, i.intensity) } }]
+      body = [{ tag: 'defs', attrs: {}, children: [clip] }, pill(pal.chroma, 1),
+        { tag: 'circle', attrs: { cx: 14, cy: h / 2, r: 3.9, fill: pal.chroma, 'fill-opacity': 0.3, stroke: pal.chroma, 'stroke-width': 1.2 } },
+        { tag: 'circle', attrs: { cx: 14, cy: h / 2, r: 2.4, fill: pal.spot } }]
+      break
+    case 'mottle':
     default:
-      return [hair]
+      body = [{ tag: 'defs', attrs: {}, children: [clip] }, pill(pal.chroma, 1)]
   }
+  return finish(body, i)
+}
+
+/** Intensity 0 switches the band off (the same dial as the marks): every drawn node is transparent. */
+function finish(nodes           , i          )            {
+  if (i.intensity > 0) return nodes
+  return nodes.map(n => (n.tag === 'defs' ? n : { ...n, attrs: { ...n.attrs, opacity: 0 } }))
 }
 
 /** The nodes as React elements through the host's jsx factory. */
@@ -378,7 +414,7 @@ function rimSvg(i                              )         {
   return `<svg width="${i.width}" height="${i.height}">${rimNodes(i).map(text).join('')}</svg>`
 }
 
-Object.assign(exports, { rimNodes, rimElement, rimSvg });
+Object.assign(exports, { RIM_HEIGHT, rimNodes, rimElement, rimSvg });
 };
 
 __cf_defs["src/adapters/runtime.ts"] = (exports) => {
@@ -637,13 +673,10 @@ __cf_defs["src/adapters/surfaces.ts"] = (exports) => {
 // view's version (useSyncExternalStore) and re-reads on render, so a render is
 // always pure observation and never wakes the loop (P3.2b). The titlebar mount
 // is the plugin's permanent style owner; it renders nothing itself.
-const { useEffect, useSyncExternalStore } = __cf_ext("react");const { jsx } = __cf_ext("react/jsx-runtime");const { COMPOSER_AREAS, SESSION_ROW_AREAS, STATUSBAR_AREAS, TITLEBAR_AREAS } = __cf_ext("@hermes/plugin-sdk");const { allocate, renderStrip, renderSwatch, signalsOf, stateFor } = __cf_require("src/domain/index.ts");const { rimElement } = __cf_require("src/adapters/rim.ts");const { svgElement } = __cf_require("src/adapters/svg.ts");const { safePattern, seedOfStored } = __cf_require("src/adapters/view.ts");/** The composer rim's height in px (brief: a 4–6 px band; the top of that range, so the cues read). */
-const RIM_HEIGHT = 6
-/** Re-render when — and only when — this surface's own derived key changes (React compares the snapshot by value). */
+const { useEffect, useSyncExternalStore } = __cf_ext("react");const { jsx } = __cf_ext("react/jsx-runtime");const { COMPOSER_AREAS, SESSION_ROW_AREAS, STATUSBAR_AREAS, TITLEBAR_AREAS } = __cf_ext("@hermes/plugin-sdk");const { allocate, renderStrip, renderSwatch, signalsOf, stateFor } = __cf_require("src/domain/index.ts");const { RIM_HEIGHT, rimElement } = __cf_require("src/adapters/rim.ts");const { svgElement } = __cf_require("src/adapters/svg.ts");const { safePattern, seedOfStored } = __cf_require("src/adapters/view.ts");/** Re-render when — and only when — this surface's own derived key changes (React compares the snapshot by value). */
 function useLive(v        , key              )       {
   useSyncExternalStore((cb            ) => v.listen(cb), key)
 }
-
 /** A row swatch's whole input: its own state and how things look. Another session's change leaves it alone. */
 function swatchKey(v        , sessionId        )         {
   return `${stateFor(v.settings, signalsOf(v.feed, sessionId))}|${v.styleKey}`
@@ -665,7 +698,7 @@ function SwatchView({ v, sessionId }                                     )      
     pattern: safePattern(v.settings, state),
     intensity: v.settings.intensity,
   })
-  return svgElement(jsx, out, { 'data-cf-session': sessionId, 'data-cf-state': state }, out.dots)
+  return svgElement(jsx, out, { 'data-cf-session': sessionId, 'data-cf-state': state }, out.dots, out.extras)
 }
 
 /** The focused state's words; when its label is empty (resting's locked default) or the settings do not name it, the
@@ -696,19 +729,20 @@ function StripView({ v }               )          {
     'data-cf-state': state,
     'data-cf-strip': 'cuttlefish',
     // one nowrap row: the label must sit BESIDE the glyph — stacked below it, the status bar's fixed height clipped it
-    style: { display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1, flexShrink: 0 },
-    children: [svgElement(jsx, strip, { style: { display: 'block', flexShrink: 0 } }, strip.dots), labelOf(v, state)],
+    style: { display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1, flexShrink: 0, fontWeight: 600 },
+    children: [svgElement(jsx, strip, { style: { display: 'block', flexShrink: 0 } }, strip.dots, strip.extras), labelOf(v, state)],
   })
 }
 
-/** The composer rim: one clean 6 px band echoing the state's glyph, no words, static. */
+/** The composer rim: one 10 px pill echoing the state's mark, no words, static. */
 function RimView({ v }               )          {
   useLive(v, () => chromeKey(v))
   const state = v.focusedState
   return jsx('div', {
     'data-cf-state': state,
     'data-cf-rim': 'cuttlefish',
-    style: { width: '100%', height: RIM_HEIGHT, overflow: 'hidden', lineHeight: 0, pointerEvents: 'none' },
+    // 5 px clear of the composer box, so the rim can never read as a doubled border
+    style: { width: '100%', height: RIM_HEIGHT, marginBottom: 5, overflow: 'hidden', lineHeight: 0, pointerEvents: 'none' },
     children: rimElement(jsx, { base: safePattern(v.settings, state).base, hueDeg: v.hueDeg, ground: v.ground, intensity: v.settings.intensity, height: RIM_HEIGHT }),
   })
 }
@@ -760,19 +794,33 @@ function dotElements(jsx     , dots                    )            {
   return out
 }
 
-/** The root <svg> carrying the surface attributes and the dots. */
+/** A non-circle shape of a mark: its SVG tag and raw attributes (the domain has already scaled and coloured it). */
+                            
+             
+                                
+                
+ 
+
+/** The root <svg> carrying the surface attributes, the mark's extras and its dots. Extras draw BELOW the dots unless marked
+ *  `above` (the paper bars and flecks sit on top of a filled mark); a mark with no extras is just its dots. */
 function svgElement(
   jsx     ,
   box                                   ,
   attrs                         ,
   dots                    ,
+  extras                       = [],
 )          {
+  const shape = (x           )          => jsx(x.tag, x.attrs)
   return jsx('svg', {
     width: box.width,
     height: box.height,
     viewBox: `0 0 ${box.width} ${box.height}`,
     ...attrs,
-    children: dotElements(jsx, dots),
+    children: [
+      ...extras.filter(x => !x.above).map(shape),
+      ...dotElements(jsx, dots),
+      ...extras.filter(x => x.above).map(shape),
+    ],
   })
 }
 
@@ -1425,12 +1473,12 @@ __cf_defs["src/domain/field.ts"] = (exports) => {
 // pattern.ts; this module turns a target |dL| into an alpha by exact inversion of the sRGB
 // source-over composite the browser (and the acceptance instruments) perform. Pure throughout:
 // same input, same dots, bit for bit.
-const { effectiveDl, inkTargets, MAX_DL, planGround, radiusFactors, twinkleFactor } = __cf_require("src/domain/pattern.ts");const { bloomFactor } = __cf_require("src/domain/motion.ts");const { constellation, eyeSpotAt } = __cf_require("src/domain/organs.ts");const { GLYPH_H, GLYPH_W, glyphOf } = __cf_require("src/domain/glyph.ts");const { deltaLOf, hexToRgb, rgbToHex } = __cf_require("src/domain/oklch.ts");const FIELD_TARGET = 190        // organs on a desktop-sized surface (~12 per classifier bin)
+const { effectiveDl, inkTargets, MAX_DL, planGround, radiusFactors, twinkleFactor } = __cf_require("src/domain/pattern.ts");const { bloomFactor } = __cf_require("src/domain/motion.ts");const { constellation, eyeSpotAt } = __cf_require("src/domain/organs.ts");const { GLYPH_H, GLYPH_W, glyphExtras, glyphOf, STRIP_K } = __cf_require("src/domain/glyph.ts");const { palette } = __cf_require("src/domain/ink.ts");const { deltaLOf, hexToRgb, rgbToHex } = __cf_require("src/domain/oklch.ts");const FIELD_TARGET = 190        // organs on a desktop-sized surface (~12 per classifier bin)
 const FIELD_R = [0.062, 0.098]
-const SWATCH_W = GLYPH_W, SWATCH_H = GLYPH_H
-const STRIP_W = GLYPH_W, STRIP_H = GLYPH_H
-const SPOT_SCALE_FIELD = 5.4, SPOT_SCALE_SMALL = 2.6
-const SPOT_DL = 0.156
+const SPOT_SCALE_FIELD = 4.3
+const SPOT_DL = 0.50
+/** Reading lane: organs left of this fraction of the width are drawn smaller (radius only: the locked tests are per-dot ink; the median organ must stay near the right half's). */
+const LANE_FRAC = 0.60, LANE_PX = 704, LANE_MAX = 0.70, TOP_PX = 64, BOTTOM = 0.12, DENSITY = 1.6
 
 /** Invert the composite: the alpha at which `pigment` shows `target` |dL| on the ground. */
 function alphaFor(target        , pigRgb     , plan            , maxDl        )         {
@@ -1462,17 +1510,17 @@ function organDots(spec             , core            , seed        , intensity 
   }))
 }
 
-function eyeDot(core            , seed        , width        , height        , intensity        , bloom        , small         )      {
+function eyeDot(core            , seed        , width        , height        , intensity        , bloom        )      {
   const pig = core.pigmentFor('spot')
   const at = eyeSpotAt(seed, width, height)
-  const r = core.cons.medR * (small ? SPOT_SCALE_SMALL : SPOT_SCALE_FIELD)
+  const r = core.cons.medR * SPOT_SCALE_FIELD
   const margin = r + 0.5
   return {
     x: Math.min(width - margin, Math.max(margin, at.x)),
     y: Math.min(height - margin, Math.max(margin, at.y)),
     r,
     color: pig.hex,
-    alpha: alphaFor(Math.min(MAX_DL, SPOT_DL * intensity * bloom), pig.rgb, core.plan, pig.maxDl),
+    alpha: alphaFor(Math.min(pig.maxDl, SPOT_DL * intensity * bloom), pig.rgb, core.plan, pig.maxDl),
     role: 'eyespot',
   }
 }
@@ -1491,49 +1539,65 @@ const organPigmentOf = (base                     )              => (base === 'bl
 /** The background field: a sparse organ scatter on the user's own ground, never a fill. */
 function renderField(input            )        {
   const plan = planGround(input.hueDeg, input.ground)
-  const cons = constellation(input.seed, input.width, input.height, FIELD_TARGET, FIELD_R[0], FIELD_R[1])
-  const targets = inkTargets(input.pattern, cons, input.width, input.height, plan, input.seed, {
-    tMs: input.tMs, motion: input.motion, reducedMotion: input.reducedMotion, small: false,
-  })
+  // THE READING LANE. Organs live only in the open region of the surface: right of `lane` (the text and cards sit on the left;
+  // measured on the real Desktop: cards end 680 px from the surface's left edge), below the header (64 px) and above the composer (12 %).
+  const laneFrac = Math.min(LANE_MAX, Math.max(LANE_FRAC, LANE_PX / input.width))
+  const lane = laneFrac * input.width
+  const top = Math.min(0.12 * input.height, Math.max(0.05 * input.height, TOP_PX))
+  const rw = input.width - lane, rh = input.height * (1 - BOTTOM) - top
+  const local = constellation(input.seed, rw, rh, Math.round(FIELD_TARGET * (rw * rh) / (input.width * input.height) * DENSITY), FIELD_R[0], FIELD_R[1])
+  const cons = { ...local, organs: local.organs.map(o => ({ ...o, x: o.x + lane, y: o.y + top })) }
+  // clouds travel over the open region only; every other pattern is read by the classifier against the whole surface, so it keeps whole-surface coordinates
+  const clouds = input.pattern.base === 'clouds'
+  const targets = clouds
+    ? inkTargets(input.pattern, local, rw, rh, plan, input.seed, { tMs: input.tMs, motion: input.motion, reducedMotion: input.reducedMotion, small: false })
+    : inkTargets(input.pattern, cons, input.width, input.height, plan, input.seed, { tMs: input.tMs, motion: input.motion, reducedMotion: input.reducedMotion, small: false })
   const bloom = bloomFactor(input.sinceChangeMs, input.motion, input.reducedMotion)
   const core             = { cons, plan, pigmentFor: k => pigment(plan, k) }
   // reduced motion is `off` for every time-dependent term (bloom above, twinkle here)
   const motion = input.reducedMotion ? 'off' : input.motion
   const scales = radiusFactors(input.pattern, cons, input.width, input.height)
   const dots = organDots(input.pattern, core, input.seed, input.intensity, bloom, input.tMs, motion, targets, scales)
-  if (input.pattern.base === 'eyespot') dots.push(eyeDot(core, input.seed, input.width, input.height, input.intensity, bloom, false))
+  if (input.pattern.base === 'eyespot') dots.push(eyeDot(core, input.seed, input.width, input.height, input.intensity, bloom))
   return dots
 }
 
-/** The glyph of a pattern as dots in a w×h box: `copies` side by side, centred (the strip tiles it, the swatch is one). */
-function renderSmall(input             , w        , h        , copies        ) 
-                                                 {
-  const plan = planGround(input.hueDeg, input.ground)
-  const core             = { cons: { organs: [], medR: 0 }, plan, pigmentFor: k => pigment(plan, k) }
-  const glyph = glyphOf(input.pattern.base)
-  const dots        = []
-  for (let c = 0; c < copies; c++) {
-    const dx = (w - GLYPH_W * copies) / 2 + GLYPH_W * c
-    for (const g of glyph) {
-      const pig = core.pigmentFor(g.pigment)
-      dots.push({
-        x: g.x + dx, y: g.y + (h - GLYPH_H) / 2, r: g.r, color: pig.hex,
-        alpha: alphaFor(effectiveDl(g.ink, input.intensity, 1, 1), pig.rgb, plan, pig.maxDl),
-        role: g.pigment === 'spot' ? 'eyespot' : 'organ',
-      })
-    }
-  }
-  return { dots, width: w, height: h }
+/** What a mark is drawn with: the pigment's colour, and the shape's paint at the mark's scale (`k`) and dial (`on`). */
+function shapeOf(e            , pal         , k        , on         )        {
+  const colour = pal[e.pigment]
+  const paint                                  = e.stroke !== undefined
+    ? { fill: 'none', stroke: colour, 'stroke-width': e.stroke * k, 'stroke-linejoin': 'miter', 'stroke-opacity': on ? 1 : 0 }
+    : { fill: colour, 'fill-opacity': on ? (e.alpha ?? 1) : 0 }
+  const geometry                                  = e.k === 'rect'
+    ? { x: (e.x ?? 0) * k, y: (e.y ?? 0) * k, width: (e.w ?? 0) * k, height: (e.h ?? 0) * k, rx: (e.rx ?? 0) * k }
+    : e.k === 'ellipse'
+      ? { cx: (e.cx ?? 0) * k, cy: (e.cy ?? 0) * k, rx: (e.rx ?? 0) * k, ry: (e.ry ?? 0) * k }
+      : { d: (e.d ?? '').replace(/-?\d*\.?\d+/g, m => String(Number(m) * k)) }
+  return { tag: e.k, attrs: { ...geometry, ...paint }, above: e.above === true }
 }
 
-/** The sidebar row swatch: the state's glyph in the session's hue, legible at a glance. */
-function renderSwatch(input             )                                                 {
-  return renderSmall(input, SWATCH_W, SWATCH_H, 1)
+/** A mark at scale k (1: the row swatch, 24×16; STRIP_K: the status strip, 21×14). OPAQUE: the dots are solid and the
+ *  dial acts only as on/off (any intensity above 0 is full, between 0 and 1 is the dot's alpha), so the mark's shape and
+ *  ink never depend on a fade. */
+function renderMark(input             , k        )                                                                  {
+  const pal = palette(input.hueDeg, input.ground)
+  const alpha = input.intensity > 0 ? Math.min(1, input.intensity) : 0
+  const dots = glyphOf(input.pattern.base).map((g)      => ({
+    x: g.x * k, y: g.y * k, r: g.r * k, color: pal[g.pigment], alpha,
+    role: g.pigment === 'spot' ? 'eyespot' : 'organ',
+  }))
+  const extras = glyphExtras(input.pattern.base).map(e => shapeOf(e, pal, k, alpha > 0))
+  return { dots, width: GLYPH_W * k, height: GLYPH_H * k, extras }
 }
 
-/** The status-bar strip: the same glyph, once, beside its words. */
-function renderStrip(input             )                                                 {
-  return renderSmall(input, STRIP_W, STRIP_H, 1)
+/** The sidebar row swatch: the state's mark in the session's hue, legible at a glance. */
+function renderSwatch(input             )                                                                  {
+  return renderMark(input, 1)
+}
+
+/** The status-bar strip: the same mark at ×0.875, once, beside its words. */
+function renderStrip(input             )                                                                  {
+  return renderMark(input, STRIP_K)
 }
 
 /** Plain decimal, no exponent, no trailing zeros: safe inside an SVG attribute. */
@@ -1557,66 +1621,97 @@ Object.assign(exports, { alphaFor, renderField, renderSwatch, renderStrip, toSvg
 };
 
 __cf_defs["src/domain/glyph.ts"] = (exports) => {
-// The state GLYPHS: what a row swatch (28×14) and the status strip show. The field speaks the language in
-// texture, which is too fine at swatch size — a swatch there is a small PICTURE of the state, in the session's
-// identity hue, the same shape for every session so the state reads before the hue does:
-//   resting  = three soft dots (calm mottle)        working = a puffy cloud
-//   needs you = three bold diagonal bars (zebra)    error   = a hollow pale ring (washed out)
-//   finished unseen = one dark eye-spot in a pale halo
-// Pure geometry: each spec is a circle in the 24×12 box with the ink (|dL| on the ground) it should show.
-/** The swatch box: 28×14 (O2.9 allows 28×16) — design units below are 24×12, scaled up by K. */
-const GLYPH_W = 28
-const GLYPH_H = 14
-const K = GLYPH_W / 24
-/** The eye-spot's ink on the ground (the field's ocellus uses the same). */
-const SPOT_INK = 0.30
+// The v2.1 state MARKS (spec §2): what a sidebar row swatch (24×16) and the status strip (21×14) show. Five coarse
+// features read at 1× next to core's grey bullet, each a different silhouette:
+//   resting         one small soft oval (three merged dots + two paper flecks)
+//   working         a large solid flat-bottomed cloud (three lobes on a flat base)
+//   needs you       a FILLED chip with three bold paper bars (the loudest mark)
+//   error           a HOLLOW pale square with its top-right corner missing (never filled)
+//   finished unseen a round ringed eye with one dark core (four iris flecks)
+// Pure geometry in design units (px at 1×). A mark is `dots` (circles, the domain's Dot[]) plus `extras` (rect, ellipse,
+// path: never circles), and colour comes from palette() in ink.ts: the pigment NAMES below are resolved there.
+/** One non-circle shape of a mark. `fill` shapes take `alpha` as fill-opacity; `stroke` shapes take the stroke width.
+ *  `paper` shapes are drawn in the chat ground colour, so they read as holes cut out of a filled mark. */
+                             
+                                
+                       
+                 
+                
+                
+                 
+                                                                               
+                                                               
+                                                                            
+ 
 
-const MOTTLE                      = [
-  { x: 6.5, y: 6.6, r: 2.3, ink: 0.24, pigment: 'chroma' },
-  { x: 12, y: 4.4, r: 1.7, ink: 0.20, pigment: 'chroma' },
-  { x: 17.5, y: 7.6, r: 2.1, ink: 0.22, pigment: 'chroma' },
-]
+/** A rendered extra: a plain SVG node (tag + raw attributes), already in the mark's scale and colour. */
+                                                                                                                   
 
-const CLOUD                      = [
-  { x: 7, y: 7.6, r: 3.2, ink: 0.15, pigment: 'chroma' },
-  { x: 11.8, y: 5.4, r: 4.0, ink: 0.15, pigment: 'chroma' },
-  { x: 16.8, y: 6.4, r: 3.6, ink: 0.15, pigment: 'chroma' },
-  { x: 20.4, y: 8.2, r: 2.4, ink: 0.15, pigment: 'chroma' },
-]
+/** The row swatch box, in px. The strip is this × STRIP_K. */
+const GLYPH_W = 24
+const GLYPH_H = 16
+const STRIP_K = 0.875
 
-/** Three "/" bars, each a chain of four overlapping dots — bold, ink at the ceiling. */
-const BARS                      = [0, 1, 2].flatMap(k =>
-  [-3.6, -1.2, 1.2, 3.6].map((t)           => ({ x: 5.5 + 6.5 * k + 0.8 * t, y: 6 - 1.1 * t, r: 1.5, ink: 0.30, pigment: 'chroma' })))
+const circ = (x        , y        , r        , pigment             )           => ({ x, y, r, pigment })
+const fillOf = (pigment              , alpha = 1, above = false)                                                           =>
+  ({ pigment, fill: true, alpha, above })
+const strokeOf = (pigment              , width        , above = false)                                                   =>
+  ({ pigment, stroke: width, above })
 
-/** A hollow dashed oval of pale beads: the washed-out outline (twelve beads, clear gaps between them). */
-const RING                      = Array.from({ length: 12 }, (_, i)           => {
-  const a = (2 * Math.PI * i) / 12
-  return { x: 12 + 9.4 * Math.cos(a), y: 6 + 4.2 * Math.sin(a), r: 1.35, ink: 0.30, pigment: 'blanch' }
-})
-
-/** One bold dark eye-spot on a light chip: a pale block of small overlapping dots, the spot (LAST entry, the only
- *  'spot' pigment) at least twice the chip dots' radius. */
-const EYE                      = [
-  ...[3.2, 6, 8.8].flatMap(y => [4.6, 7.8, 11, 14.2, 17.4, 20.6].map((x)           => ({ x, y, r: 1.55, ink: 0.10, pigment: 'chroma' }))),
-  { x: 12, y: 6, r: 3.7, ink: SPOT_INK, pigment: 'spot' },
-]
-
-/** Design units (24×12) to the swatch box. */
-function scaled(g                     )                      {
-  return g.map(d => ({ ...d, x: d.x * K, y: d.y * K, r: d.r * K }))
+const GLYPHS                                                                  = {
+  mottle: {
+    dots: [circ(8.4, 8.4, 2.9, 'soft'), circ(12, 8, 3.3, 'soft'), circ(15.6, 8.4, 2.9, 'soft')],
+    extras: [
+      { k: 'ellipse', cx: 10.6, cy: 7.2, rx: 0.8, ry: 0.8, ...fillOf('paper', 0.45, true) },
+      { k: 'ellipse', cx: 14.2, cy: 9.2, rx: 0.7, ry: 0.7, ...fillOf('paper', 0.45, true) },
+    ],
+  },
+  clouds: {
+    dots: [circ(6.4, 8.9, 4.4, 'chroma'), circ(12.6, 6.6, 5.6, 'chroma'), circ(18.2, 9.2, 4.0, 'chroma')],
+    extras: [{ k: 'rect', x: 2.4, y: 9, w: 19.8, h: 4.9, rx: 2.4, ...fillOf('chroma') }],
+  },
+  zebra: {
+    dots: [[5, 5], [12, 5], [19, 5], [5, 11], [12, 11], [19, 11]].map(([x, y]) => circ(x, y, 3, 'chroma')),
+    extras: [
+      { k: 'rect', x: 0.75, y: 0.75, w: 22.5, h: 14.5, rx: 3.5, ...fillOf('chroma') },
+      { k: 'path', d: 'M2.5 11.5 L11.5 2.5', ...strokeOf('paper', 2.4, true) },
+      { k: 'path', d: 'M6.5 13.5 L17.5 2.5', ...strokeOf('paper', 2.4, true) },
+      { k: 'path', d: 'M12.5 13.5 L21.5 4.5', ...strokeOf('paper', 2.4, true) },
+    ],
+  },
+  blanch: {
+    dots: [circ(13.4, 1.5, 1.6, 'blanch'), circ(22.5, 9.9, 1.6, 'blanch')],
+    extras: [
+      { k: 'rect', x: 2, y: 2, w: 20, h: 12, rx: 1, ...fillOf('wash', 0.14) },
+      { k: 'path', d: 'M13.2 1.5 H1.5 V14.5 H22.5 V9.9', ...strokeOf('blanch', 2.4) },
+    ],
+  },
+  eyespot: {
+    dots: [
+      ...[45, 135, 225, 315].map(a => {
+        const t = (a * Math.PI) / 180
+        return circ(12 + 5.5 * Math.cos(t), 8 + 5.5 * Math.sin(t), 0.6, 'chroma')
+      }),
+      circ(12, 8, 4.5, 'spot'),                                   // LAST: the only 'spot' dot, role eyespot
+    ],
+    extras: [
+      { k: 'ellipse', cx: 12, cy: 8, rx: 7, ry: 7, ...fillOf('chroma', 0.3) },
+      { k: 'ellipse', cx: 12, cy: 8, rx: 7, ry: 7, stroke: 1.6, pigment: 'chroma' },
+    ],
+  },
 }
 
-const GLYPHS                                           = {
-  mottle: scaled(MOTTLE), clouds: scaled(CLOUD), zebra: scaled(BARS), blanch: scaled(RING), eyespot: scaled(EYE),
-}
-
-/** The glyph of a pattern base, in the 28×14 box. An unknown base degrades to the calm mottle, never a throw. */
+/** The mark's dots in design units. An unknown base degrades to the calm mottle, never a throw. */
 function glyphOf(base             )                      {
-  return Object.hasOwn(GLYPHS, base) ? GLYPHS[base] : GLYPHS.mottle
+  return Object.hasOwn(GLYPHS, base) ? GLYPHS[base].dots : GLYPHS.mottle.dots
 }
 
+/** The mark's non-circle shapes in design units, in draw order (below first; `above` ones are drawn after the dots). */
+function glyphExtras(base             )                        {
+  return Object.hasOwn(GLYPHS, base) ? GLYPHS[base].extras : GLYPHS.mottle.extras
+}
 
-Object.assign(exports, { GLYPH_W, GLYPH_H, glyphOf });
+Object.assign(exports, { GLYPH_W, GLYPH_H, STRIP_K, glyphOf, glyphExtras });
 };
 
 __cf_defs["src/domain/identity.ts"] = (exports) => {
@@ -1702,8 +1797,83 @@ __cf_defs["src/domain/index.ts"] = (exports) => {
 // Everything the adapter lane may use is re-exported here, and nothing under desktop/src/domain
 // is reachable except through it (test_S2). The domain is PURE: no SDK, no DOM, no clock, no
 // randomness — time arrives as tMs/nowMs, entropy only from seeded blake2b.
-const { blake2b, seededStream, utf8 } = __cf_require("src/domain/blake2b.ts");const { allocate, ARC_END, ARC_START, hueDistance, hueOfSlot, preferredSlot, SLOTS } = __cf_require("src/domain/identity.ts");const { blanchDl, CLOUD_TRAVEL_MS, hashUnit, inkTargets, MAX_DL, planGround, REST_HI, REST_LO, REST_MEAN, twinkleFactor } = __cf_require("src/domain/pattern.ts");const { alphaFor, renderField, renderStrip, renderSwatch, toSvg } = __cf_require("src/domain/field.ts");const { constellation, eyeSpotAt } = __cf_require("src/domain/organs.ts");const { BLOOM_MS, bloomFactor, motionPlan } = __cf_require("src/domain/motion.ts");const { DEFAULT_SETTINGS, patternOf, resolveSettings, stateFor } = __cf_require("src/domain/settings.ts");const { initialFeed, knownSessions, POLL_INTERVAL_MS, pollPlan, reduceFeed, signalsOf } = __cf_require("src/domain/feed.ts");const { configPlan, initialConfigWatch } = __cf_require("src/domain/configwatch.ts");const { hexToRgb, oklchToHex, rgbToHex, rgbToOklab } = __cf_require("src/domain/oklch.ts");const { PATTERN_KINDS, SIGNALS } = __cf_require("src/domain/types.ts");
-Object.assign(exports, { blake2b, seededStream, utf8, allocate, ARC_END, ARC_START, hueDistance, hueOfSlot, preferredSlot, SLOTS, blanchDl, CLOUD_TRAVEL_MS, hashUnit, inkTargets, MAX_DL, planGround, REST_HI, REST_LO, REST_MEAN, twinkleFactor, alphaFor, renderField, renderStrip, renderSwatch, toSvg, constellation, eyeSpotAt, BLOOM_MS, bloomFactor, motionPlan, DEFAULT_SETTINGS, patternOf, resolveSettings, stateFor, initialFeed, knownSessions, POLL_INTERVAL_MS, pollPlan, reduceFeed, signalsOf, configPlan, initialConfigWatch, hexToRgb, oklchToHex, rgbToHex, rgbToOklab, PATTERN_KINDS, SIGNALS });
+const { blake2b, seededStream, utf8 } = __cf_require("src/domain/blake2b.ts");const { allocate, ARC_END, ARC_START, hueDistance, hueOfSlot, preferredSlot, SLOTS } = __cf_require("src/domain/identity.ts");const { blanchDl, CLOUD_TRAVEL_MS, hashUnit, inkTargets, MAX_DL, planGround, REST_HI, REST_LO, REST_MEAN, twinkleFactor } = __cf_require("src/domain/pattern.ts");const { alphaFor, renderField, renderStrip, renderSwatch, toSvg } = __cf_require("src/domain/field.ts");const { contrast, inkFor, palette } = __cf_require("src/domain/ink.ts");const { GLYPH_H, GLYPH_W, glyphExtras, glyphOf, STRIP_K } = __cf_require("src/domain/glyph.ts");const { constellation, eyeSpotAt } = __cf_require("src/domain/organs.ts");const { BLOOM_MS, bloomFactor, motionPlan } = __cf_require("src/domain/motion.ts");const { DEFAULT_SETTINGS, patternOf, resolveSettings, stateFor } = __cf_require("src/domain/settings.ts");const { initialFeed, knownSessions, POLL_INTERVAL_MS, pollPlan, reduceFeed, signalsOf } = __cf_require("src/domain/feed.ts");const { configPlan, initialConfigWatch } = __cf_require("src/domain/configwatch.ts");const { hexToRgb, oklchToHex, rgbToHex, rgbToOklab } = __cf_require("src/domain/oklch.ts");const { PATTERN_KINDS, SIGNALS } = __cf_require("src/domain/types.ts");
+Object.assign(exports, { blake2b, seededStream, utf8, allocate, ARC_END, ARC_START, hueDistance, hueOfSlot, preferredSlot, SLOTS, blanchDl, CLOUD_TRAVEL_MS, hashUnit, inkTargets, MAX_DL, planGround, REST_HI, REST_LO, REST_MEAN, twinkleFactor, alphaFor, renderField, renderStrip, renderSwatch, toSvg, contrast, inkFor, palette, GLYPH_H, GLYPH_W, glyphExtras, glyphOf, STRIP_K, constellation, eyeSpotAt, BLOOM_MS, bloomFactor, motionPlan, DEFAULT_SETTINGS, patternOf, resolveSettings, stateFor, initialFeed, knownSessions, POLL_INTERVAL_MS, pollPlan, reduceFeed, signalsOf, configPlan, initialConfigWatch, hexToRgb, oklchToHex, rgbToHex, rgbToOklab, PATTERN_KINDS, SIGNALS });
+};
+
+__cf_defs["src/domain/ink.ts"] = (exports) => {
+// The v2.1 INK (spec §1): the pigments of the state marks (swatch, strip) and the composer rim, chosen so every mark holds
+// ≥ 3.6:1 (WCAG 1.4.11 bar 3.0) on the row it sits in, selected or not. Sidebar rows are not on the chat ground, and the
+// plugin only knows the ground, so the ink is checked against the ground AND a worst-case selected tint of it.
+// Pure: same (hue, ground) in, same palette out. Reuses oklch.ts for every colour conversion.
+const { hexToLab, hexToRgb, oklabToRgb, oklchToHex, rgbToHex } = __cf_require("src/domain/oklch.ts");/** The design target for every mark ink (the bar is 3.0; the headroom covers antialiasing and a tinted selected row). */
+const MIN_CONTRAST = 3.6
+/** Resting's soft ink: the quietest ink that still holds ≥ 3:1 on every row tint. */
+const SOFT_CONTRAST = 3.5
+/** Error: a bold near-grey frame, never a faint one. */
+const BLANCH_CONTRAST = 4.5
+/** The selected-row allowance in OKLab L, toward the ink side of the ground. */
+const SELECT_ALLOWANCE = 0.10
+/** The identity pigment's chroma, and the near-achromatic error chroma (mean chroma must stay ≤ 0.03). */
+const CHROMA_C = 0.115
+const BLANCH_C = 0.012
+/** WCAG 2.x relative luminance of a '#rrggbb'. */
+function luminance(hex        )         {
+  const lin = (c        )         => { const v = c / 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4 }
+  const { r, g, b } = hexToRgb(hex)
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+}
+
+/** WCAG contrast ratio of two '#rrggbb' colours (1 … 21). */
+function contrast(a        , b        )         {
+  const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p)
+  return (x + 0.05) / (y + 0.05)
+}
+
+/** The ground a selected row could show: the ground moved `SELECT_ALLOWANCE` toward the ink side. */
+function worstRowGround(ground        )         {
+  const lab = hexToLab(ground), dir = lab.L < 0.5 ? 1 : -1
+  const L = Math.min(0.99, Math.max(0.01, lab.L + dir * SELECT_ALLOWANCE))
+  return rgbToHex(oklabToRgb(L, lab.a, lab.b))
+}
+
+/** The ink for (hue, chroma) on a ground: the lightness nearest the ground that still reaches `minContrast` on the ground
+ *  AND on its worst selected tint. Bisection over OKLab L (24 steps), as planGround does. */
+function inkFor(hue        , chroma        , ground        , minContrast = MIN_CONTRAST)         {
+  const lab = hexToLab(ground), dir = lab.L < 0.5 ? 1 : -1
+  const grounds = [ground, worstRowGround(ground)]
+  const ok = (L        )          => grounds.every(g => contrast(oklchToHex(L, chroma, hue), g) >= minContrast)
+  let a = lab.L, b = dir > 0 ? 0.97 : 0.04          // a: the ground side (fails), b: the far side (holds)
+  for (let i = 0; i < 24; i++) {
+    const m = (a + b) / 2
+    if (ok(m)) b = m; else a = m
+  }
+  return oklchToHex(b, chroma, hue)
+}
+
+const cache = new Map                 ()
+
+/** The mark palette for one identity hue on one ground. Same input, same colours, bit for bit. */
+function palette(hue        , ground        )          {
+  const key = `${hue.toFixed(3)}|${ground}`
+  const hit = cache.get(key)
+  if (hit !== undefined) return hit
+  const dir = hexToLab(ground).L < 0.5 ? 1 : -1
+  const out          = {
+    chroma: inkFor(hue, CHROMA_C, ground),
+    soft: inkFor(hue, CHROMA_C, ground, SOFT_CONTRAST),
+    blanch: inkFor(hue, BLANCH_C, ground, BLANCH_CONTRAST),
+    spot: oklchToHex(dir > 0 ? 0.07 : 0.17, 0.03, hue),
+    paper: ground,
+    wash: '',
+  }
+  out.wash = out.blanch
+  if (cache.size > 256) cache.clear()
+  cache.set(key, out)
+  return out
+}
+
+Object.assign(exports, { MIN_CONTRAST, SOFT_CONTRAST, BLANCH_CONTRAST, SELECT_ALLOWANCE, CHROMA_C, BLANCH_C, contrast, worstRowGround, inkFor, palette });
 };
 
 __cf_defs["src/domain/motion.ts"] = (exports) => {
@@ -1899,10 +2069,8 @@ function constellation(seed        , width        , height        , target      
 
 /** Where the single ocellus sits: central band, seeded — one spot, never on the edge. */
 function eyeSpotAt(seed        , width        , height        )                           {
-  const rnd = seededStream(seed, 'eyespot')
-  const x = width * (0.32 + 0.36 * rnd())
-  const y = height * (0.30 + 0.40 * rnd())
-  return { x, y }
+  // anchored, the same for every session: the right gutter, a third of the way down
+  return { x: width * 0.90, y: height * 0.30 }
 }
 
 Object.assign(exports, { constellation, eyeSpotAt });
@@ -1925,7 +2093,7 @@ const ZEBRA_BRIGHT = 0.158, ZEBRA_DIM = 0.013
 const CLOUD_BASE = 0.020, CLOUD_AMP = 0.125, CLOUD_SIGMA = 118
 /** Error sits this much LIGHTER than resting (dark grounds can afford more); light grounds keep dl >= 0.012. */
 const BLANCH_LIGHTER_DARK = 0.016
-const BLANCH_LIGHTER_LIGHT = 0.012
+const BLANCH_LIGHTER_LIGHT = 0.0135
 /** Small-canvas (swatch/strip) inks: a row swatch must be visible (mean dL >= 0.08). */
 const SWATCH_LO = 0.085, SWATCH_SPAN = 0.055
 const SWATCH_ZEBRA_BRIGHT = 0.150, SWATCH_ZEBRA_DIM = 0.035
@@ -1938,7 +2106,7 @@ const TWINKLE_AMP = 0.55, TWINKLE_P_MIN = 7000, TWINKLE_P_SPAN = 5000
 /** Stripe count across the surface. The field's 8 (4 cycles ≈ 2 dot pitches per band) survives the chat region being a
  *  crop of the window — at 6 the fundamental sat between spectral bins 2 and 3 and read 0.49 in real pixels. */
 const FIELD_CYCLES = 4
-const ZEBRA_SWELL = 2.2, ZEBRA_SHRINK = 0.55, BLANCH_SWELL = 3.2
+const ZEBRA_SWELL = 1.8, ZEBRA_SHRINK = 0.45, BLANCH_SWELL = 1.9
 const CLOUD_TRAVEL_MS = 18000                                  // one band pass across the height
 /** Direction the chromatic organs sit relative to the ground: toward white on dark, toward black on light. */
 const dirOf = (lg        )         => (lg < 0.5 ? 1 : -1)
@@ -1974,7 +2142,7 @@ function planGround(hueDeg        , ground        )             {
   }
   const chroma = oklchToHex((lo + hi) / 2, CHROMA_C, hueDeg)
   const blanch = oklchToHex(Math.min(0.97, Math.max(0.05, gl + dir * 0.26)), BLANCH_C, hueDeg)
-  const spot = oklchToHex(Math.min(0.97, Math.max(0.03, gl - 0.30)), SPOT_C, hueDeg)
+  const spot = oklchToHex(Math.min(0.97, Math.max(0.03, gl - 0.62)), SPOT_C, hueDeg)
   const plan             = {
     groundRgb: rgb, groundL: gl, dir, chroma, blanch, spot,
     chromaMaxDl: dlAt(chroma, gl), blanchMaxDl: dlAt(blanch, gl), spotMaxDl: dlAt(spot, gl),
@@ -2066,10 +2234,12 @@ function smallCloudInk(cons               , seed        , shape        )        
 /** The passing cloud on the field: one soft band travelling at constant speed (no dead spots). */
 function fieldCloudInk(spec             , cons               , height        , seed        , opts            , shape        )           {
   const sigma = CLOUD_SIGMA * spec.scale
-  const travel = height + 2 * sigma
+  // the band stays wholly inside the region (0.9σ in from each edge) and wraps: no phase of the cycle has the cloud half off the organs
+  const pad = Math.min(0.9 * sigma, height * 0.3)
+  const travel = Math.max(1, height - 2 * pad)
   const y0 = height * (0.28 + 0.44 * hashUnit(seed, 'cloud'))
   const moving = opts.motion !== 'off' && !opts.reducedMotion
-  const center = moving ? -sigma + (((y0 + sigma) + (travel * opts.tMs) / CLOUD_TRAVEL_MS) % travel) : y0
+  const center = moving ? pad + ((((y0 - pad) % travel) + travel + (travel * opts.tMs) / CLOUD_TRAVEL_MS) % travel) : y0
   const draw = cloudJitter(seed)
   return cons.organs.map(o => shape(cloudDl(o.y, center, sigma, draw(), false)))
 }

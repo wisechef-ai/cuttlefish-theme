@@ -19,7 +19,7 @@ const ZEBRA_BRIGHT = 0.158, ZEBRA_DIM = 0.013
 const CLOUD_BASE = 0.020, CLOUD_AMP = 0.125, CLOUD_SIGMA = 118
 /** Error sits this much LIGHTER than resting (dark grounds can afford more); light grounds keep dl >= 0.012. */
 const BLANCH_LIGHTER_DARK = 0.016
-const BLANCH_LIGHTER_LIGHT = 0.012
+const BLANCH_LIGHTER_LIGHT = 0.0135
 /** Small-canvas (swatch/strip) inks: a row swatch must be visible (mean dL >= 0.08). */
 const SWATCH_LO = 0.085, SWATCH_SPAN = 0.055
 const SWATCH_ZEBRA_BRIGHT = 0.150, SWATCH_ZEBRA_DIM = 0.035
@@ -32,7 +32,7 @@ const TWINKLE_AMP = 0.55, TWINKLE_P_MIN = 7000, TWINKLE_P_SPAN = 5000
 /** Stripe count across the surface. The field's 8 (4 cycles ≈ 2 dot pitches per band) survives the chat region being a
  *  crop of the window — at 6 the fundamental sat between spectral bins 2 and 3 and read 0.49 in real pixels. */
 const FIELD_CYCLES = 4
-const ZEBRA_SWELL = 2.2, ZEBRA_SHRINK = 0.55, BLANCH_SWELL = 3.2
+const ZEBRA_SWELL = 1.8, ZEBRA_SHRINK = 0.45, BLANCH_SWELL = 1.9
 export const CLOUD_TRAVEL_MS = 18000                                  // one band pass across the height
 
 /** Direction the chromatic organs sit relative to the ground: toward white on dark, toward black on light. */
@@ -69,7 +69,7 @@ export function planGround(hueDeg: number, ground: string): GroundPlan {
   }
   const chroma = oklchToHex((lo + hi) / 2, CHROMA_C, hueDeg)
   const blanch = oklchToHex(Math.min(0.97, Math.max(0.05, gl + dir * 0.26)), BLANCH_C, hueDeg)
-  const spot = oklchToHex(Math.min(0.97, Math.max(0.03, gl - 0.30)), SPOT_C, hueDeg)
+  const spot = oklchToHex(Math.min(0.97, Math.max(0.03, gl - 0.62)), SPOT_C, hueDeg)
   const plan: GroundPlan = {
     groundRgb: rgb, groundL: gl, dir, chroma, blanch, spot,
     chromaMaxDl: dlAt(chroma, gl), blanchMaxDl: dlAt(blanch, gl), spotMaxDl: dlAt(spot, gl),
@@ -161,10 +161,12 @@ function smallCloudInk(cons: Constellation, seed: string, shape: Shaper): number
 /** The passing cloud on the field: one soft band travelling at constant speed (no dead spots). */
 function fieldCloudInk(spec: PatternSpec, cons: Constellation, height: number, seed: string, opts: InkOptions, shape: Shaper): number[] {
   const sigma = CLOUD_SIGMA * spec.scale
-  const travel = height + 2 * sigma
+  // the band stays wholly inside the region (0.9σ in from each edge) and wraps: no phase of the cycle has the cloud half off the organs
+  const pad = Math.min(0.9 * sigma, height * 0.3)
+  const travel = Math.max(1, height - 2 * pad)
   const y0 = height * (0.28 + 0.44 * hashUnit(seed, 'cloud'))
   const moving = opts.motion !== 'off' && !opts.reducedMotion
-  const center = moving ? -sigma + (((y0 + sigma) + (travel * opts.tMs) / CLOUD_TRAVEL_MS) % travel) : y0
+  const center = moving ? pad + ((((y0 - pad) % travel) + travel + (travel * opts.tMs) / CLOUD_TRAVEL_MS) % travel) : y0
   const draw = cloudJitter(seed)
   return cons.organs.map(o => shape(cloudDl(o.y, center, sigma, draw(), false)))
 }

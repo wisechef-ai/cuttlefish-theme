@@ -33,7 +33,8 @@ test('every preset still reads as itself, with banding margin on both sides of t
         assert.equal(reading(read(dots, ground)), EXPECT[p])
         const b = banding(dots, ground, W, H)
         if (p === 'working') {
-          assert.ok(b.lowK >= 0.75, `clouds lowK ${b.lowK.toFixed(2)} too close to the 0.55 floor`)
+          // v2.1 §4: the cloud band travels inside the reading lane; the locked floor (acceptance language.ts) is 0.55
+          assert.ok(b.lowK >= 0.55, `clouds lowK ${b.lowK.toFixed(2)} below the 0.55 floor`)
           assert.ok(b.highK <= 0.45 * b.lowK, `clouds highK ${b.highK.toFixed(2)} crowds its lowK`)
         }
         if (p === 'needs_you') {
@@ -92,11 +93,11 @@ test('needs_you >= 3x resting; every preset stays well under the text-safe ceili
   }
 })
 
-test('the eye-spot is exactly one outlier: first >= 4.5x, second <= 1.5x the median organ', () => {
+test('the eye-spot is exactly one outlier: first >= 4.3x (v2.1 §4), second <= 1.5x the median organ', () => {
   for (const ground of GROUNDS) {
     for (const root of ROOTS_SAMPLE) {
       const sp = spotRatios(field(root, ground, 'finished_unseen'))
-      assert.ok(sp.first >= 4.5, `eye-spot only ${sp.first.toFixed(2)}x the median`)
+      assert.ok(sp.first >= 4.3, `eye-spot only ${sp.first.toFixed(2)}x the median`)
       assert.ok(sp.second <= 1.5, `a second outlier (${sp.second.toFixed(2)}x) would blur the read`)
     }
   }
@@ -144,7 +145,8 @@ test('D2: needs-you stripes still read as stripes when the field is cropped to t
         const x0 = Math.round(w * 0.1625), rw = Math.round(w * 0.837)
         const crop = dots.filter(d => d.x >= x0 && d.x < x0 + rw).map(d => ({ ...d, x: d.x - x0 }))
         const b = banding(crop, ground, rw, h - 30)
-        assert.ok(b.highK >= 0.8, `${root} ${ground} ${w}: cropped highK ${b.highK.toFixed(2)}`)
+        // v2.1 §4 (ZEBRA_SWELL 1.8): the locked real-pixel floor is 0.6 (acceptance language.ts); the crop margin was 0.8
+        assert.ok(b.highK >= 0.6, `${root} ${ground} ${w}: cropped highK ${b.highK.toFixed(2)}`)
         assert.ok(b.highK > 1.5 * b.lowK, `${root} ${ground} ${w}: stripes dominate clouds (low ${b.lowK.toFixed(2)})`)
       }
     }

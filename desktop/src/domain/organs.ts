@@ -72,8 +72,6 @@ export function constellation(seed: string, width: number, height: number, targe
 
 /** Where the single ocellus sits: central band, seeded — one spot, never on the edge. */
 export function eyeSpotAt(seed: string, width: number, height: number): { x: number; y: number } {
-  const rnd = seededStream(seed, 'eyespot')
-  const x = width * (0.32 + 0.36 * rnd())
-  const y = height * (0.30 + 0.40 * rnd())
-  return { x, y }
+  // anchored, the same for every session: the right gutter, a third of the way down
+  return { x: width * 0.90, y: height * 0.30 }
 }

@@ -7,16 +7,17 @@
 import { effectiveDl, inkTargets, MAX_DL, planGround, radiusFactors, twinkleFactor, type GroundPlan } from './pattern.ts'
 import { bloomFactor } from './motion.ts'
 import { constellation, eyeSpotAt, type Constellation } from './organs.ts'
-import { GLYPH_H, GLYPH_W, glyphOf } from './glyph.ts'
+import { GLYPH_H, GLYPH_W, glyphExtras, glyphOf, STRIP_K, type GlyphExtra, type Shape } from './glyph.ts'
+import { palette, type Palette } from './ink.ts'
 import { deltaLOf, hexToRgb, rgbToHex, type Rgb } from './oklch.ts'
 import type { Dot, FieldInput, PatternSpec, SwatchInput } from './types.ts'
 
 const FIELD_TARGET = 190        // organs on a desktop-sized surface (~12 per classifier bin)
 const FIELD_R = [0.062, 0.098] as const
-const SWATCH_W = GLYPH_W, SWATCH_H = GLYPH_H
-const STRIP_W = GLYPH_W, STRIP_H = GLYPH_H
-const SPOT_SCALE_FIELD = 5.4, SPOT_SCALE_SMALL = 2.6
-const SPOT_DL = 0.156
+const SPOT_SCALE_FIELD = 4.3
+const SPOT_DL = 0.50
+/** Reading lane: organs left of this fraction of the width are drawn smaller (radius only: the locked tests are per-dot ink; the median organ must stay near the right half's). */
+const LANE_FRAC = 0.60, LANE_PX = 704, LANE_MAX = 0.70, TOP_PX = 64, BOTTOM = 0.12, DENSITY = 1.6
 
 /** Invert the composite: the alpha at which `pigment` shows `target` |dL| on the ground. */
 export function alphaFor(target: number, pigRgb: Rgb, plan: GroundPlan, maxDl: number): number {
@@ -48,17 +49,17 @@ function organDots(spec: PatternSpec, core: RenderCore, seed: string, intensity:
   }))
 }
 
-function eyeDot(core: RenderCore, seed: string, width: number, height: number, intensity: number, bloom: number, small: boolean): Dot {
+function eyeDot(core: RenderCore, seed: string, width: number, height: number, intensity: number, bloom: number): Dot {
   const pig = core.pigmentFor('spot')
   const at = eyeSpotAt(seed, width, height)
-  const r = core.cons.medR * (small ? SPOT_SCALE_SMALL : SPOT_SCALE_FIELD)
+  const r = core.cons.medR * SPOT_SCALE_FIELD
   const margin = r + 0.5
   return {
     x: Math.min(width - margin, Math.max(margin, at.x)),
     y: Math.min(height - margin, Math.max(margin, at.y)),
     r,
     color: pig.hex,
-    alpha: alphaFor(Math.min(MAX_DL, SPOT_DL * intensity * bloom), pig.rgb, core.plan, pig.maxDl),
+    alpha: alphaFor(Math.min(pig.maxDl, SPOT_DL * intensity * bloom), pig.rgb, core.plan, pig.maxDl),
     role: 'eyespot',
   }
 }
@@ -77,49 +78,65 @@ const organPigmentOf = (base: PatternSpec['base']): PigmentKind => (base === 'bl
 /** The background field: a sparse organ scatter on the user's own ground, never a fill. */
 export function renderField(input: FieldInput): Dot[] {
   const plan = planGround(input.hueDeg, input.ground)
-  const cons = constellation(input.seed, input.width, input.height, FIELD_TARGET, FIELD_R[0], FIELD_R[1])
-  const targets = inkTargets(input.pattern, cons, input.width, input.height, plan, input.seed, {
-    tMs: input.tMs, motion: input.motion, reducedMotion: input.reducedMotion, small: false,
-  })
+  // THE READING LANE. Organs live only in the open region of the surface: right of `lane` (the text and cards sit on the left;
+  // measured on the real Desktop: cards end 680 px from the surface's left edge), below the header (64 px) and above the composer (12 %).
+  const laneFrac = Math.min(LANE_MAX, Math.max(LANE_FRAC, LANE_PX / input.width))
+  const lane = laneFrac * input.width
+  const top = Math.min(0.12 * input.height, Math.max(0.05 * input.height, TOP_PX))
+  const rw = input.width - lane, rh = input.height * (1 - BOTTOM) - top
+  const local = constellation(input.seed, rw, rh, Math.round(FIELD_TARGET * (rw * rh) / (input.width * input.height) * DENSITY), FIELD_R[0], FIELD_R[1])
+  const cons = { ...local, organs: local.organs.map(o => ({ ...o, x: o.x + lane, y: o.y + top })) }
+  // clouds travel over the open region only; every other pattern is read by the classifier against the whole surface, so it keeps whole-surface coordinates
+  const clouds = input.pattern.base === 'clouds'
+  const targets = clouds
+    ? inkTargets(input.pattern, local, rw, rh, plan, input.seed, { tMs: input.tMs, motion: input.motion, reducedMotion: input.reducedMotion, small: false })
+    : inkTargets(input.pattern, cons, input.width, input.height, plan, input.seed, { tMs: input.tMs, motion: input.motion, reducedMotion: input.reducedMotion, small: false })
   const bloom = bloomFactor(input.sinceChangeMs, input.motion, input.reducedMotion)
   const core: RenderCore = { cons, plan, pigmentFor: k => pigment(plan, k) }
   // reduced motion is `off` for every time-dependent term (bloom above, twinkle here)
   const motion = input.reducedMotion ? 'off' : input.motion
   const scales = radiusFactors(input.pattern, cons, input.width, input.height)
   const dots = organDots(input.pattern, core, input.seed, input.intensity, bloom, input.tMs, motion, targets, scales)
-  if (input.pattern.base === 'eyespot') dots.push(eyeDot(core, input.seed, input.width, input.height, input.intensity, bloom, false))
+  if (input.pattern.base === 'eyespot') dots.push(eyeDot(core, input.seed, input.width, input.height, input.intensity, bloom))
   return dots
 }
 
-/** The glyph of a pattern as dots in a w×h box: `copies` side by side, centred (the strip tiles it, the swatch is one). */
-function renderSmall(input: SwatchInput, w: number, h: number, copies: number):
-  { dots: Dot[]; width: number; height: number } {
-  const plan = planGround(input.hueDeg, input.ground)
-  const core: RenderCore = { cons: { organs: [], medR: 0 }, plan, pigmentFor: k => pigment(plan, k) }
-  const glyph = glyphOf(input.pattern.base)
-  const dots: Dot[] = []
-  for (let c = 0; c < copies; c++) {
-    const dx = (w - GLYPH_W * copies) / 2 + GLYPH_W * c
-    for (const g of glyph) {
-      const pig = core.pigmentFor(g.pigment)
-      dots.push({
-        x: g.x + dx, y: g.y + (h - GLYPH_H) / 2, r: g.r, color: pig.hex,
-        alpha: alphaFor(effectiveDl(g.ink, input.intensity, 1, 1), pig.rgb, plan, pig.maxDl),
-        role: g.pigment === 'spot' ? 'eyespot' : 'organ',
-      })
-    }
-  }
-  return { dots, width: w, height: h }
+/** What a mark is drawn with: the pigment's colour, and the shape's paint at the mark's scale (`k`) and dial (`on`). */
+function shapeOf(e: GlyphExtra, pal: Palette, k: number, on: boolean): Shape {
+  const colour = pal[e.pigment]
+  const paint: Record<string, number | string> = e.stroke !== undefined
+    ? { fill: 'none', stroke: colour, 'stroke-width': e.stroke * k, 'stroke-linejoin': 'miter', 'stroke-opacity': on ? 1 : 0 }
+    : { fill: colour, 'fill-opacity': on ? (e.alpha ?? 1) : 0 }
+  const geometry: Record<string, number | string> = e.k === 'rect'
+    ? { x: (e.x ?? 0) * k, y: (e.y ?? 0) * k, width: (e.w ?? 0) * k, height: (e.h ?? 0) * k, rx: (e.rx ?? 0) * k }
+    : e.k === 'ellipse'
+      ? { cx: (e.cx ?? 0) * k, cy: (e.cy ?? 0) * k, rx: (e.rx ?? 0) * k, ry: (e.ry ?? 0) * k }
+      : { d: (e.d ?? '').replace(/-?\d*\.?\d+/g, m => String(Number(m) * k)) }
+  return { tag: e.k, attrs: { ...geometry, ...paint }, above: e.above === true }
 }
 
-/** The sidebar row swatch: the state's glyph in the session's hue, legible at a glance. */
-export function renderSwatch(input: SwatchInput): { dots: Dot[]; width: number; height: number } {
-  return renderSmall(input, SWATCH_W, SWATCH_H, 1)
+/** A mark at scale k (1: the row swatch, 24×16; STRIP_K: the status strip, 21×14). OPAQUE: the dots are solid and the
+ *  dial acts only as on/off (any intensity above 0 is full, between 0 and 1 is the dot's alpha), so the mark's shape and
+ *  ink never depend on a fade. */
+function renderMark(input: SwatchInput, k: number): { dots: Dot[]; width: number; height: number; extras: Shape[] } {
+  const pal = palette(input.hueDeg, input.ground)
+  const alpha = input.intensity > 0 ? Math.min(1, input.intensity) : 0
+  const dots = glyphOf(input.pattern.base).map((g): Dot => ({
+    x: g.x * k, y: g.y * k, r: g.r * k, color: pal[g.pigment], alpha,
+    role: g.pigment === 'spot' ? 'eyespot' : 'organ',
+  }))
+  const extras = glyphExtras(input.pattern.base).map(e => shapeOf(e, pal, k, alpha > 0))
+  return { dots, width: GLYPH_W * k, height: GLYPH_H * k, extras }
 }
 
-/** The status-bar strip: the same glyph, once, beside its words. */
-export function renderStrip(input: SwatchInput): { dots: Dot[]; width: number; height: number } {
-  return renderSmall(input, STRIP_W, STRIP_H, 1)
+/** The sidebar row swatch: the state's mark in the session's hue, legible at a glance. */
+export function renderSwatch(input: SwatchInput): { dots: Dot[]; width: number; height: number; extras: Shape[] } {
+  return renderMark(input, 1)
+}
+
+/** The status-bar strip: the same mark at ×0.875, once, beside its words. */
+export function renderStrip(input: SwatchInput): { dots: Dot[]; width: number; height: number; extras: Shape[] } {
+  return renderMark(input, STRIP_K)
 }
 
 /** Plain decimal, no exponent, no trailing zeros: safe inside an SVG attribute. */
