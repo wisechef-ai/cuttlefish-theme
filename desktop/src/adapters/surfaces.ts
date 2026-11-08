@@ -12,7 +12,8 @@ import {
   type PluginContribution, type PluginContext, type SessionRowSlotProps,
 } from '@hermes/plugin-sdk'
 import { allocate, renderStrip, renderSwatch, signalsOf, stateFor } from '../domain/index.ts'
-import { bandElement, svgElement } from './svg.ts'
+import { rimElement } from './rim.ts'
+import { svgElement } from './svg.ts'
 import { safePattern, seedOfStored, type CfView } from './view.ts'
 
 /** The composer rim's height in px (brief: a 4–6 px band). */
@@ -74,15 +75,15 @@ function StripView({ v }: { v: CfView }): unknown {
   return jsx('div', { 'data-cf-state': state, 'data-cf-strip': 'cuttlefish', children: [svgElement(jsx, strip, {}, strip.dots), labelOf(v, state)] })
 }
 
-/** The composer rim: a 5 px full-width band of the same dots, no words, static. */
+/** The composer rim: one clean 5 px band echoing the state's glyph, no words, static. */
 function RimView({ v }: { v: CfView }): unknown {
   useLive(v, () => chromeKey(v))
-  const { strip, state } = focusedStrip(v)
+  const state = v.focusedState
   return jsx('div', {
     'data-cf-state': state,
     'data-cf-rim': 'cuttlefish',
     style: { width: '100%', height: RIM_HEIGHT, overflow: 'hidden', lineHeight: 0, pointerEvents: 'none' },
-    children: bandElement(jsx, strip, RIM_HEIGHT, strip.dots),
+    children: rimElement(jsx, { base: safePattern(v.settings, state).base, hueDeg: v.hueDeg, ground: v.ground, intensity: v.settings.intensity, height: RIM_HEIGHT }),
   })
 }
 

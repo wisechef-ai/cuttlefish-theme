@@ -31,7 +31,8 @@ const CHROMA_C = 0.105, BLANCH_C = 0.02, SPOT_C = 0.09
 const TWINKLE_AMP = 0.55, TWINKLE_P_MIN = 7000, TWINKLE_P_SPAN = 5000
 /** Stripe count across the surface. The field's 8 (4 cycles ≈ 2 dot pitches per band) survives the chat region being a
  *  crop of the window — at 6 the fundamental sat between spectral bins 2 and 3 and read 0.49 in real pixels. */
-const FIELD_BANDS = 8, SWATCH_BANDS = 6
+const FIELD_CYCLES = 4
+const ZEBRA_SWELL = 3.0, ZEBRA_SHRINK = 0.55, BLANCH_SWELL = 2.4
 export const CLOUD_TRAVEL_MS = 18000                                  // one band pass across the height
 
 /** Direction the chromatic organs sit relative to the ground: toward white on dark, toward black on light. */
@@ -111,12 +112,30 @@ function cloudRankDl(rank: number, centre: number, sigmaR: number, j: number): n
 
 const cloudJitter = (seed: string): () => number => seededStream(seed, 'cloud-ink')
 
-function zebraDl(x: number, width: number, u: number, scale: number, small: boolean): number {
-  const bands = Math.min(16, Math.max(3, Math.round((small ? SWATCH_BANDS : FIELD_BANDS) * scale)))
-  const bright = small ? SWATCH_ZEBRA_BRIGHT : ZEBRA_BRIGHT
-  const dim = small ? SWATCH_ZEBRA_DIM : ZEBRA_DIM
-  return Math.floor((x / width) * bands) % 2 === 0 ? bright * jitter(u, 0.14) : dim * (1 + u * 0.5)
+const DIAG = Math.SQRT1_2
+
+/** Which stripe an organ sits in: the position along the 45° axis the classifier projects on, in `cycles` bright+dim
+ *  pairs across the whole surface. Bright when the phase is in the first half of its cycle. */
+export function zebraBright(o: Organ, width: number, height: number, scale: number): boolean {
+  const hi = (width + height) * DIAG
+  const cycles = Math.min(8, Math.max(2, Math.round(FIELD_CYCLES * scale)))
+  return (((o.x + o.y) * DIAG) / hi * cycles) % 1 < 0.5
 }
+
+function zebraDl(bright: boolean, u: number): number {
+  return bright ? ZEBRA_BRIGHT * jitter(u, 0.14) : ZEBRA_DIM * (1 + u * 0.5)
+}
+
+/** Per-organ size on the field: stripe organs swell inside a band and shrink in the gap (so the eye sees bands of
+ *  big dots, not a scatter); error organs swell into soft pale blobs (washed out) instead of crisp dots. Positions
+ *  never change. */
+export function radiusFactors(spec: PatternSpec, cons: Constellation, width: number, height: number): number[] {
+  if (spec.base === 'zebra') return cons.organs.map(o => (zebraBright(o, width, height, spec.scale) ? ZEBRA_SWELL : ZEBRA_SHRINK))
+  if (spec.base === 'blanch') return cons.organs.map(() => BLANCH_SWELL)
+  return cons.organs.map(() => 1)
+}
+
+/** Swatch stripes are drawn by the glyph; the field's zebra is diagonal. */
 
 export interface InkOptions {
   tMs: number
@@ -168,7 +187,7 @@ export function inkTargets(spec: PatternSpec, cons: Constellation, width: number
     case 'clouds':
       return opts.small ? smallCloudInk(cons, seed, shape) : fieldCloudInk(spec, cons, height, seed, opts, shape)
     case 'zebra':
-      return cons.organs.map(o => shape(zebraDl(o.x, width, o.u, spec.scale, opts.small)))
+      return cons.organs.map(o => shape(zebraDl(zebraBright(o, width, height, spec.scale), o.u)))
     case 'blanch':
       return cons.organs.map(() => blanchDl(plan, opts.small))
     case 'mottle':

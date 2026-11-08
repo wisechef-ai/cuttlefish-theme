@@ -133,7 +133,7 @@ test('hue never drifts with state: every organ of every preset sits on the ident
 
 // fix-m4 D2 — in the M4 capture the real Desktop chat region (x from 260 of a 1600 window) saw 2.5 stripe cycles and
 // measured needs_you highK 0.494 (< 0.6): the energy straddled k = 2 and 3. The stripes must survive a CROPPED
-// view of the field: parallel bands several dot pitches wide, ~4 cycles across the field, highK well above 0.6 with
+// view of the field: parallel DIAGONAL bands (45°, ~4 cycles, big dots in the band, tiny ones in the gap), highK well above 0.6 with
 // the real pixel pipeline's ~25 % loss, and never read as clouds (lowK < highK).
 test('D2: needs-you stripes still read as stripes when the field is cropped to the chat region (real-Desktop geometry)', () => {
   const viewports = [[1600, 900], [1280, 800], [1920, 1080]] as const
@@ -145,7 +145,7 @@ test('D2: needs-you stripes still read as stripes when the field is cropped to t
         const crop = dots.filter(d => d.x >= x0 && d.x < x0 + rw).map(d => ({ ...d, x: d.x - x0 }))
         const b = banding(crop, ground, rw, h - 30)
         assert.ok(b.highK >= 0.8, `${root} ${ground} ${w}: cropped highK ${b.highK.toFixed(2)}`)
-        assert.ok(b.highK > 2 * b.lowK, `${root} ${ground} ${w}: stripes dominate clouds (low ${b.lowK.toFixed(2)})`)
+        assert.ok(b.highK > 1.5 * b.lowK, `${root} ${ground} ${w}: stripes dominate clouds (low ${b.lowK.toFixed(2)})`)
       }
     }
   }

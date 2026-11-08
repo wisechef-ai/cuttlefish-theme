@@ -4,17 +4,17 @@
 // pattern.ts; this module turns a target |dL| into an alpha by exact inversion of the sRGB
 // source-over composite the browser (and the acceptance instruments) perform. Pure throughout:
 // same input, same dots, bit for bit.
-import { effectiveDl, inkTargets, MAX_DL, planGround, twinkleFactor, type GroundPlan } from './pattern.ts'
+import { effectiveDl, inkTargets, MAX_DL, planGround, radiusFactors, twinkleFactor, type GroundPlan } from './pattern.ts'
 import { bloomFactor } from './motion.ts'
 import { constellation, eyeSpotAt, type Constellation } from './organs.ts'
+import { GLYPH_H, GLYPH_W, glyphOf } from './glyph.ts'
 import { deltaLOf, hexToRgb, rgbToHex, type Rgb } from './oklch.ts'
 import type { Dot, FieldInput, PatternSpec, SwatchInput } from './types.ts'
 
 const FIELD_TARGET = 190        // organs on a desktop-sized surface (~12 per classifier bin)
 const FIELD_R = [0.062, 0.098] as const
-const SWATCH_W = 24, SWATCH_H = 12, SWATCH_TARGET = 16, SWATCH_R = [0.30, 0.42] as const
-const STRIP_W = 64, STRIP_H = 12, STRIP_TARGET = 20, STRIP_R = [0.24, 0.34] as const
-const BLANCH_CONTRACT = 0.55    // error closes the organs: expansion shrinks, position holds
+const SWATCH_W = GLYPH_W, SWATCH_H = GLYPH_H
+const STRIP_W = 64, STRIP_H = 12
 const SPOT_SCALE_FIELD = 5.4, SPOT_SCALE_SMALL = 2.6
 const SPOT_DL = 0.156
 
@@ -37,12 +37,11 @@ interface RenderCore {
 }
 
 function organDots(spec: PatternSpec, core: RenderCore, seed: string, intensity: number, bloom: number,
-                   tMs: number, motion: 'still' | 'alive' | 'off', targets: number[]): Dot[] {
+                   tMs: number, motion: 'still' | 'alive' | 'off', targets: number[], scales: number[]): Dot[] {
   const pig = core.pigmentFor(organPigmentOf(spec.base))
-  const contracted = spec.base === 'blanch'
   return core.cons.organs.map((o, i): Dot => ({
     x: o.x, y: o.y,
-    r: contracted ? o.r * BLANCH_CONTRACT : o.r,
+    r: o.r * scales[i],
     color: pig.hex,
     alpha: alphaFor(effectiveDl(targets[i], intensity, bloom, twinkleFactor(o, i, seed, tMs, motion)), pig.rgb, core.plan, pig.maxDl),
     role: 'organ',
@@ -86,30 +85,41 @@ export function renderField(input: FieldInput): Dot[] {
   const core: RenderCore = { cons, plan, pigmentFor: k => pigment(plan, k) }
   // reduced motion is `off` for every time-dependent term (bloom above, twinkle here)
   const motion = input.reducedMotion ? 'off' : input.motion
-  const dots = organDots(input.pattern, core, input.seed, input.intensity, bloom, input.tMs, motion, targets)
+  const scales = radiusFactors(input.pattern, cons, input.width, input.height)
+  const dots = organDots(input.pattern, core, input.seed, input.intensity, bloom, input.tMs, motion, targets, scales)
   if (input.pattern.base === 'eyespot') dots.push(eyeDot(core, input.seed, input.width, input.height, input.intensity, bloom, false))
   return dots
 }
 
-function renderSmall(input: SwatchInput, w: number, h: number, target: number, rLo: number, rHi: number):
+/** The glyph of a pattern as dots in a w×h box: `copies` side by side, centred (the strip tiles it, the swatch is one). */
+function renderSmall(input: SwatchInput, w: number, h: number, copies: number):
   { dots: Dot[]; width: number; height: number } {
   const plan = planGround(input.hueDeg, input.ground)
-  const cons = constellation(input.seed, w, h, target, rLo, rHi)
-  const targets = inkTargets(input.pattern, cons, w, h, plan, input.seed, { tMs: 0, motion: 'still', reducedMotion: false, small: true })
-  const core: RenderCore = { cons, plan, pigmentFor: k => pigment(plan, k) }
-  const dots = organDots(input.pattern, core, input.seed, input.intensity, 1, 0, 'still', targets)
-  if (input.pattern.base === 'eyespot') dots.push(eyeDot(core, input.seed, w, h, input.intensity, 1, true))
+  const core: RenderCore = { cons: { organs: [], medR: 0 }, plan, pigmentFor: k => pigment(plan, k) }
+  const glyph = glyphOf(input.pattern.base)
+  const dots: Dot[] = []
+  for (let c = 0; c < copies; c++) {
+    const dx = (w - GLYPH_W * copies) / 2 + GLYPH_W * c
+    for (const g of glyph) {
+      const pig = core.pigmentFor(g.pigment)
+      dots.push({
+        x: g.x + dx, y: g.y + (h - GLYPH_H) / 2, r: g.r, color: pig.hex,
+        alpha: alphaFor(effectiveDl(g.ink, input.intensity, 1, 1), pig.rgb, plan, pig.maxDl),
+        role: g.pigment === 'spot' ? 'eyespot' : 'organ',
+      })
+    }
+  }
   return { dots, width: w, height: h }
 }
 
-/** The sidebar row swatch: the same language at swatch scale, visible at a glance. */
+/** The sidebar row swatch: the state's glyph in the session's hue, legible at a glance. */
 export function renderSwatch(input: SwatchInput): { dots: Dot[]; width: number; height: number } {
-  return renderSmall(input, SWATCH_W, SWATCH_H, SWATCH_TARGET, SWATCH_R[0], SWATCH_R[1])
+  return renderSmall(input, SWATCH_W, SWATCH_H, 1)
 }
 
-/** The status-bar strip. */
+/** The status-bar strip: the same glyph, twice. */
 export function renderStrip(input: SwatchInput): { dots: Dot[]; width: number; height: number } {
-  return renderSmall(input, STRIP_W, STRIP_H, STRIP_TARGET, STRIP_R[0], STRIP_R[1])
+  return renderSmall(input, STRIP_W, STRIP_H, 2)
 }
 
 /** Plain decimal, no exponent, no trailing zeros: safe inside an SVG attribute. */

@@ -30,7 +30,7 @@ export {
   configPlan, initialConfigWatch, type ConfigWatch,
 } from './configwatch.ts'
 export {
-  oklchToHex, rgbToHex, rgbToOklab, type Lab, type Lch, type Rgb,
+  hexToRgb, oklchToHex, rgbToHex, rgbToOklab, type Lab, type Lch, type Rgb,
 } from './oklch.ts'
 export type {
   Dot, FieldInput, Motion, PatternKind, PatternSpec, Settings, Signal, StateSpec, SwatchInput, Warning,

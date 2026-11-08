@@ -89,7 +89,7 @@ test('surfaces D4: the status strip ALWAYS names the state — a resting (empty-
   assert.ok(text.includes('"resting"'))
 })
 
-test('surfaces: the composer rim is a 4–6 px full-width band of dots with no words, tiled whole (F4)', () => {
+test('surfaces: the composer rim is one clean 4–6 px full-width band, no words, no grain (legibility)', () => {
   const h = fakeCtx()
   const v = view()
   registerSurfaces(h.ctx, v, () => () => {})
@@ -102,11 +102,11 @@ test('surfaces: the composer rim is a 4–6 px full-width band of dots with no w
   assert.equal(rim.props.style.lineHeight, 0, 'no inline baseline gap can grow the band')
   assert.equal(rim.props.style.overflow, 'hidden')
   assert.equal(rim.props.style.pointerEvents, 'none', 'a decoration never eats a click')
-  const json = JSON.stringify(rim.props.children)
   const kids = ([] as unknown[]).concat(rim.props.children)
   assert.ok(kids.every(k => typeof k === 'object' && k !== null), 'no label text node in the rim')
-  assert.ok(json.includes('"type":"circle"'), 'it still draws the dots')
-  assert.ok(json.includes('"type":"pattern"'), 'tiled across the full width, whole tile visible')
+  const json = JSON.stringify(rim.props.children)
+  assert.ok(json.includes('"type":"rect"') && !json.includes('"type":"circle"'), 'a resting rim is a hairline, not dots')
+  assert.ok(!json.includes('"type":"pattern"'), 'and not a tiled texture')
   const strip = JSON.stringify(expand((h.contributions.get('strip')!.render as () => unknown)()).tree)
   assert.ok(!strip.includes('"type":"pattern"'), 'the status strip keeps its own look')
 })

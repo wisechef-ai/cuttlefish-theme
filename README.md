@@ -6,13 +6,15 @@ cuttlefish-theme 2.0 is desktop-first, one plugin in two halves: a Desktop plugi
 
 ## Learn the language in 10 seconds
 
-| state | pattern | what it means |
-|---|---|---|
-| `resting` | calm mottle | idle; the session's quiet hue, near-invisible |
-| `working` | slow passing clouds | busy; leave it alone |
-| `needs you` | high-contrast zebra stripes | blocked on your answer (approval or clarify) |
-| `error` | blanching to pale | something failed — an errored turn or model call |
-| `finished` (unseen) | one dark eye-spot | a turn completed in a session you are not looking at |
+| state | pattern | row swatch | what it means |
+|---|---|---|---|
+| `resting` | calm mottle | three soft dots | idle; the session's quiet hue, near-invisible |
+| `working` | slow passing clouds | a puffy cloud | busy; leave it alone |
+| `needs you` | high-contrast zebra stripes | three bold diagonal bars | blocked on your answer (approval or clarify) |
+| `error` | blanching to pale | a hollow pale ring | something failed — an errored turn or model call |
+| `finished` (unseen) | one dark eye-spot | one dark spot in a pale halo | a turn completed in a session you are not looking at |
+
+In the chat field the stripes are diagonal bands of big dots (tiny, near-invisible dots between the bands); error swells the dots into soft pale, colourless blobs.
 
 Hue is **which session** — its identity, held for the session's life. Pattern and brightness are **its state**. A state change never touches the hue.
 
@@ -22,11 +24,11 @@ The full vocabulary — signals, precedence, adding your own states, motion — 
 
 ## Where it shows
 
-- **Sidebar row swatches** — every session at a glance: one small skin swatch per session row, carrying that session's hue and current state.
+- **Sidebar row swatches** — every session at a glance: one small state glyph per session row (the pictures in the table above), in that session's hue. The shape is the state; the hue is the session.
 - **The focused session** — three quiet surfaces:
   - a faint, sparse chromatophore dot field behind the chat, drawn over your own background as a scatter of organs, never a fill; near-invisible at rest, it blooms briefly when the state changes and settles again;
-  - a chromatophore rim at the top of the composer;
-  - a status-bar strip that also says the state in words.
+  - a thin rim at the top of the composer that echoes the glyph (a hairline at rest, cloud dashes, diagonal stripes, a pale wash, one dark spot);
+  - a status-bar strip that always says the state in words (`resting`, `working`, `needs you`, `error`, `done`).
 
 All of it sits **beside** core's own amber/emerald status dots. The plugin never hides or replaces them, and never sets your theme or accent colour — your colours stay yours.
 
