@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.1.0 — the v2.1 language (unreleased)
+
+- **Marks.** The sidebar mark is 24×16 with five coarse silhouettes read at 1×: a small soft oval (resting), a large solid cloud (working), a filled striped chip (needs you), a hollow pale square with a missing corner (error), a ringed eye with a dark core (finished unseen). Ink holds ≥ 3.6:1 on the row, selected or not (WCAG 1.4.11). The strip is the same mark at ×0.875, one nowrap row.
+- **Composer rim.** One 10 px pill in every state; only its fill and outline change, echoing the mark.
+- **Field.** Organs live only in the reading lane (right of the text and cards, below the header, above the composer). The finished eye-spot is one dark disc anchored in the right gutter. Needs-you and error are quieter.
+- **Working on the CPU.** The working state runs at 4 field updates per second, and the field layer keeps the 48 highest-alpha circles (never below the locked 40).
+
 ## 2.0.0 — desktop-first
 
 v2 moves the skin to the Hermes Desktop. One plugin, two halves.
