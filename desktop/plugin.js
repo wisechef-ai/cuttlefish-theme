@@ -317,12 +317,13 @@ Object.assign(exports, { ringOf, fieldCss });
 
 __cf_defs["src/adapters/rim.ts"] = (exports) => {
 // The composer RIM (C1/C6): one clean thin band above the composer that echoes the state's glyph — never texture.
-//   resting = a hairline          working = a track with bold cloud segments   needs you = bold diagonal stripes
-//   error   = a pale wash inside a broken (dashed) outline — the swatch's hollow dashed oval    finished unseen = a hairline with one dark eye-spot
+//   resting = a hairline          working = a row of overlapping cloud puffs   needs you = bold diagonal stripes
+//   error   = broad pale dashes, colourless (the swatch's hollow dashed oval, drawn wide)    finished unseen = a hairline with one dark eye-spot
 // Identity hue throughout (error is the near-achromatic pale pigment); the state speaks through shape and ink.
 // The band is a tree of plain nodes, rendered as React elements (the surface) or as SVG text (the dev sheets).
 const { alphaFor, hexToRgb, planGround } = __cf_require("src/domain/index.ts");const SPOT_INK = 0.3
 const STRIPE_ID = 'cf-rim-stripes'
+const DASH_ID = 'cf-rim-dashes'
 /** The fill + opacity that shows `ink` (|dL|) of a pigment on this ground. */
 function inkOf(plan            , hex        , maxDl        , ink        , intensity        )                                  {
   const alpha = alphaFor(Math.min(0.3, ink * intensity), hexToRgb(hex), plan, maxDl)
@@ -337,11 +338,12 @@ function rimNodes(i          )            {
   const hair          = { tag: 'rect', attrs: { x: 0, y: h - 1, width: '100%', height: 1, ...chroma(0.08) } }
   switch (i.base) {
     case 'clouds':
-      return [
-        { tag: 'rect', attrs: { x: 0, y: h * 0.25, width: '100%', height: h * 0.5, ...chroma(0.09) } },
-        ...[['3%', '17%'], ['27%', '24%'], ['58%', '15%'], ['79%', '18%']].map(([x, w])          => (
-          { tag: 'rect', attrs: { x, y: 0, width: w, height: h, rx: h / 2, ...chroma(0.30) } })),
-      ]
+      // the glyph's cloud, as a row: fourteen banks of six overlapping puffs (same family as the sidebar blob)
+      return Array.from({ length: 14 }, (_, i)          => ({
+        tag: 'svg', attrs: { x: `${2 + 7 * i}%`, y: 0, width: 34, height: h, overflow: 'visible' },
+        children: [[3, 0.38], [8, 0.5], [13, 0.46], [18, 0.5], [23, 0.46], [28, 0.38]].map(([cx, k])          => (
+          { tag: 'circle', attrs: { cx, cy: h / 2, r: h * k, ...chroma(0.30) } })),
+      }))
     case 'zebra':
       return [
         { tag: 'defs', attrs: {}, children: [{ tag: 'pattern', attrs: { id: STRIPE_ID, width: 12, height: h, patternUnits: 'userSpaceOnUse', patternTransform: 'skewX(-45)' },
@@ -349,11 +351,12 @@ function rimNodes(i          )            {
         { tag: 'rect', attrs: { x: 0, y: 0, width: '100%', height: h, fill: `url(#${STRIPE_ID})` } },
       ]
     case 'blanch': {
-      const wash = inkOf(plan, plan.blanch, plan.blanchMaxDl, 0.12, i.intensity)
-      const line = inkOf(plan, plan.blanch, plan.blanchMaxDl, 0.34, i.intensity)
+      // broad pale dashes (the swatch's hollow dashed oval, drawn wide): colourless, unlike every other band
+      const dash = inkOf(plan, plan.blanch, plan.blanchMaxDl, 0.30, i.intensity)
       return [
-        { tag: 'rect', attrs: { x: 0, y: 0, width: '100%', height: h, ...wash } },
-        { tag: 'rect', attrs: { x: 0.75, y: 0.75, width: '100%', height: h - 1.5, fill: 'none', stroke: String(line.fill), 'stroke-opacity': line.opacity, 'stroke-width': 1.5, 'stroke-dasharray': '7 5' } },
+        { tag: 'defs', attrs: {}, children: [{ tag: 'pattern', attrs: { id: DASH_ID, width: 30, height: h, patternUnits: 'userSpaceOnUse' },
+          children: [{ tag: 'rect', attrs: { x: 2, y: 0.5, width: 20, height: h - 1, rx: 2.5, ...dash } }] }] },
+        { tag: 'rect', attrs: { x: 0, y: 0, width: '100%', height: h, fill: `url(#${DASH_ID})` } },
       ]
     }
     case 'eyespot':
@@ -1572,32 +1575,32 @@ const K = GLYPH_W / 24
 const SPOT_INK = 0.30
 
 const MOTTLE                      = [
-  { x: 6.5, y: 6.6, r: 2.3, ink: 0.24, pigment: 'chroma' },
-  { x: 12, y: 4.4, r: 1.7, ink: 0.20, pigment: 'chroma' },
-  { x: 17.5, y: 7.6, r: 2.1, ink: 0.22, pigment: 'chroma' },
+  { x: 6.2, y: 6.8, r: 2.8, ink: 0.30, pigment: 'chroma' },
+  { x: 12.2, y: 4.2, r: 2.1, ink: 0.30, pigment: 'chroma' },
+  { x: 17.8, y: 7.6, r: 2.5, ink: 0.30, pigment: 'chroma' },
 ]
 
 const CLOUD                      = [
-  { x: 7, y: 7.6, r: 3.2, ink: 0.15, pigment: 'chroma' },
-  { x: 11.8, y: 5.4, r: 4.0, ink: 0.15, pigment: 'chroma' },
-  { x: 16.8, y: 6.4, r: 3.6, ink: 0.15, pigment: 'chroma' },
-  { x: 20.4, y: 8.2, r: 2.4, ink: 0.15, pigment: 'chroma' },
+  { x: 7, y: 7.6, r: 3.2, ink: 0.26, pigment: 'chroma' },
+  { x: 11.8, y: 5.4, r: 4.0, ink: 0.26, pigment: 'chroma' },
+  { x: 16.8, y: 6.4, r: 3.6, ink: 0.26, pigment: 'chroma' },
+  { x: 20.4, y: 8.2, r: 2.4, ink: 0.26, pigment: 'chroma' },
 ]
 
 /** Three "/" bars, each a chain of four overlapping dots — bold, ink at the ceiling. */
 const BARS                      = [0, 1, 2].flatMap(k =>
   [-3.6, -1.2, 1.2, 3.6].map((t)           => ({ x: 5.5 + 6.5 * k + 0.8 * t, y: 6 - 1.1 * t, r: 1.5, ink: 0.30, pigment: 'chroma' })))
 
-/** A hollow dashed oval of pale beads: the washed-out outline (twelve beads, clear gaps between them). */
-const RING                      = Array.from({ length: 12 }, (_, i)           => {
-  const a = (2 * Math.PI * i) / 12
-  return { x: 12 + 9.4 * Math.cos(a), y: 6 + 4.2 * Math.sin(a), r: 1.35, ink: 0.30, pigment: 'blanch' }
+/** A hollow dashed oval of fat pale beads: the washed-out outline (nine thick dashes with clear gaps). */
+const RING                      = Array.from({ length: 9 }, (_, i)           => {
+  const a = (2 * Math.PI * i) / 9
+  return { x: 12 + 9.4 * Math.cos(a), y: 6 + 4.1 * Math.sin(a), r: 1.85, ink: 0.30, pigment: 'blanch' }
 })
 
 /** One bold dark eye-spot on a light chip: a pale block of small overlapping dots, the spot (LAST entry, the only
  *  'spot' pigment) at least twice the chip dots' radius. */
 const EYE                      = [
-  ...[3.2, 6, 8.8].flatMap(y => [4.6, 7.8, 11, 14.2, 17.4, 20.6].map((x)           => ({ x, y, r: 1.55, ink: 0.10, pigment: 'chroma' }))),
+  ...[3.2, 6, 8.8].flatMap(y => [4.6, 7.8, 11, 14.2, 17.4, 20.6].map((x)           => ({ x, y, r: 1.55, ink: 0.12, pigment: 'chroma' }))),
   { x: 12, y: 6, r: 3.7, ink: SPOT_INK, pigment: 'spot' },
 ]
 
@@ -1920,7 +1923,9 @@ __cf_defs["src/domain/pattern.ts"] = (exports) => {
 const { blake2b, seededStream, utf8 } = __cf_require("src/domain/blake2b.ts");const { hexToLab, hexToRgb, oklchToHex, rgbToOklab } = __cf_require("src/domain/oklch.ts");/** Ink ceilings the contract pins: resting near-invisible (p95 <= 0.05), everything text-safe (p95 <= 0.20). */
 const REST_LO = 0.012
 const REST_HI = 0.046
-const REST_MEAN = REST_LO + (REST_HI - REST_LO) * 0.4   // E[u^1.5] ~ 0.4
+/** The settled resting field: ink in [REST_FIELD_LO, REST_FIELD_LO + REST_FIELD_SPAN], mean 0.025 (what error is paler than). */
+const REST_FIELD_LO = 0.014, REST_FIELD_SPAN = 0.022
+const REST_MEAN = REST_FIELD_LO + REST_FIELD_SPAN / 2
 const ZEBRA_BRIGHT = 0.158, ZEBRA_DIM = 0.013
 const CLOUD_BASE = 0.020, CLOUD_AMP = 0.125, CLOUD_SIGMA = 118
 /** Error sits this much LIGHTER than resting (dark grounds can afford more); light grounds keep dl >= 0.012. */
@@ -1991,8 +1996,9 @@ function blanchDl(plan            , small         )         {
 }
 
 const jitter = (u        , span        )         => 1 + span * (u - 0.5)
+/** Resting ink is EVEN on the field — a narrow band, no bright outliers (a hotspot among faint dots reads as a mistake). */
 const mottleDl = (u        , small         )         =>
-  small ? SWATCH_LO + SWATCH_SPAN * u ** 1.5 : REST_LO + (REST_HI - REST_LO) * u ** 1.5
+  small ? SWATCH_LO + SWATCH_SPAN * u ** 1.5 : REST_FIELD_LO + REST_FIELD_SPAN * u
 
 /** The passing cloud: one soft band; under still/alive it travels at constant speed (no dead spots).
  *  Its per-organ jitter is drawn from ONE seeded stream per render (a single hash, consumed in
@@ -2037,6 +2043,7 @@ function zebraDl(bright         , u        )         {
 function radiusFactors(spec             , cons               , width        , height        )           {
   if (spec.base === 'zebra') return cons.organs.map(o => (zebraBright(o, width, height, spec.scale) ? ZEBRA_SWELL : ZEBRA_SHRINK))
   if (spec.base === 'blanch') return cons.organs.map(() => BLANCH_SWELL)
+  if (spec.base === 'mottle') return cons.organs.map(o => cons.medR / o.r)   // even dots at rest: no oversized one stands out
   return cons.organs.map(() => 1)
 }
 

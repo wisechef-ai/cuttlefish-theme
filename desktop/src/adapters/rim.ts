@@ -1,6 +1,6 @@
 // The composer RIM (C1/C6): one clean thin band above the composer that echoes the state's glyph — never texture.
-//   resting = a hairline          working = a track with bold cloud segments   needs you = bold diagonal stripes
-//   error   = a pale wash inside a broken (dashed) outline — the swatch's hollow dashed oval    finished unseen = a hairline with one dark eye-spot
+//   resting = a hairline          working = a row of overlapping cloud puffs   needs you = bold diagonal stripes
+//   error   = broad pale dashes, colourless (the swatch's hollow dashed oval, drawn wide)    finished unseen = a hairline with one dark eye-spot
 // Identity hue throughout (error is the near-achromatic pale pigment); the state speaks through shape and ink.
 // The band is a tree of plain nodes, rendered as React elements (the surface) or as SVG text (the dev sheets).
 import { alphaFor, hexToRgb, planGround, type GroundPlan, type PatternKind } from '../domain/index.ts'
@@ -11,6 +11,7 @@ export interface RimInput { base: PatternKind; hueDeg: number; ground: string; i
 
 const SPOT_INK = 0.3
 const STRIPE_ID = 'cf-rim-stripes'
+const DASH_ID = 'cf-rim-dashes'
 
 /** The fill + opacity that shows `ink` (|dL|) of a pigment on this ground. */
 function inkOf(plan: GroundPlan, hex: string, maxDl: number, ink: number, intensity: number): Record<string, string | number> {
@@ -26,11 +27,12 @@ export function rimNodes(i: RimInput): RimNode[] {
   const hair: RimNode = { tag: 'rect', attrs: { x: 0, y: h - 1, width: '100%', height: 1, ...chroma(0.08) } }
   switch (i.base) {
     case 'clouds':
-      return [
-        { tag: 'rect', attrs: { x: 0, y: h * 0.25, width: '100%', height: h * 0.5, ...chroma(0.09) } },
-        ...[['3%', '17%'], ['27%', '24%'], ['58%', '15%'], ['79%', '18%']].map(([x, w]): RimNode => (
-          { tag: 'rect', attrs: { x, y: 0, width: w, height: h, rx: h / 2, ...chroma(0.30) } })),
-      ]
+      // the glyph's cloud, as a row: fourteen banks of six overlapping puffs (same family as the sidebar blob)
+      return Array.from({ length: 14 }, (_, i): RimNode => ({
+        tag: 'svg', attrs: { x: `${2 + 7 * i}%`, y: 0, width: 34, height: h, overflow: 'visible' },
+        children: [[3, 0.38], [8, 0.5], [13, 0.46], [18, 0.5], [23, 0.46], [28, 0.38]].map(([cx, k]): RimNode => (
+          { tag: 'circle', attrs: { cx, cy: h / 2, r: h * k, ...chroma(0.30) } })),
+      }))
     case 'zebra':
       return [
         { tag: 'defs', attrs: {}, children: [{ tag: 'pattern', attrs: { id: STRIPE_ID, width: 12, height: h, patternUnits: 'userSpaceOnUse', patternTransform: 'skewX(-45)' },
@@ -38,11 +40,12 @@ export function rimNodes(i: RimInput): RimNode[] {
         { tag: 'rect', attrs: { x: 0, y: 0, width: '100%', height: h, fill: `url(#${STRIPE_ID})` } },
       ]
     case 'blanch': {
-      const wash = inkOf(plan, plan.blanch, plan.blanchMaxDl, 0.12, i.intensity)
-      const line = inkOf(plan, plan.blanch, plan.blanchMaxDl, 0.34, i.intensity)
+      // broad pale dashes (the swatch's hollow dashed oval, drawn wide): colourless, unlike every other band
+      const dash = inkOf(plan, plan.blanch, plan.blanchMaxDl, 0.30, i.intensity)
       return [
-        { tag: 'rect', attrs: { x: 0, y: 0, width: '100%', height: h, ...wash } },
-        { tag: 'rect', attrs: { x: 0.75, y: 0.75, width: '100%', height: h - 1.5, fill: 'none', stroke: String(line.fill), 'stroke-opacity': line.opacity, 'stroke-width': 1.5, 'stroke-dasharray': '7 5' } },
+        { tag: 'defs', attrs: {}, children: [{ tag: 'pattern', attrs: { id: DASH_ID, width: 30, height: h, patternUnits: 'userSpaceOnUse' },
+          children: [{ tag: 'rect', attrs: { x: 2, y: 0.5, width: 20, height: h - 1, rx: 2.5, ...dash } }] }] },
+        { tag: 'rect', attrs: { x: 0, y: 0, width: '100%', height: h, fill: `url(#${DASH_ID})` } },
       ]
     }
     case 'eyespot':

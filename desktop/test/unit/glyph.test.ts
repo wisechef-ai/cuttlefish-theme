@@ -23,7 +23,7 @@ test('the five glyphs are five different pictures: dot counts and sizes tell the
   assert.equal(new Set(PATTERN_KINDS.map(sig)).size, 5)
   assert.equal(glyphOf('mottle').length, 3, 'resting: three soft dots')
   assert.equal(glyphOf('zebra').length, 12, 'needs you: three bars of four dots')
-  assert.equal(glyphOf('blanch').length, 12, 'error: a dashed oval of twelve beads')
+  assert.equal(glyphOf('blanch').length, 9, 'error: a dashed oval of nine thick beads')
   assert.ok(glyphOf('blanch').every(d => d.pigment === 'blanch'), 'error is the pale pigment only')
   const eye = glyphOf('eyespot')
   assert.equal(eye.filter(d => d.pigment === 'spot').length, 1, 'finished unseen: exactly one eye-spot')
@@ -60,5 +60,7 @@ test('field sizes: stripe organs swell in a band and shrink in the gap along 45Â
   const share = z.filter(f => f === 2.2).length / z.length
   assert.ok(share > 0.42 && share < 0.56, `half the organs are in a band (${share.toFixed(2)})`)
   assert.deepEqual([...new Set(radiusFactors(patternOf(DEFAULT_SETTINGS, 'error'), cons, 1340, 880))], [3.2])
-  for (const s of ['resting', 'working', 'finished_unseen']) assert.deepEqual([...new Set(radiusFactors(patternOf(DEFAULT_SETTINGS, s), cons, 1340, 880))], [1])
+  for (const s of ['working', 'finished_unseen']) assert.deepEqual([...new Set(radiusFactors(patternOf(DEFAULT_SETTINGS, s), cons, 1340, 880))], [1])
+  const rest = radiusFactors(patternOf(DEFAULT_SETTINGS, 'resting'), cons, 1340, 880)
+  cons.organs.forEach((o, i) => assert.ok(Math.abs(o.r * rest[i] - cons.medR) < 1e-9), 'resting dots are all one size: no oversized hotspot')
 })

@@ -216,7 +216,7 @@ test('renderField golden digest: resting mottle, settled', () => {
     motion: 'still' as const, reducedMotion: false, tMs: 0, sinceChangeMs: SETTLED_MS,
   }
   assert.equal(Buffer.from(blake2b(utf8(JSON.stringify(renderField(input))), 32)).toString('hex'),
-    '00891c930d7ee9f6535561f62fcbcde317a176e332633e619632838b3200b66f')
+    '74100b70c1ae65830052ac2ea7beb74dea9e1457a3a472024e6291b1c38e5d0d')
 })
 
 test('renderField golden digest: alive clouds with every dial off unity', () => {
@@ -232,9 +232,9 @@ test('renderField golden digest: alive clouds with every dial off unity', () => 
 test('renderSwatch golden digests: working clouds and resting mottle', () => {
   const base = { seed: ROOTS[0], hueDeg: allocate(ROOTS[0], []).hue_deg, ground: GROUNDS[0], intensity: 1 }
   const clouds = Buffer.from(blake2b(utf8(JSON.stringify(renderSwatch({ ...base, pattern: patternOf(DEFAULT_SETTINGS, 'working') }).dots)), 32)).toString('hex')
-  assert.equal(clouds, 'c16ee1c111c74b46db44918261b450fbd2ecccd5942828aaebde3afb0f54acf7')
+  assert.equal(clouds, 'ebf929550fbbd27afbd4ca6649ee2dfcd6bf61ca0f1c7867f9b375db2389528e')
   const mottle = Buffer.from(blake2b(utf8(JSON.stringify(renderSwatch({ ...base, pattern: patternOf(DEFAULT_SETTINGS, 'resting') }).dots)), 32)).toString('hex')
-  assert.equal(mottle, 'cd8f74b531cf0b67832ae57af4d7be140a2d7d026454ae93a46c156f9b2e3430')
+  assert.equal(mottle, '62dc49131dfde142f2db7cf5719e704288cce6e3ad8960f183761f7d7722e99f')
 })
 
 // Every earlier digest used dials at 1, where `*` and `/` agree. These two render with
@@ -258,5 +258,5 @@ test('renderField golden digests: clouds and eyespot with the dials off unity', 
   assert.equal(Buffer.from(blake2b(utf8(JSON.stringify(renderField(input(patternOf(tuned.settings, 'dc'))))), 32)).toString('hex'),
     'd0b2d97fdf8ae779009a1a28b7127a66c545d24f171a17c0342fe734e5d5d066')
   assert.equal(Buffer.from(blake2b(utf8(JSON.stringify(renderField(input(patternOf(tuned.settings, 'de'))))), 32)).toString('hex'),
-    '7ba96cd9423dac06eca5b5796384e5b9cf4c6f2bdc6602e5836229c08705b5a2')
+    '0df10ba268da97917cdf37da68a47be02676f316246913ddf712f46dedb933e2')
 })

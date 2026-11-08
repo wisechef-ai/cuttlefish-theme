@@ -67,15 +67,15 @@ test('error = blanching to PALE: lighter than the same session\'s resting organs
   }
 })
 
-test('resting headroom: mean ink >= 0.02, p95 <= 0.048, and the mottle varies', () => {
+test('resting headroom: mean ink >= 0.02, p95 <= 0.04 (even, no bright outliers), and the mottle varies', () => {
   for (const ground of GROUNDS) {
     for (const root of ROOTS_SAMPLE) {
       const organs = field(root, ground, 'resting').filter(d => d.role === 'organ' && d.alpha > 0)
       const st = lightnessStats(organs, ground)
       assert.ok(st.mean >= 0.02, `${ground}/${root}: resting mean ${st.mean.toFixed(4)}`)
-      assert.ok(st.p95 <= 0.048, `${ground}/${root}: resting p95 ${st.p95.toFixed(4)}`)
+      assert.ok(st.p95 <= 0.04, `${ground}/${root}: resting p95 ${st.p95.toFixed(4)}`)
       const v = organs.map(d => dotDeltaL(d, ground))
-      assert.ok(Math.sqrt(mean(v.map(x => (x - st.mean) ** 2))) / st.mean >= 0.3, 'the mottle flattened')
+      assert.ok(Math.sqrt(mean(v.map(x => (x - st.mean) ** 2))) / st.mean >= 0.18, 'the mottle flattened (the locked floor is 0.15)')
     }
   }
 })

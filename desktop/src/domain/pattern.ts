@@ -14,7 +14,9 @@ import type { Motion, PatternSpec } from './types.ts'
 /** Ink ceilings the contract pins: resting near-invisible (p95 <= 0.05), everything text-safe (p95 <= 0.20). */
 export const REST_LO = 0.012
 export const REST_HI = 0.046
-export const REST_MEAN = REST_LO + (REST_HI - REST_LO) * 0.4   // E[u^1.5] ~ 0.4
+/** The settled resting field: ink in [REST_FIELD_LO, REST_FIELD_LO + REST_FIELD_SPAN], mean 0.025 (what error is paler than). */
+const REST_FIELD_LO = 0.014, REST_FIELD_SPAN = 0.022
+export const REST_MEAN = REST_FIELD_LO + REST_FIELD_SPAN / 2
 const ZEBRA_BRIGHT = 0.158, ZEBRA_DIM = 0.013
 const CLOUD_BASE = 0.020, CLOUD_AMP = 0.125, CLOUD_SIGMA = 118
 /** Error sits this much LIGHTER than resting (dark grounds can afford more); light grounds keep dl >= 0.012. */
@@ -86,8 +88,9 @@ export function blanchDl(plan: GroundPlan, small: boolean): number {
 }
 
 const jitter = (u: number, span: number): number => 1 + span * (u - 0.5)
+/** Resting ink is EVEN on the field — a narrow band, no bright outliers (a hotspot among faint dots reads as a mistake). */
 const mottleDl = (u: number, small: boolean): number =>
-  small ? SWATCH_LO + SWATCH_SPAN * u ** 1.5 : REST_LO + (REST_HI - REST_LO) * u ** 1.5
+  small ? SWATCH_LO + SWATCH_SPAN * u ** 1.5 : REST_FIELD_LO + REST_FIELD_SPAN * u
 
 /** The passing cloud: one soft band; under still/alive it travels at constant speed (no dead spots).
  *  Its per-organ jitter is drawn from ONE seeded stream per render (a single hash, consumed in
@@ -132,6 +135,7 @@ function zebraDl(bright: boolean, u: number): number {
 export function radiusFactors(spec: PatternSpec, cons: Constellation, width: number, height: number): number[] {
   if (spec.base === 'zebra') return cons.organs.map(o => (zebraBright(o, width, height, spec.scale) ? ZEBRA_SWELL : ZEBRA_SHRINK))
   if (spec.base === 'blanch') return cons.organs.map(() => BLANCH_SWELL)
+  if (spec.base === 'mottle') return cons.organs.map(o => cons.medR / o.r)   // even dots at rest: no oversized one stands out
   return cons.organs.map(() => 1)
 }
 
