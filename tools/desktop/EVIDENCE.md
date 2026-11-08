@@ -7,8 +7,10 @@ make evidence                                   # HEAD (must be on origin): star
 tools/desktop/capture-remote.sh start <commit>  # hercules: niced, memory-capped systemd --user unit running capture.sh
 tools/desktop/capture-remote.sh wait            # polls ≤ 8 min per call: exit 0 done, 3 still running, 1 failed
 tools/desktop/capture-remote.sh fetch           # copies hercules' evidence/v2 into this repo
-tools/desktop/capture.sh <commit>               # (on hercules) fetch the commit into ~/cf2/run/repo, unit tests, capture.ts
+tools/desktop/capture.sh <commit> [WxH]         # (on hercules) fetch the commit into ~/cf2/run/repo, unit tests, capture.ts
+tools/desktop/capture-remote.sh start <commit> 1280x800   # a second window size: evidence/v2-1280x800 (fetch with the same WxH)
 ```
+Runs are sequential (one private Xvfb `:93`, one mock port): start the next one only after `wait` says the last one finished.
 
 `capture.ts` (sandbox up → scenario → video/stills/pixels/perf → manifest → sandbox down):
 
@@ -29,4 +31,23 @@ tools/desktop/capture.sh <commit>               # (on hercules) fetch the commit
   The css sampler (10 Hz, sha256 of the plugin's owned `<style>`) runs in the working windows (also, as a no-op, in the off window).
 * `measure.py` recomputes every manifest number from the raw files with the contract's own `instruments_py` / `raw_evidence`.
 * Run-twice safe: everything is written to `evidence/v2.staging` and swapped in only when complete.
+* **Reviewer stills** (report only, none of them changes a contract number): `raw/stills/sidebar-<state>.png` for resting, working,
+  needs_you, error, finished_unseen and `sidebar-all.png` are crops of the sidebar rows from the same full frame, upscaled 2x with
+  nearest-neighbour (`ffmpeg crop,scale=iw*2:ih*2:flags=neighbor`): crisp pixels. The screen is 1x, so these are upscales of the captured
+  pixels, not a render at 2x device scale. `stills/finished_unseen.png` is taken while ANOTHER session holds the focus (its sidecar names
+  it as `focused_stored_id`), so the sidebar shows that session's row in the finished-unseen state.
+* **Working still**: 8 frames 400 ms apart; the one whose field-ink centre (the instrument's own ink mask) is nearest the middle of the
+  field is kept (`measure.py centroid`), so the cloud band is mid-screen, not at an edge. The distances of all 8 are logged.
+* **Strip check**: for every focused state the status strip's DOM box, `inside` (the box lies fully in the window viewport), `clipped`
+  (any element of the strip scrolls wider than its box) and the computed `text_overflow`, in `capture.strip_check`.
+* **Small windows, honest rule** (`evidence_lib.ts exclusionVerdict`, `measure.py exclusion_verdict`): the contract's bounds and 50 % region
+  rule are unchanged. Exclusions up to 25 % of the region pass as before; above 25 % a still still passes while at least
+  `MIN_MEASURED_PX` (200 000 px) remain measurable, and the share and the measured px are both reported (`extra.exclusions`).
+  Fewer than the floor fails. The locked contract's own `region_ok` still says 25 %: a 1280x800 evidence tree is not a release tree.
 * The `vision` block is NOT written here: the conductor adds `raw/vision/response.txt` and `manifest.vision` after a separate critique.
+
+## Tests (where they run)
+
+* `node --test tools/desktop/*.test.ts` (inside `capture.sh` on hercules, and locally after `npm ci` in `tools/desktop/`).
+* `python -m pytest tools/desktop/test_measure.py` (the exclusion rule, the union of exclusions, the ink centroid, the still guard).
+  `make test` does not run it (the Makefile's `test` target is the builder gate, owned elsewhere).
