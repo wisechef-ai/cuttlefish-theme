@@ -42,7 +42,8 @@ def exclusion_verdict(area: int, excluded: int, min_measured: int = MIN_MEASURED
         return {**base, "ok": False, "reason": f"{measured} px measured < {min_measured} px: too little field left to measure"}
     if share <= MAX_EXCLUDED_SHARE:
         return {**base, "ok": True, "reason": None}
-    return {**base, "ok": True, "reason": f"small window: {round(share * 100)}% excluded (> 25%), {measured} px measured (>= {min_measured})"}
+    why = f"small window: {round(share * 100)}% excluded (> 25%), {measured} px measured (>= {min_measured})"
+    return {**base, "ok": True, "reason": why}
 
 
 def union_area(rects, region) -> int:
