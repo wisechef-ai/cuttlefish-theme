@@ -1,0 +1,9 @@
+{
+  "name": "cuttlefish-theme-desktop-tools",
+  "private": true,
+  "type": "module",
+  "description": "Real-Desktop harness, spikes, acceptance probe and capture for cuttlefish-theme. Dev only, never shipped.",
+  "engines": { "node": ">=24" },
+  "dependencies": { "@playwright/test": "1.64.0" },
+  "devDependencies": { "@types/node": "24.10.1" }
+}

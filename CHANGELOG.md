@@ -12,6 +12,7 @@ v2 moves the skin to the Hermes Desktop. One plugin, two halves.
 - **Legibility.** State now reads from our own surfaces alone: each sidebar row swatch is a state glyph in the session hue (soft dots · cloud · three diagonal bars · hollow pale ring · dark eye-spot in a halo), the composer rim is one clean band that echoes it (not grain), needs-you in the chat field is diagonal bands of big dots between near-invisible ones, and error swells the dots into soft pale colourless blobs.
 - **Legibility, round 2.** The status strip is one nowrap row (the state's words were clipped below the glyph); swatches are 28×14 with heavier marks (bold resting dots, a dashed-oval error outline, one bold dark spot on a light chip for finished-unseen); the rim is 6 px with bold cloud segments for working and a pale wash in a dashed outline for error; error in the field swells into large overlapping pale colourless blobs.
 - **Removed: the v1 terminal engine.** The live terminal repaint depended on core hooks that never merged, so it is gone from what ships. The history stays on `main` at `0a33840`.
+- **Fixed.** The Python half no longer imports PyYAML at load, so it loads on Hermes runtimes without it (Python 3.14 "No module named 'yaml'"); config is read through core's `hermes_cli.config` and an import guard keeps undeclared imports out of the shipped code.
 
 ## 0.5.0 — bioluminescent frame
 
