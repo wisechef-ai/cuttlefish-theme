@@ -6,15 +6,17 @@ cuttlefish-theme 2.0 is desktop-first, one plugin in two halves: a Desktop plugi
 
 ## Learn the language in 10 seconds
 
-| state | pattern | row swatch | what it means |
+| state | pattern | row mark (24×16 chip) | what it means |
 |---|---|---|---|
-| `resting` | calm mottle | three soft dots | idle; the session's quiet hue, near-invisible |
-| `working` | slow passing clouds | a puffy cloud | busy; leave it alone |
-| `needs you` | high-contrast zebra stripes | three bold diagonal bars | blocked on your answer (approval or clarify) |
-| `error` | blanching to pale | a hollow pale ring | something failed — an errored turn or model call |
-| `finished` (unseen) | one dark eye-spot | one dark spot in a pale halo | a turn completed in a session you are not looking at |
+| `resting` | calm mottle | three small dots, nothing else | idle; the session's quiet hue |
+| `working` | slow passing clouds | one solid, puffy cloud | busy; leave it alone |
+| `needs you` | high-contrast zebra stripes | an outlined chip filled with bold diagonal stripes | blocked on your answer (approval or clarify) |
+| `error` | blanching to pale | a pale **grey** chip with a hollow, broken ring (no hue left) | something failed — an errored turn or model call |
+| `finished` (unseen) | one dark eye-spot | a solid iris with one big dark pupil | a turn completed in a session you are not looking at |
 
-In the chat field the stripes are diagonal bands of big dots (tiny, near-invisible dots between the bands); error swells the dots into soft pale, colourless blobs.
+![The five marks on light and dark](docs/design/contact-marks.png)
+
+In the chat field the stripes are diagonal bands of big dots on the right of the page (the left half, where the text is, stays faint); error swells the dots into soft pale, colourless blobs; finished-unseen is one big dark disc in the right gutter. The composer rim is the same picture drawn full width: bold stripes, a train of cloud lobes, a pale wash inside a broken outline, one dark eye.
 
 Hue is **which session** — its identity, held for the session's life. Pattern and brightness are **its state**. A state change never touches the hue.
 

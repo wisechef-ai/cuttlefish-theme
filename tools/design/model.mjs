@@ -114,7 +114,7 @@ export function rimSvg(state, hue, ground, width) {
 
 // ---- field post-process (the spec's F1/F2; the domain implements these inside renderField) ------------------------------
 import { hexToLab as _lab } from '../../desktop/src/domain/oklch.ts'
-export const LANE = { frac: 0.5, shrink: 0.5, fade: 0.5 }
+export const LANE = { frac: 0.5, shrink: 0.5, fade: 1 }
 export const SPOT = { rPx: 26, xFrac: [0.74, 0.90], yFrac: [0.50, 0.70], dlLight: 0.55, darkMode: 'black' }
 /** Reading lane: organs left of LANE.frac·width shrink and fade (the locked classifier stays green: tools/design/field_spike.ts). The eye-spot moves to the right gutter, bold. */
 export function fieldPost(dots, w, h, ground, hue, u = 0.37) {

@@ -1,0 +1,54 @@
+--- a/desktop/src/domain/organs.ts	2026-11-08 18:00:56.278115724 +0100
++++ b/desktop/src/domain/organs.ts	2026-11-08 18:22:10.040908151 +0100
+@@ -73,7 +73,7 @@
+ /** Where the single ocellus sits: central band, seeded — one spot, never on the edge. */
+ export function eyeSpotAt(seed: string, width: number, height: number): { x: number; y: number } {
+   const rnd = seededStream(seed, 'eyespot')
+-  const x = width * (0.32 + 0.36 * rnd())
+-  const y = height * (0.30 + 0.40 * rnd())
++  const x = width * (0.74 + 0.16 * rnd())
++  const y = height * (0.50 + 0.20 * rnd())
+   return { x, y }
+ }
+--- a/desktop/src/domain/pattern.ts	2026-11-08 18:00:56.278115724 +0100
++++ b/desktop/src/domain/pattern.ts	2026-11-08 18:22:10.041908133 +0100
+@@ -69,7 +69,7 @@
+   }
+   const chroma = oklchToHex((lo + hi) / 2, CHROMA_C, hueDeg)
+   const blanch = oklchToHex(Math.min(0.97, Math.max(0.05, gl + dir * 0.26)), BLANCH_C, hueDeg)
+-  const spot = oklchToHex(Math.min(0.97, Math.max(0.03, gl - 0.30)), SPOT_C, hueDeg)
++  const spot = oklchToHex(Math.min(0.97, Math.max(0.03, gl - 0.62)), SPOT_C, hueDeg)
+   const plan: GroundPlan = {
+     groundRgb: rgb, groundL: gl, dir, chroma, blanch, spot,
+     chromaMaxDl: dlAt(chroma, gl), blanchMaxDl: dlAt(blanch, gl), spotMaxDl: dlAt(spot, gl),
+--- a/desktop/src/domain/field.ts	2026-11-08 18:00:56.273115816 +0100
++++ b/desktop/src/domain/field.ts	2026-11-08 18:22:44.255130392 +0100
+@@ -16,7 +16,8 @@
+ const SWATCH_W = GLYPH_W, SWATCH_H = GLYPH_H
+ const STRIP_W = GLYPH_W, STRIP_H = GLYPH_H
+ const SPOT_SCALE_FIELD = 5.4, SPOT_SCALE_SMALL = 2.6
+-const SPOT_DL = 0.156
++const SPOT_DL = 0.50
++const LANE_FRAC = 0.5, LANE_SHRINK = 0.5, LANE_FADE = 1
+ 
+ /** Invert the composite: the alpha at which `pigment` shows `target` |dL| on the ground. */
+ export function alphaFor(target: number, pigRgb: Rgb, plan: GroundPlan, maxDl: number): number {
+@@ -58,7 +59,7 @@
+     y: Math.min(height - margin, Math.max(margin, at.y)),
+     r,
+     color: pig.hex,
+-    alpha: alphaFor(Math.min(MAX_DL, SPOT_DL * intensity * bloom), pig.rgb, core.plan, pig.maxDl),
++    alpha: alphaFor(Math.min(pig.maxDl, SPOT_DL * intensity * bloom), pig.rgb, core.plan, pig.maxDl),
+     role: 'eyespot',
+   }
+ }
+@@ -88,7 +89,8 @@
+   const scales = radiusFactors(input.pattern, cons, input.width, input.height)
+   const dots = organDots(input.pattern, core, input.seed, input.intensity, bloom, input.tMs, motion, targets, scales)
+   if (input.pattern.base === 'eyespot') dots.push(eyeDot(core, input.seed, input.width, input.height, input.intensity, bloom, false))
+-  return dots
++  const lane = LANE_FRAC * input.width
++  return dots.map(d => (d.role === 'organ' && d.x < lane ? { ...d, r: d.r * LANE_SHRINK, alpha: d.alpha * LANE_FADE } : d))
+ }
+ 
+ /** The glyph of a pattern as dots in a w×h box: `copies` side by side, centred (the strip tiles it, the swatch is one). */

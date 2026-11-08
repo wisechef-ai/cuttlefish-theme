@@ -55,6 +55,30 @@ The label is what the status-bar strip says in words.
 
 A **pattern** is a kind plus three dials: `{base, density, contrast, scale}`. Ranges: `density` 0.25–4, `contrast` 0–2, `scale` 0.25–4; all default to 1.
 
+## The pictures (v2.1)
+
+Every plugin surface draws the same five pictures. The shape is the state; the hue is the session; and every mark is dark enough on its row to pass WCAG 2.2 SC 1.4.11 (≥ 3:1 against the row, selected or not, light or dark — measured from rendered pixels by `tools/design/measure.mjs`, table in [design/contrast-table.md](design/contrast-table.md)).
+
+![The five marks, sidebar rows on light, dark and Nord grounds](design/contact-marks.png)
+
+| state | sidebar mark (24×16) | field (focused chat) | composer rim (10 px) | status strip |
+|---|---|---|---|---|
+| resting | three small dots; nothing else | sparse faint mottle | a 1 px hairline | the mark + "resting" |
+| working | one solid cloud (seven lobes) | clouds drift (left half stays faint) | a train of cloud lobes on a thin track | cloud + "working" |
+| needs you | outlined chip, bold diagonal stripes | diagonal bands of big dots (right of the text) | full-width bold diagonal stripes | stripes chip + "needs you" |
+| error | pale grey chip, hollow broken ring, **no hue** | big pale, colourless blobs | pale wash inside a broken (dashed) outline | grey ring + "error" |
+| finished (unseen) | solid iris, one big dark pupil | one big dark disc in the right gutter | a hairline with one dark eye | eye + "done" |
+
+Rules the pictures obey:
+
+1. **Silhouette, not hue.** No two marks share an outline: dots / cloud / striped plate / hollow ring / disc-with-pupil. Pairwise overlap is measured (worst pair ≤ 0.55 IoU); a grey-scale screenshot still reads.
+2. **Error is the only grey mark.** Blanching *is* the loss of hue, so error is drawn in the near-achromatic pigment; it is also the only hollow mark.
+3. **Rest is small, not faint.** The resting mark is three small dots at full contrast — quiet because there is little of it, not because it is pale.
+4. **One working family.** Cloud lobes (overlapping circles of unequal radius) are the working picture on every surface: the sidebar cloud, the rim's lobe train, the big soft lobes of the field.
+5. **The field never smothers text.** Organs left of half the page width (where the text column is) are drawn at half size and half ink, so the stripes and blobs live in the open space on the right.
+6. **A seen, finished session is resting.** The eye appears only while a finished turn is unseen.
+
+
 ## Remapping and adding states
 
 Under `plugins.entries.cuttlefish-theme.settings.states` in `config.yaml`:
