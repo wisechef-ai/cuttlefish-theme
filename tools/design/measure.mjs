@@ -64,7 +64,8 @@ export function measureCell(img, cell, dpr, pal, pigments) {
     if (k === 'spot' && found.chroma) against = lum(found.chroma.r / found.chroma.n, found.chroma.g / found.chroma.n, found.chroma.b / found.chroma.n)
     res[k] = { n: e.n, ratio: ratio(l, against) }
   }
-  return { res, mask, w, h, worst: Math.min(...pigments.map(k => res[k].ratio)) }
+  let area = 0; for (let i = 0; i < w * h; i++) area += mask[i]
+  return { res, mask, w, h, inkArea: area / (dpr * dpr), worst: Math.min(...pigments.map(k => res[k].ratio)) }
 }
 const iou = (a, b) => { let i = 0, u = 0; for (let k = 0; k < a.length; k++) { i += a[k] & b[k]; u += a[k] | b[k] } return u ? i / u : 0 }
 
@@ -82,7 +83,7 @@ if (process.argv[1] && path.basename(process.argv[1]) === 'measure.mjs') {
       const gl = GLYPHS[cell.state]
       const pigments = [...new Set([...gl.dots.map(d => d.pig), ...gl.extras.filter(e => e.pig !== 'wash' && e.pig !== 'paper' && (e.alpha === undefined || e.alpha === 1)).map(e => e.pig)])]
       const m = measureCell(img, cell, dpr, pal, pigments)
-      rows.push({ ...cell, dpr, ratio: m.worst, coreN: 0 })
+      rows.push({ ...cell, dpr, ratio: m.worst, coreN: 0, inkArea: m.inkArea })
       if (m.worst < MIN_RATIO) fails.push(`${cell.state} ${cell.ground}${cell.sel ? '/sel' : ''} hue ${cell.hue} @${dpr}x = ${m.worst.toFixed(2)}`)
       byKey.set(`${cell.ground}|${cell.sel}|${cell.hue}|${cell.state}`, m.mask)
     }
@@ -103,6 +104,11 @@ if (process.argv[1] && path.basename(process.argv[1]) === 'measure.mjs') {
     const f = d => Math.min(...rows.filter(r => r.ground === g && r.sel === sel && r.state === s && r.dpr === d).map(r => r.ratio)).toFixed(2)
     md += `| ${g} | ${sel ? 'selected' : 'unselected'} | ${s} | ${f(1)} | ${f(2)} |\n`
   }
+  const areas = {}
+  for (const s of states) { const v = rows.filter(r => r.state === s && r.dpr === 2 && r.ground === 'light' && !r.sel && r.hue === 205).map(r => r.inkArea); areas[s] = v[0] }
+  const meanArea = Object.values(areas).reduce((x, y) => x + y, 0) / states.length
+  md += `\n## Optical footprint: ink area at 1× px² (light ground; pixels ≥ 2:1 vs ground), ratio to the five-mark mean (bar ±25 %)\n\n| state | ink px² | ratio |\n|---|---|---|\n`
+  for (const s of states) { const r = areas[s] / meanArea; md += `| ${s} | ${areas[s].toFixed(0)} | ${r.toFixed(2)} |\n`; if (r < 0.75 || r > 1.25) fails.push(`footprint ${s} ${r.toFixed(2)}`) }
   const worstIou = {}
   for (const r of iouRows) { const k = `${r.a} / ${r.b}`; worstIou[k] = Math.max(worstIou[k] ?? 0, r.v) }
   md += `\n## Silhouette: pairwise mask IoU (mask = pixels ≥ 2:1 vs ground; worst over grounds and selected/unselected; bar ≤ ${MAX_IOU})\n\n| pair | worst IoU |\n|---|---|\n`

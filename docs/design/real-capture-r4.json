@@ -1,0 +1,50 @@
+{
+ "field_pixels": {
+  "resting": {
+   "organs_detected": 99,
+   "p95_dL": 0.03582868064721989,
+   "mean_dL": 0.02139177736933067,
+   "lowK": 0.20366032326271022,
+   "highK": 0.23528960027253462
+  },
+  "working": {
+   "organs_detected": 48,
+   "p95_dL": 0.14742813352301787,
+   "mean_dL": 0.09886087021833571,
+   "lowK": 0.22942843239758065,
+   "highK": 0.3130537615950266
+  },
+  "needs_you": {
+   "organs_detected": 99,
+   "p95_dL": 0.15003476126824722,
+   "mean_dL": 0.07769990077073305,
+   "lowK": 0.38653063910648117,
+   "highK": 0.8829524387500495
+  },
+  "error": {
+   "organs_detected": 91,
+   "p95_dL": 0.09585062264428956,
+   "mean_dL": 0.03468011341436629,
+   "lowK": 1.062720485429135,
+   "highK": 0.6663008924773923
+  }
+ },
+ "perf": {
+  "sessions": 8,
+  "window_s": 60,
+  "budget": {
+   "idle_pp": 1,
+   "working_pp": 6
+  },
+  "idle": {
+   "on_pct": 8.86,
+   "off_pct": 8.89
+  },
+  "working": {
+   "on_pct": 14.96,
+   "off_pct": 9.87,
+   "field_updates_per_s": 4
+  }
+ },
+ "note": "full real-Desktop capture of the r4 candidate (636503a + docs/design/r4-marks-field.patch), v0.22.7, 1600x1000; perf-only pairs: +4.83, +3.71 pp (working on-off, 4 updates/s)"
+}

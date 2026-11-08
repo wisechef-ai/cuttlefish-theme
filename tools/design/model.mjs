@@ -61,43 +61,45 @@ const ring = (n, cx, cy, rx, ry, r, pig, phase = 0) =>
   Array.from({ length: n }, (_, i) => { const a = phase + (2 * Math.PI * i) / n; return circ(cx + rx * Math.cos(a), cy + ry * Math.sin(a), r, pig) })
 
 export const GLYPHS = {
-  // resting: ONE soft, small oval blob (three merged circles), the quietest ink, two paper flecks for the mottle. Not separate dots.
+  // resting (r4): ONE soft oval with a visible mottle: paper holes cut out of it. Quiet ink, ~16x9.
   resting: {
-    dots: [circ(8.4, 8.4, 2.9, 'soft'), circ(12, 8, 3.3, 'soft'), circ(15.6, 8.4, 2.9, 'soft')],
+    dots: [circ(12, 4.7, 4.3, 'soft'), circ(12, 8, 5.0, 'soft'), circ(12, 11.3, 4.3, 'soft')],
     extras: [
-      { k: 'ellipse', cx: 10.6, cy: 7.2, rx: 0.8, ry: 0.8, pig: 'paper', alpha: 0.45, above: true },
-      { k: 'ellipse', cx: 14.2, cy: 9.2, rx: 0.7, ry: 0.7, pig: 'paper', alpha: 0.45, above: true },
+      { k: 'ellipse', cx: 10.6, cy: 4.6, rx: 1.0, ry: 1.0, pig: 'paper', alpha: 0.9, above: true },
+      { k: 'ellipse', cx: 13.2, cy: 8.4, rx: 1.1, ry: 1.1, pig: 'paper', alpha: 0.9, above: true },
+      { k: 'ellipse', cx: 11, cy: 11.6, rx: 0.9, ry: 0.9, pig: 'paper', alpha: 0.9, above: true },
     ],
   },
-  // working: a large solid cloud, flat bottom, three lobes (the base rect under them is the flat bottom)
+  // working (r4): a solid cloud, three lobes, flat bottom
   working: {
-    dots: [circ(6.4, 8.9, 4.4), circ(12.6, 6.6, 5.6), circ(18.2, 9.2, 4.0)],
-    extras: [{ k: 'rect', x: 2.4, y: 9, w: 19.8, h: 4.9, rx: 2.4, pig: 'chroma', alpha: 1, fill: true }],
+    dots: [circ(6.8, 9.6, 3.3, 'chroma'), circ(12.4, 7.8, 4.4, 'chroma'), circ(17.6, 9.8, 3.1, 'chroma')],
+    extras: [{ k: 'rect', x: 3.8, y: 9.8, w: 16.2, h: 3.9, rx: 1.9, pig: 'chroma', alpha: 1, fill: true }],
   },
-  // needs you: a FILLED, saturated chip with three bold diagonal paper-coloured bars (the loudest mark)
+  // needs you (r4): a filled chip with TWO bold paper bars (survive at 1x)
   needs_you: {
-    dots: [[5, 5], [12, 5], [19, 5], [5, 11], [12, 11], [19, 11]].map(([x, y]) => circ(x, y, 3)),
+    dots: [[6, 5.5], [12, 5.5], [18, 5.5], [6, 10.5], [12, 10.5], [18, 10.5]].map(([x, y]) => circ(x, y, 2.8)),
     extras: [
-      { k: 'rect', x: 0.75, y: 0.75, w: 22.5, h: 14.5, rx: 3.5, pig: 'chroma', alpha: 1, fill: true },
-      { k: 'path', d: 'M2.5 11.5 L11.5 2.5', pig: 'paper', stroke: 2.4, above: true },
-      { k: 'path', d: 'M6.5 13.5 L17.5 2.5', pig: 'paper', stroke: 2.4, above: true },
-      { k: 'path', d: 'M12.5 13.5 L21.5 4.5', pig: 'paper', stroke: 2.4, above: true },
+      { k: 'rect', x: 2.5, y: 2, w: 19, h: 12, rx: 3, pig: 'chroma', alpha: 1, fill: true },
+      { k: 'path', d: 'M4 12 L12 4', pig: 'paper', stroke: 3.4, above: true },
+      { k: 'path', d: 'M11.5 12 L19.5 4', pig: 'paper', stroke: 3.4, above: true },
     ],
   },
-  // error: a HOLLOW pale chip with a big missing corner (top right), never filled; two round ends where the frame breaks
+  // error (r4): hollow pale frame, top-right corner missing with a wide gap (9 px of top edge + 7.5 px of right edge)
   error: {
-    dots: [circ(13.4, 1.5, 1.6, 'blanch'), circ(22.5, 9.9, 1.6, 'blanch')],
+    dots: [circ(13, 1.5, 1.5, 'blanch'), circ(22, 9, 1.5, 'blanch')],
     extras: [
-      { k: 'rect', x: 2, y: 2, w: 20, h: 12, rx: 1, pig: 'wash', alpha: 0.14, fill: true },
-      { k: 'path', d: 'M13.2 1.5 H1.5 V14.5 H22.5 V9.9', pig: 'blanch', stroke: 2.4 },
+      { k: 'rect', x: 2, y: 1.5, w: 20, h: 13, rx: 1, pig: 'wash', alpha: 0.16, fill: true },
+      { k: 'path', d: 'M13 1.5 H2 V14.5 H22 V9', pig: 'blanch', stroke: 2.2 },
     ],
   },
-  // finished unseen: pale disc, crisp ring, ONE big dark core, four iris flecks (round)
+  // finished unseen (r4): an almond/lens eye: pale lens, crisp outline, solid iris, dark pupil, catch-light; two corner dots
   finished_unseen: {
-    dots: [...[45, 135, 225, 315].map(a => circ(12 + 5.5 * Math.cos((a * Math.PI) / 180), 8 + 5.5 * Math.sin((a * Math.PI) / 180), 0.6)), circ(12, 8, 4.5, 'spot', 'eyespot')],
+    dots: [circ(3, 8, 0.7, 'chroma'), circ(21, 8, 0.7, 'chroma'), circ(12, 8, 2.8, 'spot', 'eyespot')],
     extras: [
-      { k: 'ellipse', cx: 12, cy: 8, rx: 7, ry: 7, pig: 'chroma', alpha: 0.30, fill: true },
-      { k: 'ellipse', cx: 12, cy: 8, rx: 7, ry: 7, pig: 'chroma', stroke: 1.6 },
+      { k: 'path', d: 'M2 8 Q12 -2 22 8 Q12 18 2 8 Z', pig: 'chroma', alpha: 0.30, fill: true },
+      { k: 'path', d: 'M2 8 Q12 -2 22 8 Q12 18 2 8 Z', pig: 'chroma', stroke: 1.6 },
+      { k: 'ellipse', cx: 12, cy: 8, rx: 4.4, ry: 4.4, pig: 'chroma', stroke: 1.5 },
+      { k: 'ellipse', cx: 13.3, cy: 6.6, rx: 0.9, ry: 0.9, pig: 'paper', alpha: 1, above: true },
     ],
   },
 }
@@ -130,21 +132,24 @@ export function rimSvg(state, hue, ground, width) {
   let body = ''
   if (state === 'resting') body = pill(`stroke="${c}" stroke-width="1"`)
   if (state === 'working') {
-    const lobes = (x, rs) => rs.map((r, i) => `<circle cx="${f(x + i * r * 1.15)}" cy="${h / 2}" r="${r}" fill="${c}"/>`).join('')
-    const trains = [[3.2, 4.6, 3.6], [3.8, 5, 4, 2.8], [3, 4.2], [3.6, 5, 4], [3, 4.4, 3.2]]
+    // small CLOUDS (the mark in miniature: three lobes, flat base), not lozenges; spaced irregularly
+    const cloud = x => `<g fill="${c}"><circle cx="${f(x + 3.4)}" cy="5.4" r="2.5"/><circle cx="${f(x + 7.2)}" cy="4.1" r="3.2"/><circle cx="${f(x + 11.2)}" cy="5.5" r="2.7"/><rect x="${f(x + 1.2)}" y="5.3" width="13.4" height="3" rx="1.5"/></g>`
     const out = []
-    let x = 26, k = 0
-    while (x < width - 40) { const t = trains[k++ % trains.length]; out.push(lobes(x, t)); x += t.reduce((s2, r) => s2 + r * 1.15, 0) + 40 + (k * 37) % 70 }
-    body = `<g clip-path="url(#cap)">${out.join('')}</g>${pill(`stroke="${c}" stroke-width="1"`)}`
+    let x = 30, k = 0
+    while (x < width - 60) { out.push(cloud(x)); k++; x += 16 + 54 + (k * 41) % 64 }
+    body = `${out.join('')}${pill(`stroke="${c}" stroke-width="1"`)}`
   }
   if (state === 'needs_you') {
-    body = `<defs><pattern id="s" width="12" height="${h}" patternUnits="userSpaceOnUse" patternTransform="skewX(-45)"><rect width="6" height="${h}" fill="${c}"/></pattern></defs><rect width="${width}" height="${h}" fill="url(#s)" clip-path="url(#cap)"/>${pill(`stroke="${c}" stroke-width="1.5"`)}`
+    // a static warning BAND: two bracket chips of bold stripes (left and right), a clear chip end, the pill outline between
+    const chip = x => `<g clip-path="url(#cap)"><rect x="${x}" y="0" width="96" height="${h}" fill="url(#s)"/></g>`
+    body = `<defs><pattern id="s" width="12" height="${h}" patternUnits="userSpaceOnUse" patternTransform="skewX(-45)"><rect width="6" height="${h}" fill="${c}"/></pattern></defs>${pill(`stroke="${c}" stroke-width="1.5"`)}${chip(0)}${chip(width - 96)}<rect x="96" y=".75" width="1.5" height="${ph}" fill="${c}"/><rect x="${width - 97.5}" y=".75" width="1.5" height="${ph}" fill="${c}"/>`
   }
   if (state === 'error') {
-    body = `<rect width="${width}" height="${h}" fill="${pal.wash}" fill-opacity=".38" clip-path="url(#cap)"/>${pill(`stroke="${b}" stroke-width="3" stroke-dasharray="${Math.round(width * 0.42)} 14"`)}`
+    // pale, washed, ONE line with ONE break (a gap near the right end); lighter than the old dashed double
+    body = `<rect width="${width}" height="${h}" fill="${pal.wash}" fill-opacity=".16" clip-path="url(#cap)"/>${pill(`stroke="${b}" stroke-width="1.6" pathLength="1000" stroke-dasharray="975 25" stroke-dashoffset="-80"`)}`
   }
   if (state === 'finished_unseen') {
-    body = `${pill(`stroke="${c}" stroke-width="1"`)}<circle cx="14" cy="5" r="3.9" fill="${c}" fill-opacity=".3" stroke="${c}" stroke-width="1.2"/><circle cx="14" cy="5" r="2.4" fill="${pal.spot}"/>`
+    body = `${pill(`stroke="${c}" stroke-width="1"`)}<path d="M8 5 Q20 -2 32 5 Q20 12 8 5 Z" fill="${c}" fill-opacity=".3" stroke="${c}" stroke-width="1.2"/><circle cx="20" cy="5" r="2.6" fill="${c}"/><circle cx="20" cy="5" r="1.6" fill="${pal.spot}"/>`
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${h}" viewBox="0 0 ${width} ${h}"><defs>${clip}</defs>${body}</svg>`
 }

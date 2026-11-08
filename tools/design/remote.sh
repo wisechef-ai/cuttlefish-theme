@@ -7,7 +7,9 @@ H=${CF_RENDER_HOST:?set CF_RENDER_HOST=user@host}
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 R=cf2/design/repo
 ssh "$H" "mkdir -p $R/tools $R/desktop/src"
-tar -C "$ROOT" -cf - tools/design desktop/src/domain | ssh "$H" "tar -C $R -xf -"
+tar -C "$ROOT" -cf - tools/design | ssh "$H" "tar -C $R -xf -"
+# the domain to render with: the product tree, or a candidate tree (CF_DOMAIN_ROOT=/path holding desktop/src/domain)
+tar -C "${CF_DOMAIN_ROOT:-$ROOT}" -cf - desktop/src/domain | ssh "$H" "tar -C $R -xf -"
 ssh "$H" "cd \$HOME/$R && ln -sfn \$HOME/cf2/run/repo/tools/desktop/node_modules \$HOME/$R/tools/design/node_modules; mkdir -p \$HOME/cf2/design/out; find \$HOME/cf2/design/out -mindepth 1 -delete"
 SCRIPT=$1; shift
 ssh "$H" "systemd-run --user --pipe --wait --collect -p Environment=CF_STATES=${CF_STATES:-} -p Environment=PATH=\$HOME/.hermes/tools/node-26.12.1-linux-x64/bin:/usr/bin:/bin -p Nice=10 -p MemoryMax=4G -p WorkingDirectory=\$HOME/$R/tools/design /usr/bin/env node $SCRIPT \$HOME/cf2/design/out $*" 2>&1 | tail -15

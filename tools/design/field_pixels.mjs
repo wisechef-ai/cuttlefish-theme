@@ -24,12 +24,13 @@ const index = []
 for (const v of variants) for (const c of cases) {
   const dots = renderField({ seed: c.seed, width: v.w, height: v.h, hueDeg: allocate(c.seed, []).hue_deg, ground: c.ground, pattern: patternOf(DEFAULT_SETTINGS, c.state),
     intensity: 1, motion: 'still', reducedMotion: false, tMs: v.tMs ?? 4200, sinceChangeMs: 99999 })
-  const svg = toSvg(cull(dots, v.cull), v.w, v.h)
+  const budget = c.state === 'working' && v.cullClouds !== undefined ? v.cullClouds : v.cull
+  const svg = toSvg(cull(dots, budget), v.w, v.h)
   const url = `url('data:image/svg+xml,${encodeURIComponent(svg)}')`
   await page.setContent(`<html><body style="margin:0;background:${c.ground}"><div style="position:absolute;left:260px;top:34px;width:1339px;height:944px;overflow:hidden;background:${url} 0 0/${v.w}px ${v.h}px no-repeat,${c.ground}"></div></body></html>`)
   const file = `${v.name}.${c.state}.png`
   await page.screenshot({ path: path.join(out, file) })
-  index.push({ variant: v.name, state: c.state, file, organs: cull(dots, v.cull).length })
+  index.push({ variant: v.name, state: c.state, file, organs: cull(dots, budget).length })
 }
 fs.writeFileSync(path.join(out, 'index.json'), JSON.stringify(index))
 await browser.close()

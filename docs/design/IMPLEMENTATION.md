@@ -132,6 +132,55 @@ New painter function: `layerFor(base, dots)` = `base === 'clouds' ? layerCircles
 
 **F-C. O1 (security scan).** The design helpers contain no recursive delete any more (`find … -mindepth 1 -delete` inside their own scratch dirs), and the demo card text in the mock pages no longer prints a destructive command. The regex of `skills_guard.destructive_home_rm` finds nothing in any tracked file.
 
+## 4c. Round r4 (strict critique of the real stills at 636503a): the seven rulings, exact changes
+
+Patch: `docs/design/r4-marks-field.patch` (a diff of `desktop/src` at 636503a → the candidate; 7 files: `domain/glyph.ts`, `domain/pattern.ts`, `domain/field.ts`, `adapters/rim.ts`, `adapters/runtime.ts`, `adapters/view.ts`, `adapters/surfaces.ts`). Apply it, rebuild `desktop/plugin.js` (`node desktop/build.mjs`: the locked oA_part4 compares the SHIPPED plugin with the domain oracle, so a stale plugin.js fails P6.2–P6.4), then update the unit tests/goldens listed under "tests". **Locked suite on the patched tree: 116/116.** Goldens: `contact-marks.png` (2×) and `contact-marks@1x.png` (1×) are the sidebar rows on light, dark and Nord, selected and not; `real-size-sidebar-*@1x/2x.png` are 260×190 crops with a core-style grey bullet; `contact-light.png`/`contact-dark.png` are the five whole-window states plus the legend; `sheet-rim-strip.png` is the rims and strips. At 1× I named every state from the mark alone before writing this: upright mottled oval = resting, solid cloud = working, striped filled chip = needs you, hollow grey square with an open corner = error, almond eye = finished unseen.
+
+### Ruling 1: needs-you is a static warning band; the hatch survives at 1×
+* Mark (`GLYPHS.zebra`): chip `rect x2.5 y2 w19 h12 rx3` filled chroma; dots `r2.8` at `[6,5.5] [12,5.5] [18,5.5] [6,10.5] [12,10.5] [18,10.5]`; **two** paper bars (was three) `path M4 12 L12 4` and `M11.5 12 L19.5 4`, `stroke-width 3.4`, ABOVE. (Bar pitch 8 px horizontally, gap 2.3 px between bars.)
+* Rim (`rim.ts`, `case 'zebra'`): **two end chips**, never a full-width band: `CHIP_W = 96` px of the 12/6 skewX(−45) stripes at the left end and (mirrored with `x: '100%'` + `transform: translate(-96 0)`) at the right end, each closed by a 1.5 px vertical end bar (`x: 96` / `x: '100%'` translate(−97.5)), the 1.5 px pill outline between them. A band with two clear ends reads as a warning label, not a marching progress bar. No motion (the rim is static; unchanged).
+
+### Ruling 2: one blanched language (pale, washed, hollow, visibly broken)
+* Mark (`GLYPHS.blanch`): plate `rect x2 y1.5 w20 h13 rx1` fill wash α .16; frame `path M13 1.5 H2 V14.5 H22 V9` stroke blanch 2.2; dots `[13,1.5,r1.5] [22,9,r1.5]` (blanch). The gap is 9 px of the top edge plus 7.5 px of the right edge (≥ 3 px at 1×; was 4.4 px diagonal).
+* Rim (`case 'blanch'`): wash `fill-opacity .16` (was .38) and ONE line: `stroke blanch, stroke-width 1.6, pathLength 1000, stroke-dasharray '975 25', stroke-dashoffset -80`: a single 25/1000 break (≈ 40 px at a 1300 px composer). Was a 3 px dashed double ("40 14"). Lighter than core's recovery card yet unlike resting's 1 px hue hairline: grey, washed, broken.
+* The status icon is the same mark ×0.875 (nothing to change).
+
+### Ruling 3: working says "clouds" in a static still
+* Field (`pattern.ts`): `radiusFactors(spec, cons, w, h, targets?)`; for `clouds` with `targets`: `r × (1.8 + 1.6 · clamp((target − CLOUD_BASE)/CLOUD_AMP, 0, 1))` (constants `CLOUD_SWELL_BASE 1.8`, `CLOUD_SWELL_BAND 1.6`): every organ is a larger translucent blob and the band's organs are up to ×3.4, so they overlap into cloud masses. `field.ts` passes `targets` as the 5th argument. The painter's cloud budget (48 circles) and 4 updates/s are untouched; circle area grows, so D3 was re-measured (below).
+* Rim (`rim.ts`): the lobe trains are replaced by **miniature clouds**, the mark's three lobes on a flat base: per cloud `circle (x+3.4, 5.4, r2.5)`, `(x+7.2, 4.1, r3.2)`, `(x+11.2, 5.5, r2.7)` and `rect x+1.2 y5.3 w13.4 h3 rx1.5` (15.8 × 8 px), first at x = 30, then every `70 + (k·41 mod 64)` px on a 480 px tile (`TRAIN_TILE`), on the 1 px outline.
+* Mark (`GLYPHS.clouds`): lobes `[6.8,9.6,r3.3] [12.4,7.8,r4.4] [17.6,9.8,r3.1]`, base `rect x3.8 y9.8 w16.2 h3.9 rx1.9`.
+
+### Ruling 4: an eye, not a bullseye
+`GLYPHS.eyespot`: almond lens `path M2 8 Q12 -2 22 8 Q12 18 2 8 Z` (fill chroma α .30 BELOW, then the same path stroke chroma 1.6), iris ring `ellipse (12,8) r4.4 stroke chroma 1.5`, pupil `dot [12,8,r2.8]` pigment spot (LAST, role eyespot), two corner dots `[3,8,r0.7] [21,8,r0.7]` chroma (the "organs" `spotRatios` compares to: 2.8/0.7 = 4.0 ≥ 2), catch-light `ellipse (13.3,6.6) r0.9` fill paper ABOVE. Paths now use `M H V L Q Z` (no arcs; the scale regex already handles negatives). Rim: lens `M8 5 Q20 -2 32 5 Q20 12 8 5 Z` (fill chroma α .3, stroke 1.2) + `circle (20,5) r2.6` chroma + `circle (20,5) r1.6` spot, on the 1 px outline. **The field still carries exactly one eye-spot dot** (contract O2.1): unchanged.
+
+### Ruling 5: identity separation, and a resting mottle you can see
+* Root cause: `surfaces.ts` and `view.ts` called `allocate(id, [])` (no peers), so two sessions share a hue whenever their hashes collide. Measured on 12 000 pairs of four sessions: **4.8 % identical hue, 23.8 % closer than 30°**.
+* New `hueFor(v, id)` in `view.ts`: a per-view `Map<id, slot>`; every session the feed knows plus the asked one, in sorted order, that has no slot gets `allocate(id, [...slots held]).slot`; slots of sessions no longer known are released. Used for every row swatch and for `v.hueDeg` (the focused session). A single known session still gets `allocate(id, [])` (the locked oA_part4 oracle).
+* Metric (stated and measured with the locked `allocate`, 200 random session sets): minimum pairwise **hue-angle gap ≥ 34.5° for 2–5 live sessions, ≥ 23° for 6–7, ≥ 11.5° (one slot) for 8–12**; never a shared hue below 20 live sessions. (The arc is the contract's 20 slots on [110°, 340°), so beyond 6 sessions a gap ≥ 30° is impossible; the allocator maximises the minimum.)
+* Mark (`GLYPHS.mottle`): one upright oval, dots `[12,4.7,r4.3] [12,8,r5.0] [12,11.3,r4.3]` (soft ink), three paper holes ABOVE `(10.6,4.6) r1.0`, `(13.2,8.4) r1.1`, `(11,11.6) r0.9` at α .9: the mottle is 2 px holes, visible at 1×, quiet (soft ink, ≥ 3.5:1).
+
+### Ruling 6: one optical footprint (±25 %), state comes from shape
+All five marks live in the 24×16 box. Ink area at 1× (pixels ≥ 2:1 on the light ground, `contrast-table.md`): resting 110, working 136, needs you 148, error 110, finished 140 px²; ratio to the mean 0.86 / 1.05 / 1.15 / 0.85 / 1.09: all within ±25 %. Silhouette IoU (bar ≤ 0.55): resting/working 0.46, resting/finished 0.46, working/needs-you 0.39, working/finished 0.48, needs-you/finished 0.42, needs-you/error 0.16, error/finished 0.10, the rest ≤ 0.29. Contrast minimum 3.25:1.
+
+### Ruling 7: the idle field is a designed mottle in the gutter
+* The canvas is the chat SURFACE, not the window (`runtime.ts viewportOf`): `width = max(480, viewport.width − 260)`, `height = max(360, viewport.height − 56)` (1340 × 944 at 1600 × 1000; measured). Painting the window overshot the surface by 260 px, so the gutter was cut off and bunched on the right edge.
+* Soft falloff (`field.ts`): after the organs are drawn, `r × (0.7 + 0.3 · min(fx, fy))` with a smoothstep ramp: `fx = min(ramp(x − lane, 0.30·rw), ramp(width − x, 0.08·rw))`, `fy = min(ramp(y − top, 0.12·rh), ramp(top + rh − y, 0.12·rh))` (`FALL_X .30, FALL_RIGHT .08, FALL_Y .12, FALL_MIN .7`). Radius only: the locked tests are per-dot ink, and the lane/clearance rules are untouched. The mottle thins at the lane edge, the top, the bottom and the far right instead of ending in a hard cut.
+
+### Measured (real Desktop v0.22.7, 1600 × 1000, the candidate = 636503a + the patch; `docs/design/real-capture-r4.json`)
+* Locked O7_5 field pixels: **needs_you highK 0.883** (floor 0.6; aim 0.75), mean ΔL 0.078 = **3.7 × resting** (resting 0.021, p95 **0.036**, 99 organs); working 48 organs (the cloud budget), p95 0.147; error p95 0.096 (the card inside the region is not excluded, as before). Proxy on the same field (`field_pixels.mjs`, surface canvas 1340 × 944): needs_you 0.792, ratio 3.5, resting p95 0.039, error mean ΔL 0.013, error coverage < resting.
+* D3 (working on − off, 4.0 field updates/s) over **3 pairs: +5.09, +4.83, +3.71 pp, median 4.83, mean 4.54** (budget 6.0); idle on − off −0.03 pp. The bigger cloud blobs did not move the cost: the circle count is capped at 48.
+* Real still, read by eye: sidebar-all shows an upright mottled oval, a solid cloud, a striped filled chip, a hollow grey square with an open corner and an almond eye, each nameable alone; the needs-you rim is two striped end chips; the gutter mottle covers the right 40 % evenly with a soft fade, clear of the card. Residual: with 8 sessions on a 20-slot arc, two sessions can still look alike (≥ 11.5° apart); that is the arc's limit, not the allocation.
+
+### Tests (write first; they fail on 636503a)
+1. `glyph.test.ts › the r4 marks`: dot/extra lists equal the lists above (resting 3 dots + 3 paper holes ABOVE; working 3 lobes + base rect; zebra 6 dots + chip + exactly TWO paper bars ABOVE; blanch 2 dots + plate + frame whose path is `M13 1.5 H2 V14.5 H22 V9`; eyespot 3 dots (pupil last, role eyespot, r2.8) + 4 extras, pupil/fleck ratio ≥ 2, catch-light ABOVE and paper); every dot inside 24×16 ±0.5.
+2. `glyph.test.ts › optical footprint`: rasterise each mark (the 96×64 helper) and assert each ink area is within ±25 % of the five-mark mean; pairwise IoU ≤ 0.55 (error/finished ≤ 0.30).
+3. `rim.test.ts › r4 rims`: zebra has exactly two chip rects of width 96 (one with `transform translate(-96 0)`) and two end bars, no full-width stripe rect; clouds has `4 × n` nodes per tile (three circles + one rect per cloud) and no lozenge; blanch has ONE outline rect with `pathLength 1000`, dasharray `975 25`, stroke-width 1.6, wash opacity .16; eyespot has a lens path with `Q`.
+4. `view.test.ts › hueFor`: for 200 random sets of N = 2..5 sessions the minimum pairwise hue distance ≥ 34.5°; for N = 6..7 ≥ 23°; for N ≤ 19 no two equal; a single known session equals `allocate(id, []).hue_deg`; releasing a session frees its slot.
+5. `runtime.test.ts` (existing viewport tests): expected sizes become `max(480, w − 260) × max(360, h − 56)`, e.g. a 1600 × 1000 viewport paints 1340 × 944. (The F1/F7/F8/first-paint/bloom runtime tests fail only on that size and on the golden CSS; update their expectations.)
+6. `field.test.ts › cloud blobs`: for `clouds` with targets, every organ radius is ≥ 1.8× its unswelled radius and the brightest ≥ 3×; `spotRatios` of the working field still reads `first < 4`.
+7. `field.test.ts › falloff`: radius factor is 0.7 at the lane edge and 1 in the middle of the region; resting ink per dot unchanged by the falloff.
+8. Goldens (`renderField` digests, swatch digests, golden CSS): regenerate after steps 1–7 (they pin exact numbers).
+
 ## 5. Files that change in `desktop/src`
 
 | file | change |
