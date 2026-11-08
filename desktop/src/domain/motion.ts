@@ -28,7 +28,7 @@ export function bloomFactor(sinceChangeMs: number, motion: Motion, reducedMotion
 export function motionPlan(i: { motion: Motion; reducedMotion: boolean; pattern: PatternKind; sinceChangeMs: number }):
   { animate: boolean; fps: number } {
   if (i.reducedMotion || i.motion === 'off') return { animate: false, fps: 0 }
-  if (i.pattern === 'clouds') return { animate: true, fps: 8 }
+  if (i.pattern === 'clouds') return { animate: true, fps: 4 }
   if (i.motion === 'alive') return { animate: true, fps: 3 }
   if (i.sinceChangeMs < BLOOM_MS) return { animate: true, fps: 5 }
   return { animate: false, fps: 0 }

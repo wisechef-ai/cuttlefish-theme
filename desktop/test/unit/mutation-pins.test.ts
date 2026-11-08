@@ -100,7 +100,8 @@ test('stateFor breaks priority ties alphabetically regardless of definition orde
 test('motionPlan: the bloom is over at exactly BLOOM_MS, and the settled plan carries fps 0', () => {
   assert.deepEqual(motionPlan({ pattern: 'mottle', motion: 'still', reducedMotion: false, sinceChangeMs: BLOOM_MS }), { animate: false, fps: 0 })
   assert.deepEqual(motionPlan({ pattern: 'mottle', motion: 'still', reducedMotion: false, sinceChangeMs: BLOOM_MS - 1 }), { animate: true, fps: 5 })
-  assert.deepEqual(motionPlan({ pattern: 'clouds', motion: 'still', reducedMotion: false, sinceChangeMs: 10_000 }), { animate: true, fps: 8 })
+  // v2.1 D3: the clouds run at 4 updates/s (was 8); the measured variant, see docs/design/D3.md
+  assert.deepEqual(motionPlan({ pattern: 'clouds', motion: 'still', reducedMotion: false, sinceChangeMs: 10_000 }), { animate: true, fps: 4 })
 })
 
 test('hueDistance is the shortest angular distance, in either direction', () => {

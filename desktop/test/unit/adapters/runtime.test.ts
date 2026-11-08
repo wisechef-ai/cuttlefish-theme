@@ -387,7 +387,7 @@ test('runtime D3: at rest NOTHING re-renders — health polls, repeated atom val
   assert.equal(writes, 0, 'an unchanged view is not rewritten')
 })
 
-test('runtime D3: working frames sit on a 200 ms grid and repeat every cloud cycle, so the engine re-uses its decoded images (fix-m4)', async () => {
+test('runtime D3: working frames sit on a 250 ms grid and repeat every cloud cycle, so the engine re-uses its decoded images (fix-m4)', async () => {
   const { mount } = await boot()
   const { el } = mount()
   await focusSA()
@@ -396,20 +396,20 @@ test('runtime D3: working frames sit on a 200 ms grid and repeat every cloud cyc
   const frame = (t: number): string => { calls.loops[0].draw(t); return el.textContent }
   frame(0) // anchors the state-change bloom; the checks below are after it (> 2.4 s), where only the clouds move
   const a = frame(10000)
-  assert.equal(frame(10190), a, 'inside one 200 ms bucket the picture is the same')
-  const b = frame(10200)
+  assert.equal(frame(10240), a, 'inside one 250 ms bucket the picture is the same')
+  const b = frame(10250)
   assert.notEqual(b, a, 'the next bucket moves the cloud')
   assert.equal(frame(10000 + 18000), a, 'one cloud cycle later the very same text (a cacheable image)')
-  assert.equal(frame(10200 + 5 * 18000), b)
+  assert.equal(frame(10250 + 5 * 18000), b)
   assert.equal(frame(10000), a, 'and a replay is exact')
 })
 
-test('runtime D3: frameTime puts frames on the 200 ms grid and wraps them at the cloud cycle — except under alive, whose twinkles keep their own periods', () => {
-  assert.equal(frameTime(10190, 'still'), 10000)
-  assert.equal(frameTime(10200, 'still'), 10200)
+test('runtime D3: frameTime puts frames on the 250 ms grid and wraps them at the cloud cycle — except under alive, whose twinkles keep their own periods', () => {
+  assert.equal(frameTime(10240, 'still'), 10000)
+  assert.equal(frameTime(10250, 'still'), 10250)
   assert.equal(frameTime(10000 + 36000, 'still'), 10000)
   assert.equal(frameTime(10000 + 36000, 'off'), 10000)
-  assert.equal(frameTime(46190, 'alive'), 46000, 'alive: grid only, no wrap')
+  assert.equal(frameTime(46240, 'alive'), 46000, 'alive: grid only, no wrap')
 })
 
 test('runtime D3: between frames the loop PARKS (no 60 Hz rAF spin) and a scoped timer wakes it for the next one (fix-m4)', async () => {
@@ -426,12 +426,12 @@ test('runtime D3: between frames the loop PARKS (no 60 Hz rAF spin) and a scoped
   const wakes = loop.wakes
   await h.advance(100)
   assert.equal(loop.wakes, wakes, 'not woken early')
-  await h.advance(100)
-  assert.equal(loop.wakes, wakes + 1, 'woken once, ~190 ms after the frame')
+  await h.advance(140)
+  assert.equal(loop.wakes, wakes + 1, 'woken once, ~240 ms after the frame')
   assert.equal(loop.opts.idleWhen?.(), false, 'ready for the next frame')
-  loop.draw(10_200)
-  loop.draw(10_400) // a second frame arriving while the first timer was pending replaces it, never stacks
-  await h.advance(190)
+  loop.draw(10_250)
+  loop.draw(10_500) // a second frame arriving while the first timer was pending replaces it, never stacks
+  await h.advance(240)
   assert.equal(loop.wakes, wakes + 2, 'one timer per frame, never two')
 })
 

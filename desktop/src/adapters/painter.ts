@@ -4,7 +4,7 @@
 // [data-chat-surface], composited over the user's own ground BY REFERENCE —
 // never a fill, never a background-color. The ring token carries the identity
 // hue only: the state speaks through pattern and motion, never through the ring.
-import { planGround, renderField, toSvg } from '../domain/index.ts'
+import { planGround, renderField, toSvg, type Dot } from '../domain/index.ts'
 import { seedOfStored, type CfView } from './view.ts'
 
 /** The composer ring colour: the identity hue's pigment on this ground — a function of hue, never of state. */
@@ -29,9 +29,21 @@ export function fieldCss(v: CfView): string {
   return css
 }
 
+/** The field layer's circle budget (v2.1 D3): the 48 highest-alpha visible organs, and the eye-spot whatever its rank, so the
+ *  layer keeps a scatter of ≥ 40 circles (P3.4) while the paint cost falls. Serialisation only: the domain field is untouched. */
+export const FIELD_CIRCLES = 48
+export function layerCircles(dots: readonly Dot[], budget = FIELD_CIRCLES): Dot[] {
+  const visible = dots.filter(d => d.alpha > 0 && d.r > 0)
+  if (visible.length <= budget) return visible
+  const eye = visible.filter(d => d.role === 'eyespot')
+  const ranked = visible.filter(d => d.role !== 'eyespot').sort((a, b) => b.alpha - a.alpha)
+  const keep = new Set<Dot>([...ranked.slice(0, Math.max(0, budget - eye.length)), ...eye])
+  return visible.filter(d => keep.has(d))
+}
+
 function buildCss(v: CfView): string {
   const svg = toSvg(
-    renderField({
+    layerCircles(renderField({
       seed: seedOfStored(v.focusedStored),
       width: v.width,
       height: v.height,
@@ -43,7 +55,7 @@ function buildCss(v: CfView): string {
       reducedMotion: v.reducedMotion,
       tMs: v.tMs,
       sinceChangeMs: v.sinceChangeMs,
-    }),
+    })),
     v.width,
     v.height,
   )

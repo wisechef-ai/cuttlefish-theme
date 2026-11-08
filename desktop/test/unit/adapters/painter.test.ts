@@ -4,8 +4,8 @@
 import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 
-import { renderField, toSvg } from '../../../src/domain/index.ts'
-import { fieldCss, ringOf } from '../../../src/adapters/painter.ts'
+import { allocate, DEFAULT_SETTINGS, patternOf, renderField, toSvg, type Dot } from '../../../src/domain/index.ts'
+import { FIELD_CIRCLES, fieldCss, layerCircles, ringOf } from '../../../src/adapters/painter.ts'
 import { applyFeed, initialView, NO_FOCUS_SEED, type CfView } from '../../../src/adapters/view.ts'
 
 const view = (over: Partial<Parameters<typeof initialView>[0]> = {}): CfView =>
@@ -50,12 +50,13 @@ test('painter: nothing else is declared (the property allowlist of oA_part5)', (
 })
 
 test('painter: the field scatters on the focused session, or the shared seed with nobody focused', () => {
+  // the layer is the 48-circle budget of the same render (v2.1 D3): the oracle applies the same serialisation
   const oracle = (v: CfView, seed: string): string =>
-    encodeURIComponent(toSvg(renderField({
+    encodeURIComponent(toSvg(layerCircles(renderField({
       seed, width: v.width, height: v.height, hueDeg: v.hueDeg, ground: v.ground,
       pattern: v.pattern, intensity: v.settings.intensity, motion: v.motion,
       reducedMotion: v.reducedMotion, tMs: v.tMs, sinceChangeMs: v.sinceChangeMs,
-    }), v.width, v.height))
+    })), v.width, v.height))
   const none = view()
   assert.ok(fieldCss(none).includes(oracle(none, NO_FOCUS_SEED)), 'no focus: the shared seed paints the field')
   const v = view()
@@ -130,4 +131,20 @@ test('painter D3: the frame memo keys on EVERY input — changing any one of the
   for (const [name, over] of Object.entries(variants)) {
     assert.notEqual(fieldCss({ ...base, ...over }), css0, `${name} is part of the key`)
   }
+})
+
+test('painter D3 (v2.1): the field layer is at most 48 circles, at least 40, the highest-alpha organs, and it always keeps the eye-spot', () => {
+  const render = (preset: string): Dot[] => renderField({
+    seed: 'budget-seed', width: 1200, height: 800, hueDeg: allocate('budget-seed', []).hue_deg, ground: '#141416',
+    pattern: patternOf(DEFAULT_SETTINGS, preset), intensity: 1, motion: 'still', reducedMotion: false, tMs: 0, sinceChangeMs: 10_000,
+  })
+  assert.equal(FIELD_CIRCLES, 48)
+  const working = render('working')
+  const kept = layerCircles(working)
+  assert.equal(kept.length, FIELD_CIRCLES, 'a busy field is cut to the budget')
+  const dropped = working.filter(d => d.alpha > 0 && d.r > 0 && !kept.includes(d))
+  assert.ok(Math.min(...kept.map(d => d.alpha)) >= Math.max(...dropped.map(d => d.alpha)), 'the cut keeps the highest-alpha circles')
+  const eye = layerCircles(render('finished_unseen'))
+  assert.ok(eye.some(d => d.role === 'eyespot'), 'the eye-spot survives the cut at any rank')
+  assert.ok(eye.length >= 40, `at least 40 circles (${eye.length})`)
 })

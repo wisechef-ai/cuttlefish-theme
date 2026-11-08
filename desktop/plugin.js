@@ -285,9 +285,21 @@ function fieldCss(v        )         {
   return css
 }
 
+/** The field layer's circle budget (v2.1 D3): the 48 highest-alpha visible organs, and the eye-spot whatever its rank, so the
+ *  layer keeps a scatter of ≥ 40 circles (P3.4) while the paint cost falls. Serialisation only: the domain field is untouched. */
+const FIELD_CIRCLES = 48
+function layerCircles(dots                , budget = FIELD_CIRCLES)        {
+  const visible = dots.filter(d => d.alpha > 0 && d.r > 0)
+  if (visible.length <= budget) return visible
+  const eye = visible.filter(d => d.role === 'eyespot')
+  const ranked = visible.filter(d => d.role !== 'eyespot').sort((a, b) => b.alpha - a.alpha)
+  const keep = new Set     ([...ranked.slice(0, Math.max(0, budget - eye.length)), ...eye])
+  return visible.filter(d => keep.has(d))
+}
+
 function buildCss(v        )         {
   const svg = toSvg(
-    renderField({
+    layerCircles(renderField({
       seed: seedOfStored(v.focusedStored),
       width: v.width,
       height: v.height,
@@ -299,7 +311,7 @@ function buildCss(v        )         {
       reducedMotion: v.reducedMotion,
       tMs: v.tMs,
       sinceChangeMs: v.sinceChangeMs,
-    }),
+    })),
     v.width,
     v.height,
   )
@@ -312,7 +324,7 @@ function buildCss(v        )         {
   )
 }
 
-Object.assign(exports, { ringOf, fieldCss });
+Object.assign(exports, { ringOf, fieldCss, FIELD_CIRCLES, layerCircles });
 };
 
 __cf_defs["src/adapters/rim.ts"] = (exports) => {
@@ -430,13 +442,13 @@ const { createBudgetedLoop, host } = __cf_ext("@hermes/plugin-sdk");const { CLOU
 const REDUCE_QUERY = '(prefers-reduced-motion: reduce)'
 /** The budgeted loop's OWN budget is set high on purpose: it parks after every frame (its rAF would otherwise spin at
  *  60 Hz for as long as a session works — measured +2.2 pp of renderer CPU on the real Desktop) and a scoped timer
- *  wakes it FRAME_GAP_MS later, so the timer paces the frames (~5/s) and the loop never skips one. */
+ *  wakes it FRAME_GAP_MS later, so the timer paces the frames (4/s, v2.1 D3) and the loop never skips one. */
 const LOOP_FPS = 10
-const FRAME_GAP_MS = 190
+const FRAME_GAP_MS = 240
 /** Frame times sit on this grid (below the loop's frame interval, so no frame is ever dropped), and — outside `alive`,
  *  where time only moves the clouds — wrap at the cloud cycle: the painted text then repeats exactly, and the engine
  *  re-uses the decoded image of a data-URI it has already seen instead of parsing a new SVG at every frame. */
-const FRAME_GRID_MS = 200
+const FRAME_GRID_MS = 250
 /** Everything the paint/teardown helpers need, in one bundle. */
                     
            
@@ -1905,7 +1917,7 @@ function bloomFactor(sinceChangeMs        , motion        , reducedMotion       
 function motionPlan(i                                                                                         ) 
                                     {
   if (i.reducedMotion || i.motion === 'off') return { animate: false, fps: 0 }
-  if (i.pattern === 'clouds') return { animate: true, fps: 8 }
+  if (i.pattern === 'clouds') return { animate: true, fps: 4 }
   if (i.motion === 'alive') return { animate: true, fps: 3 }
   if (i.sinceChangeMs < BLOOM_MS) return { animate: true, fps: 5 }
   return { animate: false, fps: 0 }

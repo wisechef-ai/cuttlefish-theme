@@ -20,13 +20,13 @@ const FALLBACK_GROUND = '#141416'
 const REDUCE_QUERY = '(prefers-reduced-motion: reduce)'
 /** The budgeted loop's OWN budget is set high on purpose: it parks after every frame (its rAF would otherwise spin at
  *  60 Hz for as long as a session works — measured +2.2 pp of renderer CPU on the real Desktop) and a scoped timer
- *  wakes it FRAME_GAP_MS later, so the timer paces the frames (~5/s) and the loop never skips one. */
+ *  wakes it FRAME_GAP_MS later, so the timer paces the frames (4/s, v2.1 D3) and the loop never skips one. */
 const LOOP_FPS = 10
-const FRAME_GAP_MS = 190
+const FRAME_GAP_MS = 240
 /** Frame times sit on this grid (below the loop's frame interval, so no frame is ever dropped), and — outside `alive`,
  *  where time only moves the clouds — wrap at the cloud cycle: the painted text then repeats exactly, and the engine
  *  re-uses the decoded image of a data-URI it has already seen instead of parsing a new SVG at every frame. */
-const FRAME_GRID_MS = 200
+const FRAME_GRID_MS = 250
 
 type Holder = { el: HTMLStyleElement | null; css: string }
 
