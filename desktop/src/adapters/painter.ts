@@ -32,6 +32,10 @@ export function fieldCss(v: CfView): string {
 /** The field layer's circle budget (v2.1 D3): the 48 highest-alpha visible organs, and the eye-spot whatever its rank, so the
  *  layer keeps a scatter of ≥ 40 circles (P3.4) while the paint cost falls. Serialisation only: the domain field is untouched. */
 export const FIELD_CIRCLES = 48
+/** The circle budget is for the only state that repaints (the working clouds); a static field draws every organ (the stripes need the dim ones). */
+export function layerFor(base: string, dots: readonly Dot[]): Dot[] {
+  return base === 'clouds' ? layerCircles(dots) : dots.filter(d => d.alpha > 0 && d.r > 0)
+}
 export function layerCircles(dots: readonly Dot[], budget = FIELD_CIRCLES): Dot[] {
   const visible = dots.filter(d => d.alpha > 0 && d.r > 0)
   if (visible.length <= budget) return visible
@@ -43,7 +47,7 @@ export function layerCircles(dots: readonly Dot[], budget = FIELD_CIRCLES): Dot[
 
 function buildCss(v: CfView): string {
   const svg = toSvg(
-    layerCircles(renderField({
+    layerFor(v.pattern.base, renderField({
       seed: seedOfStored(v.focusedStored),
       width: v.width,
       height: v.height,

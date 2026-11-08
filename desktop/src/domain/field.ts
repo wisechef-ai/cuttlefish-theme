@@ -4,7 +4,7 @@
 // pattern.ts; this module turns a target |dL| into an alpha by exact inversion of the sRGB
 // source-over composite the browser (and the acceptance instruments) perform. Pure throughout:
 // same input, same dots, bit for bit.
-import { effectiveDl, inkTargets, MAX_DL, planGround, radiusFactors, twinkleFactor, type GroundPlan } from './pattern.ts'
+import { BLANCH_HIDDEN, effectiveDl, hashUnit, inkTargets, MAX_DL, planGround, radiusFactors, twinkleFactor, type GroundPlan } from './pattern.ts'
 import { bloomFactor } from './motion.ts'
 import { constellation, eyeSpotAt, type Constellation } from './organs.ts'
 import { GLYPH_H, GLYPH_W, glyphExtras, glyphOf, STRIP_K, type GlyphExtra, type Shape } from './glyph.ts'
@@ -44,7 +44,8 @@ function organDots(spec: PatternSpec, core: RenderCore, seed: string, intensity:
     x: o.x, y: o.y,
     r: o.r * scales[i],
     color: pig.hex,
-    alpha: alphaFor(effectiveDl(targets[i], intensity, bloom, twinkleFactor(o, i, seed, tMs, motion)), pig.rgb, core.plan, pig.maxDl),
+    alpha: spec.base === 'blanch' && hashUnit(seed, `blanch-hide:${i}`) < BLANCH_HIDDEN ? 0
+      : alphaFor(effectiveDl(targets[i], intensity, bloom, twinkleFactor(o, i, seed, tMs, motion)), pig.rgb, core.plan, pig.maxDl),
     role: 'organ',
   }))
 }

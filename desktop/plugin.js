@@ -288,6 +288,10 @@ function fieldCss(v        )         {
 /** The field layer's circle budget (v2.1 D3): the 48 highest-alpha visible organs, and the eye-spot whatever its rank, so the
  *  layer keeps a scatter of ≥ 40 circles (P3.4) while the paint cost falls. Serialisation only: the domain field is untouched. */
 const FIELD_CIRCLES = 48
+/** The circle budget is for the only state that repaints (the working clouds); a static field draws every organ (the stripes need the dim ones). */
+function layerFor(base        , dots                )        {
+  return base === 'clouds' ? layerCircles(dots) : dots.filter(d => d.alpha > 0 && d.r > 0)
+}
 function layerCircles(dots                , budget = FIELD_CIRCLES)        {
   const visible = dots.filter(d => d.alpha > 0 && d.r > 0)
   if (visible.length <= budget) return visible
@@ -299,7 +303,7 @@ function layerCircles(dots                , budget = FIELD_CIRCLES)        {
 
 function buildCss(v        )         {
   const svg = toSvg(
-    layerCircles(renderField({
+    layerFor(v.pattern.base, renderField({
       seed: seedOfStored(v.focusedStored),
       width: v.width,
       height: v.height,
@@ -324,7 +328,7 @@ function buildCss(v        )         {
   )
 }
 
-Object.assign(exports, { ringOf, fieldCss, FIELD_CIRCLES, layerCircles });
+Object.assign(exports, { ringOf, fieldCss, FIELD_CIRCLES, layerFor, layerCircles });
 };
 
 __cf_defs["src/adapters/rim.ts"] = (exports) => {
@@ -1485,7 +1489,7 @@ __cf_defs["src/domain/field.ts"] = (exports) => {
 // pattern.ts; this module turns a target |dL| into an alpha by exact inversion of the sRGB
 // source-over composite the browser (and the acceptance instruments) perform. Pure throughout:
 // same input, same dots, bit for bit.
-const { effectiveDl, inkTargets, MAX_DL, planGround, radiusFactors, twinkleFactor } = __cf_require("src/domain/pattern.ts");const { bloomFactor } = __cf_require("src/domain/motion.ts");const { constellation, eyeSpotAt } = __cf_require("src/domain/organs.ts");const { GLYPH_H, GLYPH_W, glyphExtras, glyphOf, STRIP_K } = __cf_require("src/domain/glyph.ts");const { palette } = __cf_require("src/domain/ink.ts");const { deltaLOf, hexToRgb, rgbToHex } = __cf_require("src/domain/oklch.ts");const FIELD_TARGET = 190        // organs on a desktop-sized surface (~12 per classifier bin)
+const { BLANCH_HIDDEN, effectiveDl, hashUnit, inkTargets, MAX_DL, planGround, radiusFactors, twinkleFactor } = __cf_require("src/domain/pattern.ts");const { bloomFactor } = __cf_require("src/domain/motion.ts");const { constellation, eyeSpotAt } = __cf_require("src/domain/organs.ts");const { GLYPH_H, GLYPH_W, glyphExtras, glyphOf, STRIP_K } = __cf_require("src/domain/glyph.ts");const { palette } = __cf_require("src/domain/ink.ts");const { deltaLOf, hexToRgb, rgbToHex } = __cf_require("src/domain/oklch.ts");const FIELD_TARGET = 190        // organs on a desktop-sized surface (~12 per classifier bin)
 const FIELD_R = [0.062, 0.098]
 const SPOT_SCALE_FIELD = 4.3
 const SPOT_DL = 0.50
@@ -1517,7 +1521,8 @@ function organDots(spec             , core            , seed        , intensity 
     x: o.x, y: o.y,
     r: o.r * scales[i],
     color: pig.hex,
-    alpha: alphaFor(effectiveDl(targets[i], intensity, bloom, twinkleFactor(o, i, seed, tMs, motion)), pig.rgb, core.plan, pig.maxDl),
+    alpha: spec.base === 'blanch' && hashUnit(seed, `blanch-hide:${i}`) < BLANCH_HIDDEN ? 0
+      : alphaFor(effectiveDl(targets[i], intensity, bloom, twinkleFactor(o, i, seed, tMs, motion)), pig.rgb, core.plan, pig.maxDl),
     role: 'organ',
   }))
 }
@@ -2118,7 +2123,7 @@ const TWINKLE_AMP = 0.55, TWINKLE_P_MIN = 7000, TWINKLE_P_SPAN = 5000
 /** Stripe count across the surface. The field's 8 (4 cycles ≈ 2 dot pitches per band) survives the chat region being a
  *  crop of the window — at 6 the fundamental sat between spectral bins 2 and 3 and read 0.49 in real pixels. */
 const FIELD_CYCLES = 4
-const ZEBRA_SWELL = 1.8, ZEBRA_SHRINK = 0.45, BLANCH_SWELL = 1.9
+const ZEBRA_SWELL = 1.8, ZEBRA_SHRINK = 0.45, BLANCH_SWELL = 1.0
 const CLOUD_TRAVEL_MS = 18000                                  // one band pass across the height
 /** Direction the chromatic organs sit relative to the ground: toward white on dark, toward black on light. */
 const dirOf = (lg        )         => (lg < 0.5 ? 1 : -1)
@@ -2210,6 +2215,9 @@ function zebraBright(o       , width        , height        , scale        )    
 function zebraDl(bright         , u        )         {
   return bright ? ZEBRA_BRIGHT * jitter(u, 0.14) : ZEBRA_DIM * (1 + u * 0.5)
 }
+
+/** Error shows FEWER organs: this share of the lattice (a deterministic subset, by the organ's index) stays at zero ink. Positions never change. */
+const BLANCH_HIDDEN = 0.4
 
 /** Per-organ size on the field: stripe organs swell inside a band and shrink in the gap (so the eye sees bands of
  *  big dots, not a scatter); error organs swell into soft pale blobs (washed out) instead of crisp dots. Positions
@@ -2305,7 +2313,7 @@ function hashUnit(seed        , domain        )         {
   return n / 2 ** 64
 }
 
-Object.assign(exports, { REST_LO, REST_HI, REST_MEAN, MAX_DL, CLOUD_TRAVEL_MS, planGround, blanchDl, zebraBright, radiusFactors, inkTargets, twinkleFactor, effectiveDl, hashUnit });
+Object.assign(exports, { REST_LO, REST_HI, REST_MEAN, MAX_DL, CLOUD_TRAVEL_MS, planGround, blanchDl, zebraBright, BLANCH_HIDDEN, radiusFactors, inkTargets, twinkleFactor, effectiveDl, hashUnit });
 };
 
 __cf_defs["src/domain/settings.ts"] = (exports) => {

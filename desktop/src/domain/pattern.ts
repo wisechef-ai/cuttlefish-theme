@@ -32,7 +32,7 @@ const TWINKLE_AMP = 0.55, TWINKLE_P_MIN = 7000, TWINKLE_P_SPAN = 5000
 /** Stripe count across the surface. The field's 8 (4 cycles ≈ 2 dot pitches per band) survives the chat region being a
  *  crop of the window — at 6 the fundamental sat between spectral bins 2 and 3 and read 0.49 in real pixels. */
 const FIELD_CYCLES = 4
-const ZEBRA_SWELL = 1.8, ZEBRA_SHRINK = 0.45, BLANCH_SWELL = 1.9
+const ZEBRA_SWELL = 1.8, ZEBRA_SHRINK = 0.45, BLANCH_SWELL = 1.0
 export const CLOUD_TRAVEL_MS = 18000                                  // one band pass across the height
 
 /** Direction the chromatic organs sit relative to the ground: toward white on dark, toward black on light. */
@@ -125,6 +125,9 @@ export function zebraBright(o: Organ, width: number, height: number, scale: numb
 function zebraDl(bright: boolean, u: number): number {
   return bright ? ZEBRA_BRIGHT * jitter(u, 0.14) : ZEBRA_DIM * (1 + u * 0.5)
 }
+
+/** Error shows FEWER organs: this share of the lattice (a deterministic subset, by the organ's index) stays at zero ink. Positions never change. */
+export const BLANCH_HIDDEN = 0.4
 
 /** Per-organ size on the field: stripe organs swell inside a band and shrink in the gap (so the eye sees bands of
  *  big dots, not a scatter); error organs swell into soft pale blobs (washed out) instead of crisp dots. Positions

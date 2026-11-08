@@ -52,9 +52,9 @@ test('painter: nothing else is declared (the property allowlist of oA_part5)', (
 })
 
 test('painter: the field scatters on the focused session, or the shared seed with nobody focused', () => {
-  // the layer is the 48-circle budget of the same render (v2.1 D3): the oracle applies the same serialisation
+  // the layer is the shipped serialisation of the same render (layerFor: the clouds' budget, every other organ): the oracle applies the same
   const oracle = (v: CfView, seed: string): string =>
-    encodeURIComponent(toSvg(layerCircles(renderField({
+    encodeURIComponent(toSvg(layerFor(v.pattern.base, renderField({
       seed, width: v.width, height: v.height, hueDeg: v.hueDeg, ground: v.ground,
       pattern: v.pattern, intensity: v.settings.intensity, motion: v.motion,
       reducedMotion: v.reducedMotion, tMs: v.tMs, sinceChangeMs: v.sinceChangeMs,
