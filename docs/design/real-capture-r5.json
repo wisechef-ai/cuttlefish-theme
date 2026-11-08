@@ -1,0 +1,50 @@
+{
+ "field_pixels": {
+  "resting": {
+   "organs_detected": 99,
+   "p95_dL": 0.03660790124325797,
+   "mean_dL": 0.022317471878353298,
+   "lowK": 0.22675035245015313,
+   "highK": 0.2917569696617983
+  },
+  "working": {
+   "organs_detected": 49,
+   "p95_dL": 0.14852238291605646,
+   "mean_dL": 0.09607400516811601,
+   "lowK": 0.2492118523645479,
+   "highK": 0.29146284498668623
+  },
+  "needs_you": {
+   "organs_detected": 99,
+   "p95_dL": 0.15087970902977121,
+   "mean_dL": 0.07560697603631719,
+   "lowK": 0.38497488045188727,
+   "highK": 0.9382255239878585
+  },
+  "error": {
+   "organs_detected": 86,
+   "p95_dL": 0.09585062264428956,
+   "mean_dL": 0.03575857001421854,
+   "lowK": 0.7119213250511286,
+   "highK": 1.1253712238906628
+  }
+ },
+ "perf": {
+  "sessions": 8,
+  "window_s": 60,
+  "budget": {
+   "idle_pp": 1,
+   "working_pp": 6
+  },
+  "idle": {
+   "on_pct": 8.89,
+   "off_pct": 9.24
+  },
+  "working": {
+   "on_pct": 14.78,
+   "off_pct": 9.44,
+   "field_updates_per_s": 4.01
+  }
+ },
+ "note": "full real-Desktop capture of the r5 candidate (7049668 + docs/design/r5-pale-error-quiet-rest.patch); perf-only pairs: +5.59, +4.46 pp"
+}
