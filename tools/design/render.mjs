@@ -1,4 +1,4 @@
-// Golden renders (dev-only). Run where Playwright + headless Chromium live (hercules):  node render.mjs <outdir> [--only=cells,sheets,apps]
+// Golden renders (dev-only). Run where Playwright + headless Chromium live:  node render.mjs <outdir> [--only=cells,sheets,apps]
 // Writes: cells@{1,2}x.png + cells.json (the measurement grid), sheet-*.png, app-<ground>-<state>.png, contact-*.png
 import fs from 'node:fs'
 import path from 'node:path'

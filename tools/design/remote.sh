@@ -1,6 +1,6 @@
 #!/bin/bash
 # Dev-only: sync tools/design + the pure domain to a scratch dir on the render host and run a script there in a niced systemd --user unit.
-# usage: tools/design/hercules.sh <render.mjs|spike...> [args]   (host/user come from $CF_RENDER_HOST, default set by the lane notes)
+# usage: tools/design/remote.sh <render.mjs|spike...> [args]   (host/user come from $CF_RENDER_HOST, required)
 set -euo pipefail
 export SSH_AUTH_SOCK=
 H=${CF_RENDER_HOST:?set CF_RENDER_HOST=user@host}
