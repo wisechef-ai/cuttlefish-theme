@@ -4,7 +4,7 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 import process from 'node:process'
 import { GROUNDS, H, PRESETS, ROOTS, SETTLED_MS, W } from '../acceptance/corpus.ts'
-import { coverage, type Dot, dotDeltaL, lightnessStats } from '../acceptance/instruments.ts'
+import { coverage, type Dot, dotDeltaL, lightnessStats, organKey } from '../acceptance/instruments.ts'
 import { allocate, DEFAULT_SETTINGS, patternOf, renderField, renderStrip, renderSwatch, toSvg } from '../../src/domain/index.ts'
 
 const hueFor = (root: string): number => allocate(root, []).hue_deg
@@ -127,5 +127,19 @@ test('the lane keeps enough organs (≥ 40 visible) at every size, for resting a
       .filter(d => d.role === 'organ' && d.alpha > 0 && d.r > 0).length
     assert.ok(count('resting') >= 40, `${w}×${h}: ${count('resting')} organs`)
     assert.ok(count('working') >= 40, `${w}×${h}: ${count('working')} organs`)
+  }
+})
+
+test('error is FEWER organs at resting size: same positions, same radii, 35–45 % at zero ink, and coverage(error) ≤ coverage(resting) (§4b F-B, §6 #10)', () => {
+  for (const root of ROOTS) for (const ground of GROUNDS) for (const [w, h] of [[1339, 879], [1200, 800]] as const) {
+    const rest = renderField({ ...inputOf(root, ground, 'resting'), width: w, height: h })
+    const err = renderField({ ...inputOf(root, ground, 'error'), width: w, height: h })
+    assert.equal(organKey(err), organKey(rest), `${root}: error moves no organ`)
+    const ro = rest.filter(d => d.role === 'organ'), eo = err.filter(d => d.role === 'organ')
+    assert.deepEqual(eo.map(d => d.r), ro.map(d => d.r), `${root}: error radii are the resting radii`)
+    const hidden = eo.filter(d => d.alpha === 0).length / eo.length
+    assert.ok(hidden >= 0.35 && hidden <= 0.45, `${root}: ${(100 * hidden).toFixed(0)} % of the error organs are at zero ink`)
+    assert.ok(eo.filter(d => d.alpha > 0).length >= 40, `${root}: at least 40 visible error organs`)
+    assert.ok(coverage(err, w, h) <= coverage(rest, w, h), `${root} ${ground} ${w}×${h}: error ${coverage(err, w, h)} vs resting ${coverage(rest, w, h)}`)
   }
 })

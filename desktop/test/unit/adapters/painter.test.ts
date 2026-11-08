@@ -5,7 +5,9 @@ import { strict as assert } from 'node:assert'
 import { test } from 'node:test'
 
 import { allocate, DEFAULT_SETTINGS, patternOf, renderField, toSvg, type Dot } from '../../../src/domain/index.ts'
-import { FIELD_CIRCLES, fieldCss, layerCircles, ringOf } from '../../../src/adapters/painter.ts'
+import { FIELD_CIRCLES, fieldCss, layerCircles, layerFor, ringOf } from '../../../src/adapters/painter.ts'
+import { banding, dotDeltaL } from '../../acceptance/instruments.ts'
+import { GROUNDS, PRESETS, ROOTS } from '../../acceptance/corpus.ts'
 import { applyFeed, initialView, NO_FOCUS_SEED, type CfView } from '../../../src/adapters/view.ts'
 
 const view = (over: Partial<Parameters<typeof initialView>[0]> = {}): CfView =>
@@ -147,4 +149,40 @@ test('painter D3 (v2.1): the field layer is at most 48 circles, at least 40, the
   const eye = layerCircles(render('finished_unseen'))
   assert.ok(eye.some(d => d.role === 'eyespot'), 'the eye-spot survives the cut at any rank')
   assert.ok(eye.length >= 40, `at least 40 circles (${eye.length})`)
+})
+
+// v2.1 round 4 (§4b F-A): the 48-circle budget is for the clouds only. A static field draws every organ, because the
+// stripes read the dim off-band organs (deleting them made needs_you highK 0.28 on the real Desktop; the floor is 0.6).
+const surfaceOf = (base: string, root: string, ground: string, w: number, h: number, preset = base): Dot[] => renderField({
+  seed: root, width: w, height: h, hueDeg: allocate(root, []).hue_deg, ground,
+  pattern: patternOf(DEFAULT_SETTINGS, preset), intensity: 1, motion: 'still', reducedMotion: false, tMs: 0, sinceChangeMs: 10_000,
+})
+
+test('the circle budget is for the clouds only: a static field keeps every visible organ, the dim ones included', () => {
+  const dots = surfaceOf('zebra', ROOTS[0], GROUNDS[0], 1600, 1000, 'needs_you')
+  const visible = dots.filter(d => d.alpha > 0 && d.r > 0)
+  const layer = layerFor('zebra', dots)
+  assert.equal(layer.length, visible.length, 'needs_you keeps every organ')
+  assert.ok(layer.length >= 90, `needs_you at 1600×1000: ${layer.length} circles`)
+  assert.ok(layer.filter(d => dotDeltaL(d, GROUNDS[0]) < 0.03).length >= 30, 'and the dim off-band organs among them')
+  assert.equal(layerFor('clouds', surfaceOf('clouds', ROOTS[0], GROUNDS[0], 1600, 1000, 'working')).length, FIELD_CIRCLES,
+    'the clouds, which repaint, keep the budget')
+})
+
+test('the shipped layer keeps the stripes: needs_you highK ≥ 0.6 by the domain classifier, every root and ground, at 1600×1000', () => {
+  for (const root of ROOTS) for (const ground of GROUNDS) {
+    const b = banding(layerFor('zebra', surfaceOf('zebra', root, ground, 1600, 1000, 'needs_you')), ground, 1600, 1000)
+    assert.ok(b.highK >= 0.6, `${root} ${ground}: needs_you highK ${b.highK.toFixed(2)}`)
+  }
+})
+
+test('after culling every state keeps between 40 and 190 organ circles (every preset, three sizes)', () => {
+  const base: Record<string, string> = { resting: 'mottle', working: 'clouds', needs_you: 'zebra', error: 'blanch', finished_unseen: 'eyespot' }
+  for (const preset of PRESETS) for (const root of ROOTS.slice(0, 4)) for (const [w, h] of [[1600, 1000], [1200, 800], [1339, 879]]) {
+    const dots = surfaceOf(base[preset], root, GROUNDS[0], w, h, preset)
+    const layer = layerFor(base[preset], dots)
+    const organs = layer.filter(d => d.role === 'organ').length
+    assert.ok(organs >= 40, `${preset} ${root} ${w}×${h}: ${organs} organs`)
+    assert.ok(layer.length <= 190, `${preset} ${root} ${w}×${h}: ${layer.length} circles`)
+  }
 })
