@@ -1,8 +1,8 @@
 {
   "schema": "cf2-still/1",
   "state": "finished_unseen",
-  "png_sha256": "342b6d0fbe55adf339a52ed14ed83b8ef7e379f05ff08e25e3192c96c9a988c2",
-  "taken_at": 1794175688.881,
+  "png_sha256": "7596d983602bd16b1006bf2db958a7e380b3a398ec48b27581f08a47e5bbf221",
+  "taken_at": 1794181031.793,
   "region": [
     260,
     34,
@@ -119,5 +119,5 @@
       36
     ]
   ],
-  "focused_stored_id": "local-6c5f562bbe46785b6c1d1c052cdb3b36fdc619ea19d91069b09baad7b934d33c"
+  "focused_stored_id": "local-ac7368e1438cd4541f8f200d678de23482a1ed00ef784336a5e149feca565d88"
 }
