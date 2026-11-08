@@ -1,6 +1,6 @@
 """Unit: the plugin loads on a Hermes runtime that has NO PyYAML (a real v0.23.0 gateway on Python 3.14).
 
-Hermes core reads YAML through its own public module ``hermes_yaml``; PyYAML is not guaranteed. Our dev venv has PyYAML,
+Hermes core reads config through its public door ``hermes_cli.config``; PyYAML is not guaranteed. Our dev venv has PyYAML,
 so an in-process test can never see a bare ``import yaml`` break. Each test here runs the load in a fresh interpreter in
 which ``yaml`` is made un-importable (``sys.modules['yaml'] = None``), exactly as the host would see it.
 """
@@ -66,15 +66,21 @@ def test_package_loads_and_registers_without_pyyaml(tmp_path):
     assert result.stdout.startswith("OK"), result.stdout + result.stderr
 
 
-def test_config_is_read_live_through_core_hermes_yaml_without_pyyaml(tmp_path):
-    """Core's parser is the one that runs on a Hermes install: a stub stands in for it (JSON is YAML)."""
+def test_config_is_read_live_through_core_without_pyyaml(tmp_path):
+    """Core's public config door is the reader on a Hermes install: a stub stands in for it (JSON is YAML)."""
     stub_dir = tmp_path / "core"
-    stub_dir.mkdir()
-    (stub_dir / "hermes_yaml.py").write_text(textwrap.dedent("""
+    (stub_dir / "hermes_cli").mkdir(parents=True)
+    (stub_dir / "hermes_cli" / "__init__.py").write_text("")
+    (stub_dir / "hermes_cli" / "config.py").write_text(textwrap.dedent("""
         import json
+        from pathlib import Path
 
-        def safe_load(stream):
-            return json.loads(stream if isinstance(stream, str) else stream.read())
+        def read_user_config_raw(config_path=None):
+            try:
+                data = json.loads(Path(config_path).read_text(encoding="utf-8"))
+            except FileNotFoundError:
+                return {}
+            return data if isinstance(data, dict) else {}
     """))
     home = tmp_path / "home"
     home.mkdir()

@@ -36,24 +36,29 @@ _UNREADABLE = {"path": "config", "code": "type",
                "message": "config.yaml is not valid YAML; using the default settings"}
 
 
-def _parse_yaml(text: str) -> tuple[bool, Any]:
-    """``(True, data)`` for YAML we can read, else ``(False, None)``. Never raises.
+def _load_yaml(path: Path) -> tuple[bool, Any]:
+    """``(True, data)`` for YAML we can read, ``(False, None)`` for YAML we cannot. Never raises for a parse problem.
 
     PyYAML is NOT a guaranteed dependency of a Hermes runtime (Python 3.14 installs lack it), so importing it at module
-    level broke the whole plugin. Order: core's public ``hermes_yaml`` (the parser core itself reads config with, present
-    in every release we support), then PyYAML only when it happens to be installed (standalone runs, the dev venv).
-    Neither available is the same as unreadable: the caller degrades to the defaults with a warning.
+    level broke the whole plugin. Order: core's public door ``hermes_cli.config.read_user_config_raw`` (the parser core
+    reads config with; ``hermes_cli.config`` is on the catalog's public-import list, ``hermes_yaml`` is not), then
+    PyYAML only when it is installed (standalone runs, the dev venv). Neither available is unreadable: the caller
+    degrades to the defaults with a warning. ``OSError`` propagates: a file we cannot open is an absent config.
     """
     try:
-        from hermes_yaml import safe_load as parse  # core's public door, lazy: only when the host has it
+        from hermes_cli.config import read_user_config_raw as reader  # core's public door, lazy: Hermes hosts only
     except ImportError:
         try:
             import yaml  # optional: standalone/dev only, never required at import time
         except ImportError:
             return False, None
-        parse = yaml.safe_load
+
+        def reader(p: Path) -> Any:
+            return yaml.safe_load(p.read_text(encoding="utf-8"))
     try:
-        return True, parse(text)
+        return True, reader(path)
+    except OSError:
+        raise
     except Exception:  # core raises ruamel's YAMLError, PyYAML its own; both mean "not YAML we can read"
         return False, None
 
@@ -76,7 +81,10 @@ def config_path(home: Path | None = None) -> Path:
 
 def plugin_version() -> str:
     """The version from plugin.yaml — the one file both halves report. Empty when no YAML reader is available."""
-    ok, data = _parse_yaml((Path(__file__).resolve().parents[1] / "plugin.yaml").read_text(encoding="utf-8"))
+    try:
+        ok, data = _load_yaml(Path(__file__).resolve().parents[1] / "plugin.yaml")
+    except OSError:
+        return ""
     return str(data.get("version", "")) if ok and isinstance(data, dict) else ""
 
 
@@ -87,12 +95,9 @@ def read_raw_settings(home: Path) -> tuple[Any, list[dict[str, str]]]:
     that is not a problem, it is an empty config. Broken YAML degrades to the
     defaults with a warning instead of an error."""
     try:
-        text = config_path(home).read_text(encoding="utf-8")
+        ok, data = _load_yaml(config_path(home))  # a hostile nesting depth is "not YAML we can read" too
     except OSError:
         return None, []
-    except UnicodeDecodeError:
-        return None, [_UNREADABLE]
-    ok, data = _parse_yaml(text)  # a hostile nesting depth is "not YAML we can read" too
     if not ok:
         return None, [_UNREADABLE]
     entry = data.get("plugins") if isinstance(data, dict) else None
