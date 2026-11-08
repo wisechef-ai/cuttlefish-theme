@@ -16,8 +16,8 @@ import { rimElement } from './rim.ts'
 import { svgElement } from './svg.ts'
 import { safePattern, seedOfStored, type CfView } from './view.ts'
 
-/** The composer rim's height in px (brief: a 4–6 px band). */
-const RIM_HEIGHT = 5
+/** The composer rim's height in px (brief: a 4–6 px band; the top of that range, so the cues read). */
+const RIM_HEIGHT = 6
 
 /** Re-render when — and only when — this surface's own derived key changes (React compares the snapshot by value). */
 function useLive(v: CfView, key: () => string): void {
@@ -72,10 +72,16 @@ function focusedStrip(v: CfView): { strip: ReturnType<typeof renderStrip>; state
 function StripView({ v }: { v: CfView }): unknown {
   useLive(v, () => chromeKey(v))
   const { strip, state } = focusedStrip(v)
-  return jsx('div', { 'data-cf-state': state, 'data-cf-strip': 'cuttlefish', children: [svgElement(jsx, strip, {}, strip.dots), labelOf(v, state)] })
+  return jsx('div', {
+    'data-cf-state': state,
+    'data-cf-strip': 'cuttlefish',
+    // one nowrap row: the label must sit BESIDE the glyph — stacked below it, the status bar's fixed height clipped it
+    style: { display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1, flexShrink: 0 },
+    children: [svgElement(jsx, strip, { style: { display: 'block', flexShrink: 0 } }, strip.dots), labelOf(v, state)],
+  })
 }
 
-/** The composer rim: one clean 5 px band echoing the state's glyph, no words, static. */
+/** The composer rim: one clean 6 px band echoing the state's glyph, no words, static. */
 function RimView({ v }: { v: CfView }): unknown {
   useLive(v, () => chromeKey(v))
   const state = v.focusedState

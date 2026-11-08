@@ -1,6 +1,6 @@
 // The composer RIM (C1/C6): one clean thin band above the composer that echoes the state's glyph — never texture.
-//   resting = a hairline          working = a few soft cloud dashes      needs you = bold diagonal stripes
-//   error   = a flat pale wash    finished unseen = a hairline with one dark eye-spot
+//   resting = a hairline          working = a track with bold cloud segments   needs you = bold diagonal stripes
+//   error   = a pale wash inside a broken (dashed) outline — the swatch's hollow dashed oval    finished unseen = a hairline with one dark eye-spot
 // Identity hue throughout (error is the near-achromatic pale pigment); the state speaks through shape and ink.
 // The band is a tree of plain nodes, rendered as React elements (the surface) or as SVG text (the dev sheets).
 import { alphaFor, hexToRgb, planGround, type GroundPlan, type PatternKind } from '../domain/index.ts'
@@ -26,16 +26,25 @@ export function rimNodes(i: RimInput): RimNode[] {
   const hair: RimNode = { tag: 'rect', attrs: { x: 0, y: h - 1, width: '100%', height: 1, ...chroma(0.08) } }
   switch (i.base) {
     case 'clouds':
-      return [['5%', '15%'], ['36%', '22%'], ['72%', '14%']].map(([x, w]) => (
-        { tag: 'rect', attrs: { x, y: h * 0.1, width: w, height: h * 0.8, rx: h * 0.4, ...chroma(0.20) } }))
+      return [
+        { tag: 'rect', attrs: { x: 0, y: h * 0.25, width: '100%', height: h * 0.5, ...chroma(0.09) } },
+        ...[['3%', '17%'], ['27%', '24%'], ['58%', '15%'], ['79%', '18%']].map(([x, w]): RimNode => (
+          { tag: 'rect', attrs: { x, y: 0, width: w, height: h, rx: h / 2, ...chroma(0.30) } })),
+      ]
     case 'zebra':
       return [
         { tag: 'defs', attrs: {}, children: [{ tag: 'pattern', attrs: { id: STRIPE_ID, width: 12, height: h, patternUnits: 'userSpaceOnUse', patternTransform: 'skewX(-45)' },
           children: [{ tag: 'rect', attrs: { x: 0, y: 0, width: 6, height: h, ...chroma(0.30) } }] }] },
         { tag: 'rect', attrs: { x: 0, y: 0, width: '100%', height: h, fill: `url(#${STRIPE_ID})` } },
       ]
-    case 'blanch':
-      return [{ tag: 'rect', attrs: { x: 0, y: 0, width: '100%', height: h, ...inkOf(plan, plan.blanch, plan.blanchMaxDl, 0.10, i.intensity) } }]
+    case 'blanch': {
+      const wash = inkOf(plan, plan.blanch, plan.blanchMaxDl, 0.12, i.intensity)
+      const line = inkOf(plan, plan.blanch, plan.blanchMaxDl, 0.34, i.intensity)
+      return [
+        { tag: 'rect', attrs: { x: 0, y: 0, width: '100%', height: h, ...wash } },
+        { tag: 'rect', attrs: { x: 0.75, y: 0.75, width: '100%', height: h - 1.5, fill: 'none', stroke: String(line.fill), 'stroke-opacity': line.opacity, 'stroke-width': 1.5, 'stroke-dasharray': '7 5' } },
+      ]
+    }
     case 'eyespot':
       return [hair, { tag: 'circle', attrs: { cx: h * 3, cy: h / 2, r: h * 0.46, ...inkOf(plan, plan.spot, plan.spotMaxDl, SPOT_INK, i.intensity) } }]
     default:

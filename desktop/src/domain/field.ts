@@ -14,7 +14,7 @@ import type { Dot, FieldInput, PatternSpec, SwatchInput } from './types.ts'
 const FIELD_TARGET = 190        // organs on a desktop-sized surface (~12 per classifier bin)
 const FIELD_R = [0.062, 0.098] as const
 const SWATCH_W = GLYPH_W, SWATCH_H = GLYPH_H
-const STRIP_W = 64, STRIP_H = 12
+const STRIP_W = GLYPH_W, STRIP_H = GLYPH_H
 const SPOT_SCALE_FIELD = 5.4, SPOT_SCALE_SMALL = 2.6
 const SPOT_DL = 0.156
 
@@ -117,9 +117,9 @@ export function renderSwatch(input: SwatchInput): { dots: Dot[]; width: number; 
   return renderSmall(input, SWATCH_W, SWATCH_H, 1)
 }
 
-/** The status-bar strip: the same glyph, twice. */
+/** The status-bar strip: the same glyph, once, beside its words. */
 export function renderStrip(input: SwatchInput): { dots: Dot[]; width: number; height: number } {
-  return renderSmall(input, STRIP_W, STRIP_H, 2)
+  return renderSmall(input, STRIP_W, STRIP_H, 1)
 }
 
 /** Plain decimal, no exponent, no trailing zeros: safe inside an SVG attribute. */

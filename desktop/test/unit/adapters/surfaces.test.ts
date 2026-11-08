@@ -111,6 +111,20 @@ test('surfaces: the composer rim is one clean 4–6 px full-width band, no words
   assert.ok(!strip.includes('"type":"pattern"'), 'the status strip keeps its own look')
 })
 
+test('surfaces D5: the strip is ONE nowrap row — glyph beside the words, never stacked (the status bar clipped the stacked label)', () => {
+  const h = fakeCtx()
+  registerSurfaces(h.ctx, view(), () => () => {})
+  const chip = expand((h.contributions.get('strip')!.render as () => unknown)()).tree as
+    { props: { style: Record<string, unknown>; children: Array<{ props?: { style?: Record<string, unknown> } } | string> } }
+  assert.equal(chip.props.style.display, 'inline-flex')
+  assert.equal(chip.props.style.whiteSpace, 'nowrap')
+  assert.equal(chip.props.style.alignItems, 'center')
+  const glyph = chip.props.children[0] as { props: { style: Record<string, unknown>; height: number } }
+  assert.equal(glyph.props.style.display, 'block', 'the svg is a flex item, not an inline box that opens a line')
+  assert.equal(glyph.props.height <= 16, true, 'and short enough for a status bar')
+  assert.equal(chip.props.children[1], 'resting')
+})
+
 test('surfaces D3: a swatch re-renders only for its OWN state; the chrome only for the focused one; settings/ground move every key', async () => {
   const { swatchKey, chromeKey } = await import('../../../src/adapters/surfaces.ts')
   const { applyEnv } = await import('../../../src/adapters/view.ts')

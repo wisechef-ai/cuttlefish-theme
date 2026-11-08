@@ -119,12 +119,12 @@ test('swatch and strip radii are exactly their tuned deterministic ranges; toSvg
   const radii = (dots: { r: number; alpha: number }[]): number[] =>
     dots.filter(d => d.alpha > 0).map(d => d.r).sort((a, b) => a - b)
   const sw = radii(renderSwatch({ seed: ROOTS[0], hueDeg: hue, ground: GROUNDS[0], pattern: patternOf(DEFAULT_SETTINGS, 'working'), intensity: 1 }).dots)
-  assert.equal(sw[0].toFixed(3), '2.400', 'the working glyph: smallest puff')
-  assert.equal(sw[sw.length - 1].toFixed(3), '4.000', 'the working glyph: largest puff')
+  assert.equal(sw[0].toFixed(3), '2.800', 'the working glyph: smallest puff')
+  assert.equal(sw[sw.length - 1].toFixed(3), '4.667', 'the working glyph: largest puff')
   const st = radii(renderStrip({ seed: ROOTS[0], hueDeg: hue, ground: GROUNDS[0], pattern: patternOf(DEFAULT_SETTINGS, 'working'), intensity: 1 }).dots)
-  assert.equal(st.length, 8, 'the strip carries the glyph twice')
-  assert.equal(st[0].toFixed(3), '2.400')
-  assert.equal(st[st.length - 1].toFixed(3), '4.000')
+  assert.equal(st.length, 4, 'the strip carries the glyph once')
+  assert.equal(st[0].toFixed(3), '2.800')
+  assert.equal(st[st.length - 1].toFixed(3), '4.667')
   const strip = renderStrip({ seed: ROOTS[0], hueDeg: hue, ground: GROUNDS[0], pattern: patternOf(DEFAULT_SETTINGS, 'working'), intensity: 1 })
   const visible = strip.dots.filter(d => d.alpha > 0 && d.r > 0)
   assert.equal((toSvg(strip.dots, strip.width, strip.height).match(/<circle\b/g) ?? []).length, visible.length)
@@ -232,9 +232,9 @@ test('renderField golden digest: alive clouds with every dial off unity', () => 
 test('renderSwatch golden digests: working clouds and resting mottle', () => {
   const base = { seed: ROOTS[0], hueDeg: allocate(ROOTS[0], []).hue_deg, ground: GROUNDS[0], intensity: 1 }
   const clouds = Buffer.from(blake2b(utf8(JSON.stringify(renderSwatch({ ...base, pattern: patternOf(DEFAULT_SETTINGS, 'working') }).dots)), 32)).toString('hex')
-  assert.equal(clouds, '30815a61ee5692527146b5623534f850524291924488e086778ea155b3108569')
+  assert.equal(clouds, 'c16ee1c111c74b46db44918261b450fbd2ecccd5942828aaebde3afb0f54acf7')
   const mottle = Buffer.from(blake2b(utf8(JSON.stringify(renderSwatch({ ...base, pattern: patternOf(DEFAULT_SETTINGS, 'resting') }).dots)), 32)).toString('hex')
-  assert.equal(mottle, '1a490f6cf905bdd8834e5bbccd27d9f73aa8a00f49dad7fff1597afedc212bf6')
+  assert.equal(mottle, 'cd8f74b531cf0b67832ae57af4d7be140a2d7d026454ae93a46c156f9b2e3430')
 })
 
 // Every earlier digest used dials at 1, where `*` and `/` agree. These two render with

@@ -317,8 +317,8 @@ Object.assign(exports, { ringOf, fieldCss });
 
 __cf_defs["src/adapters/rim.ts"] = (exports) => {
 // The composer RIM (C1/C6): one clean thin band above the composer that echoes the state's glyph — never texture.
-//   resting = a hairline          working = a few soft cloud dashes      needs you = bold diagonal stripes
-//   error   = a flat pale wash    finished unseen = a hairline with one dark eye-spot
+//   resting = a hairline          working = a track with bold cloud segments   needs you = bold diagonal stripes
+//   error   = a pale wash inside a broken (dashed) outline — the swatch's hollow dashed oval    finished unseen = a hairline with one dark eye-spot
 // Identity hue throughout (error is the near-achromatic pale pigment); the state speaks through shape and ink.
 // The band is a tree of plain nodes, rendered as React elements (the surface) or as SVG text (the dev sheets).
 const { alphaFor, hexToRgb, planGround } = __cf_require("src/domain/index.ts");const SPOT_INK = 0.3
@@ -337,16 +337,25 @@ function rimNodes(i          )            {
   const hair          = { tag: 'rect', attrs: { x: 0, y: h - 1, width: '100%', height: 1, ...chroma(0.08) } }
   switch (i.base) {
     case 'clouds':
-      return [['5%', '15%'], ['36%', '22%'], ['72%', '14%']].map(([x, w]) => (
-        { tag: 'rect', attrs: { x, y: h * 0.1, width: w, height: h * 0.8, rx: h * 0.4, ...chroma(0.20) } }))
+      return [
+        { tag: 'rect', attrs: { x: 0, y: h * 0.25, width: '100%', height: h * 0.5, ...chroma(0.09) } },
+        ...[['3%', '17%'], ['27%', '24%'], ['58%', '15%'], ['79%', '18%']].map(([x, w])          => (
+          { tag: 'rect', attrs: { x, y: 0, width: w, height: h, rx: h / 2, ...chroma(0.30) } })),
+      ]
     case 'zebra':
       return [
         { tag: 'defs', attrs: {}, children: [{ tag: 'pattern', attrs: { id: STRIPE_ID, width: 12, height: h, patternUnits: 'userSpaceOnUse', patternTransform: 'skewX(-45)' },
           children: [{ tag: 'rect', attrs: { x: 0, y: 0, width: 6, height: h, ...chroma(0.30) } }] }] },
         { tag: 'rect', attrs: { x: 0, y: 0, width: '100%', height: h, fill: `url(#${STRIPE_ID})` } },
       ]
-    case 'blanch':
-      return [{ tag: 'rect', attrs: { x: 0, y: 0, width: '100%', height: h, ...inkOf(plan, plan.blanch, plan.blanchMaxDl, 0.10, i.intensity) } }]
+    case 'blanch': {
+      const wash = inkOf(plan, plan.blanch, plan.blanchMaxDl, 0.12, i.intensity)
+      const line = inkOf(plan, plan.blanch, plan.blanchMaxDl, 0.34, i.intensity)
+      return [
+        { tag: 'rect', attrs: { x: 0, y: 0, width: '100%', height: h, ...wash } },
+        { tag: 'rect', attrs: { x: 0.75, y: 0.75, width: '100%', height: h - 1.5, fill: 'none', stroke: String(line.fill), 'stroke-opacity': line.opacity, 'stroke-width': 1.5, 'stroke-dasharray': '7 5' } },
+      ]
+    }
     case 'eyespot':
       return [hair, { tag: 'circle', attrs: { cx: h * 3, cy: h / 2, r: h * 0.46, ...inkOf(plan, plan.spot, plan.spotMaxDl, SPOT_INK, i.intensity) } }]
     default:
@@ -628,8 +637,8 @@ __cf_defs["src/adapters/surfaces.ts"] = (exports) => {
 // view's version (useSyncExternalStore) and re-reads on render, so a render is
 // always pure observation and never wakes the loop (P3.2b). The titlebar mount
 // is the plugin's permanent style owner; it renders nothing itself.
-const { useEffect, useSyncExternalStore } = __cf_ext("react");const { jsx } = __cf_ext("react/jsx-runtime");const { COMPOSER_AREAS, SESSION_ROW_AREAS, STATUSBAR_AREAS, TITLEBAR_AREAS } = __cf_ext("@hermes/plugin-sdk");const { allocate, renderStrip, renderSwatch, signalsOf, stateFor } = __cf_require("src/domain/index.ts");const { rimElement } = __cf_require("src/adapters/rim.ts");const { svgElement } = __cf_require("src/adapters/svg.ts");const { safePattern, seedOfStored } = __cf_require("src/adapters/view.ts");/** The composer rim's height in px (brief: a 4–6 px band). */
-const RIM_HEIGHT = 5
+const { useEffect, useSyncExternalStore } = __cf_ext("react");const { jsx } = __cf_ext("react/jsx-runtime");const { COMPOSER_AREAS, SESSION_ROW_AREAS, STATUSBAR_AREAS, TITLEBAR_AREAS } = __cf_ext("@hermes/plugin-sdk");const { allocate, renderStrip, renderSwatch, signalsOf, stateFor } = __cf_require("src/domain/index.ts");const { rimElement } = __cf_require("src/adapters/rim.ts");const { svgElement } = __cf_require("src/adapters/svg.ts");const { safePattern, seedOfStored } = __cf_require("src/adapters/view.ts");/** The composer rim's height in px (brief: a 4–6 px band; the top of that range, so the cues read). */
+const RIM_HEIGHT = 6
 /** Re-render when — and only when — this surface's own derived key changes (React compares the snapshot by value). */
 function useLive(v        , key              )       {
   useSyncExternalStore((cb            ) => v.listen(cb), key)
@@ -683,10 +692,16 @@ function focusedStrip(v        )                                                
 function StripView({ v }               )          {
   useLive(v, () => chromeKey(v))
   const { strip, state } = focusedStrip(v)
-  return jsx('div', { 'data-cf-state': state, 'data-cf-strip': 'cuttlefish', children: [svgElement(jsx, strip, {}, strip.dots), labelOf(v, state)] })
+  return jsx('div', {
+    'data-cf-state': state,
+    'data-cf-strip': 'cuttlefish',
+    // one nowrap row: the label must sit BESIDE the glyph — stacked below it, the status bar's fixed height clipped it
+    style: { display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', lineHeight: 1, flexShrink: 0 },
+    children: [svgElement(jsx, strip, { style: { display: 'block', flexShrink: 0 } }, strip.dots), labelOf(v, state)],
+  })
 }
 
-/** The composer rim: one clean 5 px band echoing the state's glyph, no words, static. */
+/** The composer rim: one clean 6 px band echoing the state's glyph, no words, static. */
 function RimView({ v }               )          {
   useLive(v, () => chromeKey(v))
   const state = v.focusedState
@@ -1413,7 +1428,7 @@ __cf_defs["src/domain/field.ts"] = (exports) => {
 const { effectiveDl, inkTargets, MAX_DL, planGround, radiusFactors, twinkleFactor } = __cf_require("src/domain/pattern.ts");const { bloomFactor } = __cf_require("src/domain/motion.ts");const { constellation, eyeSpotAt } = __cf_require("src/domain/organs.ts");const { GLYPH_H, GLYPH_W, glyphOf } = __cf_require("src/domain/glyph.ts");const { deltaLOf, hexToRgb, rgbToHex } = __cf_require("src/domain/oklch.ts");const FIELD_TARGET = 190        // organs on a desktop-sized surface (~12 per classifier bin)
 const FIELD_R = [0.062, 0.098]
 const SWATCH_W = GLYPH_W, SWATCH_H = GLYPH_H
-const STRIP_W = 64, STRIP_H = 12
+const STRIP_W = GLYPH_W, STRIP_H = GLYPH_H
 const SPOT_SCALE_FIELD = 5.4, SPOT_SCALE_SMALL = 2.6
 const SPOT_DL = 0.156
 
@@ -1516,9 +1531,9 @@ function renderSwatch(input             )                                       
   return renderSmall(input, SWATCH_W, SWATCH_H, 1)
 }
 
-/** The status-bar strip: the same glyph, twice. */
+/** The status-bar strip: the same glyph, once, beside its words. */
 function renderStrip(input             )                                                 {
-  return renderSmall(input, STRIP_W, STRIP_H, 2)
+  return renderSmall(input, STRIP_W, STRIP_H, 1)
 }
 
 /** Plain decimal, no exponent, no trailing zeros: safe inside an SVG attribute. */
@@ -1542,22 +1557,24 @@ Object.assign(exports, { alphaFor, renderField, renderSwatch, renderStrip, toSvg
 };
 
 __cf_defs["src/domain/glyph.ts"] = (exports) => {
-// The state GLYPHS: what a row swatch (24×12) and the status strip show. The field speaks the language in
+// The state GLYPHS: what a row swatch (28×14) and the status strip show. The field speaks the language in
 // texture, which is too fine at swatch size — a swatch there is a small PICTURE of the state, in the session's
 // identity hue, the same shape for every session so the state reads before the hue does:
 //   resting  = three soft dots (calm mottle)        working = a puffy cloud
 //   needs you = three bold diagonal bars (zebra)    error   = a hollow pale ring (washed out)
 //   finished unseen = one dark eye-spot in a pale halo
 // Pure geometry: each spec is a circle in the 24×12 box with the ink (|dL| on the ground) it should show.
-const GLYPH_W = 24
-const GLYPH_H = 12
+/** The swatch box: 28×14 (O2.9 allows 28×16) — design units below are 24×12, scaled up by K. */
+const GLYPH_W = 28
+const GLYPH_H = 14
+const K = GLYPH_W / 24
 /** The eye-spot's ink on the ground (the field's ocellus uses the same). */
-const SPOT_INK = 0.156
+const SPOT_INK = 0.30
 
 const MOTTLE                      = [
-  { x: 6.5, y: 6.2, r: 1.9, ink: 0.13, pigment: 'chroma' },
-  { x: 12, y: 4.4, r: 1.4, ink: 0.11, pigment: 'chroma' },
-  { x: 17.5, y: 7.4, r: 1.7, ink: 0.12, pigment: 'chroma' },
+  { x: 6.5, y: 6.6, r: 2.3, ink: 0.24, pigment: 'chroma' },
+  { x: 12, y: 4.4, r: 1.7, ink: 0.20, pigment: 'chroma' },
+  { x: 17.5, y: 7.6, r: 2.1, ink: 0.22, pigment: 'chroma' },
 ]
 
 const CLOUD                      = [
@@ -1571,26 +1588,33 @@ const CLOUD                      = [
 const BARS                      = [0, 1, 2].flatMap(k =>
   [-3.6, -1.2, 1.2, 3.6].map((t)           => ({ x: 5.5 + 6.5 * k + 0.8 * t, y: 6 - 1.1 * t, r: 1.5, ink: 0.30, pigment: 'chroma' })))
 
-/** A hollow ring of small pale dots: the washed-out outline. */
-const RING                      = Array.from({ length: 14 }, (_, i)           => {
-  const a = (2 * Math.PI * i) / 14
-  return { x: 12 + 9.5 * Math.cos(a), y: 6 + 4 * Math.sin(a), r: 1.05, ink: 0.20, pigment: 'blanch' }
+/** A hollow dashed oval of pale beads: the washed-out outline (twelve beads, clear gaps between them). */
+const RING                      = Array.from({ length: 12 }, (_, i)           => {
+  const a = (2 * Math.PI * i) / 12
+  return { x: 12 + 9.4 * Math.cos(a), y: 6 + 4.2 * Math.sin(a), r: 1.35, ink: 0.30, pigment: 'blanch' }
 })
 
-/** A pale halo of small dots round one big dark spot (the spot is the LAST entry, the only 'spot' pigment). */
+/** One bold dark eye-spot on a light chip: a pale block of small overlapping dots, the spot (LAST entry, the only
+ *  'spot' pigment) at least twice the chip dots' radius. */
 const EYE                      = [
-  ...[[4, 6], [7.2, 2.6], [7.2, 9.4], [16.8, 2.6], [16.8, 9.4], [20, 6]].map(([x, y])           => ({ x, y, r: 1.25, ink: 0.10, pigment: 'chroma' })),
-  { x: 12, y: 6, r: 3.5, ink: SPOT_INK, pigment: 'spot' },
+  ...[3.2, 6, 8.8].flatMap(y => [4.6, 7.8, 11, 14.2, 17.4, 20.6].map((x)           => ({ x, y, r: 1.55, ink: 0.10, pigment: 'chroma' }))),
+  { x: 12, y: 6, r: 3.7, ink: SPOT_INK, pigment: 'spot' },
 ]
 
-const GLYPHS                                           = {
-  mottle: MOTTLE, clouds: CLOUD, zebra: BARS, blanch: RING, eyespot: EYE,
+/** Design units (24×12) to the swatch box. */
+function scaled(g                     )                      {
+  return g.map(d => ({ ...d, x: d.x * K, y: d.y * K, r: d.r * K }))
 }
 
-/** The glyph of a pattern base, in the 24×12 box. An unknown base degrades to the calm mottle, never a throw. */
-function glyphOf(base             )                      {
-  return Object.hasOwn(GLYPHS, base) ? GLYPHS[base] : MOTTLE
+const GLYPHS                                           = {
+  mottle: scaled(MOTTLE), clouds: scaled(CLOUD), zebra: scaled(BARS), blanch: scaled(RING), eyespot: scaled(EYE),
 }
+
+/** The glyph of a pattern base, in the 28×14 box. An unknown base degrades to the calm mottle, never a throw. */
+function glyphOf(base             )                      {
+  return Object.hasOwn(GLYPHS, base) ? GLYPHS[base] : GLYPHS.mottle
+}
+
 
 Object.assign(exports, { GLYPH_W, GLYPH_H, glyphOf });
 };
@@ -1914,7 +1938,7 @@ const TWINKLE_AMP = 0.55, TWINKLE_P_MIN = 7000, TWINKLE_P_SPAN = 5000
 /** Stripe count across the surface. The field's 8 (4 cycles ≈ 2 dot pitches per band) survives the chat region being a
  *  crop of the window — at 6 the fundamental sat between spectral bins 2 and 3 and read 0.49 in real pixels. */
 const FIELD_CYCLES = 4
-const ZEBRA_SWELL = 2.2, ZEBRA_SHRINK = 0.55, BLANCH_SWELL = 2.1
+const ZEBRA_SWELL = 2.2, ZEBRA_SHRINK = 0.55, BLANCH_SWELL = 3.2
 const CLOUD_TRAVEL_MS = 18000                                  // one band pass across the height
 /** Direction the chromatic organs sit relative to the ground: toward white on dark, toward black on light. */
 const dirOf = (lg        )         => (lg < 0.5 ? 1 : -1)

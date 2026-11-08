@@ -7,7 +7,7 @@ import { radiusFactors, zebraBright } from '../../src/domain/pattern.ts'
 import { allocate, DEFAULT_SETTINGS, patternOf, renderStrip, renderSwatch } from '../../src/domain/index.ts'
 import { PATTERN_KINDS, type PatternKind } from '../../src/domain/types.ts'
 
-test('every glyph fits its 24×12 box and has ink', () => {
+test('every glyph fits its 28×14 box and has ink', () => {
   for (const base of PATTERN_KINDS) {
     const g = glyphOf(base)
     assert.ok(g.length >= 3, `${base} draws something`)
@@ -23,23 +23,26 @@ test('the five glyphs are five different pictures: dot counts and sizes tell the
   assert.equal(new Set(PATTERN_KINDS.map(sig)).size, 5)
   assert.equal(glyphOf('mottle').length, 3, 'resting: three soft dots')
   assert.equal(glyphOf('zebra').length, 12, 'needs you: three bars of four dots')
+  assert.equal(glyphOf('blanch').length, 12, 'error: a dashed oval of twelve beads')
   assert.ok(glyphOf('blanch').every(d => d.pigment === 'blanch'), 'error is the pale pigment only')
   const eye = glyphOf('eyespot')
   assert.equal(eye.filter(d => d.pigment === 'spot').length, 1, 'finished unseen: exactly one eye-spot')
-  assert.ok(Math.max(...eye.map(d => d.r)) >= 2.5 * Math.min(...eye.map(d => d.r)), 'and it dwarfs its halo')
+  assert.ok(Math.max(...eye.map(d => d.r)) >= 2.2 * Math.min(...eye.map(d => d.r)), 'and it dwarfs the chip dots')
+  assert.equal(eye.length, 19, 'a light chip of 18 small dots under it')
 })
 
 test('an unknown pattern base degrades to the calm mottle, never a throw', () => {
   assert.equal(glyphOf('nonsense' as PatternKind), glyphOf('mottle'))
 })
 
-test('the swatch is the glyph in the session hue — the same shape for every session; the strip carries it twice', () => {
+test('the swatch is the glyph in the session hue — the same shape for every session; the strip carries it once', () => {
   const sw = (seed: string) => renderSwatch({ seed, hueDeg: allocate(seed, []).hue_deg, ground: '#fefefe', pattern: patternOf(DEFAULT_SETTINGS, 'needs_you'), intensity: 1 })
   const a = sw('s-one'), b = sw('s-two')
   assert.deepEqual(a.dots.map(d => [d.x, d.y, d.r]), b.dots.map(d => [d.x, d.y, d.r]), 'state is shape')
   assert.notDeepEqual(a.dots.map(d => d.color), b.dots.map(d => d.color), 'identity is hue')
   const strip = renderStrip({ seed: 's', hueDeg: 200, ground: '#fefefe', pattern: patternOf(DEFAULT_SETTINGS, 'needs_you'), intensity: 1 })
-  assert.equal(strip.dots.length, 24)
+  assert.equal(strip.dots.length, 12)
+  assert.equal(strip.width, 28)
   assert.ok(strip.dots.every(d => d.x - d.r >= 0 && d.x + d.r <= strip.width))
   const off = renderSwatch({ seed: 's', hueDeg: 200, ground: '#fefefe', pattern: patternOf(DEFAULT_SETTINGS, 'needs_you'), intensity: 0 })
   assert.ok(off.dots.every(d => d.alpha === 0), 'intensity 0 switches the glyph off')
@@ -56,6 +59,6 @@ test('field sizes: stripe organs swell in a band and shrink in the gap along 45�
   assert.notEqual(zebraBright({ ...a, x: 0, y: 0 }, 1340, 880, 1), zebraBright({ ...a, x: 400, y: 0 }, 1340, 880, 1), 'and neighbouring diagonals alternate')
   const share = z.filter(f => f === 2.2).length / z.length
   assert.ok(share > 0.42 && share < 0.56, `half the organs are in a band (${share.toFixed(2)})`)
-  assert.deepEqual([...new Set(radiusFactors(patternOf(DEFAULT_SETTINGS, 'error'), cons, 1340, 880))], [2.1])
+  assert.deepEqual([...new Set(radiusFactors(patternOf(DEFAULT_SETTINGS, 'error'), cons, 1340, 880))], [3.2])
   for (const s of ['resting', 'working', 'finished_unseen']) assert.deepEqual([...new Set(radiusFactors(patternOf(DEFAULT_SETTINGS, s), cons, 1340, 880))], [1])
 })
