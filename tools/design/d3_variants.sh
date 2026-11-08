@@ -3,7 +3,7 @@
 # the D3 variants of the plugin as branches v0..vN, ready to be shipped to the render host and run by tools/design/d3_run.sh.
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd); S=${1:-/tmp/spike-origin}
-rm -rf "$S"; mkdir -p "$S"; cd "$ROOT"
+mkdir -p "$S"; find "$S" -mindepth 1 -delete; cd "$ROOT"
 git archive origin/v2/evidence | tar -x -C "$S"            # tools/desktop (the harness) and its tests
 git archive HEAD | tar -x -C "$S"                          # the product tree wins over the evidence branch's older copy
 cp tools/design/capture_perf.ts "$S/tools/desktop/capture.ts"

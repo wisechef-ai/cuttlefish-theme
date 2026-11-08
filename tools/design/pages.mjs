@@ -74,7 +74,7 @@ function chatHtml(g, G, state) {
     ? `<div style="border:1px solid ${G.edge};background:${G.card};padding:10px 12px;border-radius:6px;margin:0 0 14px 0;max-width:760px">${t}</div>`
     : who === 'tool' ? `<div style="font:12px monospace;color:${G.mute};margin:0 0 12px 0;padding:6px 10px;border-left:2px solid ${G.edge}">$ ${t}</div>`
     : `<p style="margin:0 0 12px 0;max-width:860px">${t}</p>`).join('')
-  const extra = state === 'needs_you' ? card(g, G, `<div style="color:${G.mute}">Command</div><div style="font-family:monospace;margin:8px 0">rm -rf /tmp/cuttlefish-demo-target</div><div style="text-align:right;color:${G.mute}">Reject &nbsp; <span style="border:1px solid ${G.edge};padding:3px 8px;border-radius:5px">Always allow…</span> <span style="background:#1d5cf0;color:#fff;padding:4px 10px;border-radius:5px">Run</span></div>`)
+  const extra = state === 'needs_you' ? card(g, G, `<div style="color:${G.mute}">Command</div><div style="font-family:monospace;margin:8px 0">delete /tmp/cuttlefish-demo-target</div><div style="text-align:right;color:${G.mute}">Reject &nbsp; <span style="border:1px solid ${G.edge};padding:3px 8px;border-radius:5px">Always allow…</span> <span style="background:#1d5cf0;color:#fff;padding:4px 10px;border-radius:5px">Run</span></div>`)
     : state === 'error' ? `<div style="margin:14px 0 0 0;width:560px;border:1px solid #d9a6ad;background:${g === 'light' ? '#fdf1f3' : '#3a2227'};color:${g === 'light' ? '#8a2b3a' : '#f0b9c1'};border-radius:8px;padding:12px;font-size:13px">Request failed (HTTP 400). The model call was rejected.</div>` : ''
   return `<div style="padding:16px 24px 0 24px;font-size:14px;line-height:1.55">${msgs}${extra}</div>`
 }
