@@ -1,8 +1,8 @@
 {
   "schema": "cf2-still/1",
   "state": "finished_unseen",
-  "png_sha256": "be89e3bf702b72c1209a5111ccdd6e8b18cdd6246533b8894e728462fc4ebe1e",
-  "taken_at": 1794170539.944,
+  "png_sha256": "342b6d0fbe55adf339a52ed14ed83b8ef7e379f05ff08e25e3192c96c9a988c2",
+  "taken_at": 1794175688.881,
   "region": [
     260,
     34,
@@ -23,15 +23,15 @@
       26
     ],
     [
-      1490,
+      1484,
       45,
-      80,
+      86,
       31
     ],
     [
-      1494,
+      1488,
       49,
-      48,
+      54,
       22
     ],
     [
@@ -47,9 +47,9 @@
       25
     ],
     [
-      1432,
+      1426,
       114,
-      48,
+      54,
       22
     ],
     [
@@ -119,5 +119,5 @@
       36
     ]
   ],
-  "focused_stored_id": "local-e1ba4c08b2849f172709c3d48de6edad29c8943362d78399d14aaef0d426f523"
+  "focused_stored_id": "local-6c5f562bbe46785b6c1d1c052cdb3b36fdc619ea19d91069b09baad7b934d33c"
 }

@@ -1,0 +1,80 @@
+{
+  "schema": "cf2-dom-dump/1",
+  "stored_id": "local-3fa778976eef78e5453114ed7d59d79141053215a1028fb5a046cf1aa26ae8f3",
+  "state": "resting",
+  "focused": true,
+  "plugin_js_sha256": "beb716453d9e12363135bfbf394eed741c67c2e100b58b7392caae92173901a6",
+  "captured_at": 1794175717.805,
+  "html": {
+    "data-cf-state": "resting",
+    "data-cf-session": "local-3fa778976eef78e5453114ed7d59d79141053215a1028fb5a046cf1aa26ae8f3"
+  },
+  "row": {
+    "data-cf-session": "local-3fa778976eef78e5453114ed7d59d79141053215a1028fb5a046cf1aa26ae8f3",
+    "data-cf-state": "resting",
+    "swatch_circles": 3
+  },
+  "rows": [
+    {
+      "title": "last calm [done]",
+      "data-cf-session": "local-6c5f562bbe46785b6c1d1c052cdb3b36fdc619ea19d91069b09baad7b934d33c",
+      "data-cf-state": "resting",
+      "swatch_circles": 3
+    },
+    {
+      "title": "slow answer [brief]",
+      "data-cf-session": "local-72f0d9f54d1110fbf04731a83fde2569940603de312674101f03d87eccba503d",
+      "data-cf-state": "finished_unseen",
+      "swatch_circles": 3
+    },
+    {
+      "title": "quiet note [done]",
+      "data-cf-session": "local-5a5d5c65a980f846fd581ee089cfc8413e1be5f737854b7b32fa5280e678e7cc",
+      "data-cf-state": "resting",
+      "swatch_circles": 3
+    },
+    {
+      "title": "broken request [fail]",
+      "data-cf-session": "local-07b861accaf7074de21fb253973d748b121b9e9a5402dde283dc0bcfa4f12ed5",
+      "data-cf-state": "error",
+      "swatch_circles": 2
+    },
+    {
+      "title": "risky command [approve]",
+      "data-cf-session": "local-da8f134186f74a111680433d323d6c6d04fee3cc5ba79e4f9439107eec628d47",
+      "data-cf-state": "needs_you",
+      "swatch_circles": 6
+    },
+    {
+      "title": "long task [work]",
+      "data-cf-session": "local-c05141b12bbc2a9fdbe854f8eeeec19c0f6ab8449baa73b08354484a8fd51fcc",
+      "data-cf-state": "working",
+      "swatch_circles": 3
+    },
+    {
+      "title": "mottle study [done]",
+      "data-cf-session": "local-3fa778976eef78e5453114ed7d59d79141053215a1028fb5a046cf1aa26ae8f3",
+      "data-cf-state": "resting",
+      "swatch_circles": 3
+    },
+    {
+      "title": "calm sea [done]",
+      "data-cf-session": "local-adf50bbbd571595f87736800fad689eef6d72fb3a70672e4f6f7b7f9429eb947",
+      "data-cf-state": "resting",
+      "swatch_circles": 3
+    }
+  ],
+  "strip": {
+    "text": "resting"
+  },
+  "composer": {
+    "rim": {
+      "data-cf-state": "resting",
+      "svg_sha256": "7e2b5f4e45e25765e652a52f2ced4f8d091e57c7183c9bbc7d17254d1094d112"
+    },
+    "ring_vars": {
+      "--dt-composer-ring": "#946cad"
+    }
+  },
+  "transcript_messages": 0
+}

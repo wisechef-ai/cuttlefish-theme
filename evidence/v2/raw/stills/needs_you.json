@@ -1,8 +1,8 @@
 {
   "schema": "cf2-still/1",
   "state": "needs_you",
-  "png_sha256": "1c35e37ac01bfeac33a80c828d4b17f78ddc5f8b12e9fd126c56473dde589197",
-  "taken_at": 1794170588.101,
+  "png_sha256": "d594cdf32486555e966e10f18a4ec44b2ce361aa7e4a4194ceaff0db150a53ad",
+  "taken_at": 1794175737.064,
   "region": [
     260,
     34,
@@ -23,15 +23,15 @@
       26
     ],
     [
-      1494,
+      1488,
       49,
-      76,
+      82,
       27
     ],
     [
-      1498,
+      1492,
       51,
-      48,
+      54,
       22
     ],
     [
