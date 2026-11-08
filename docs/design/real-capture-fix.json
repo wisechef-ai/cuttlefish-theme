@@ -1,0 +1,51 @@
+{
+ "field_pixels": {
+  "resting": {
+   "organs_detected": 56,
+   "p95_dL": 0.04047816316457731,
+   "mean_dL": 0.023278906922461626,
+   "lowK": 0.19428877545658838,
+   "highK": 0.30977009577823356
+  },
+  "working": {
+   "organs_detected": 31,
+   "p95_dL": 0.1261677442208955,
+   "mean_dL": 0.08730594996504555,
+   "lowK": 0.25345288263475535,
+   "highK": 0.3275450082250459
+  },
+  "needs_you": {
+   "organs_detected": 58,
+   "p95_dL": 0.15001555868407856,
+   "mean_dL": 0.07589430242500426,
+   "lowK": 0.2860955744098964,
+   "highK": 0.7834651153870316
+  },
+  "error": {
+   "organs_detected": 63,
+   "p95_dL": 0.10229044002888588,
+   "mean_dL": 0.04491609955791643,
+   "lowK": 0.7677172790836913,
+   "highK": 1.2197654974476104
+  }
+ },
+ "perf": {
+  "sessions": 8,
+  "window_s": 60,
+  "budget": {
+   "idle_pp": 1,
+   "working_pp": 6
+  },
+  "idle": {
+   "on_pct": 17.86,
+   "off_pct": 21.07
+  },
+  "working": {
+   "on_pct": 15.09,
+   "off_pct": 18.78,
+   "field_updates_per_s": 4
+  }
+ },
+ "plugin_js_sha256": "f88eefac06172ba0d8ed439010489bd3f14065b132ae276ab45250621973ae4d",
+ "note": "full real-Desktop capture (v0.22.7, 1600x1000) of the scratch branch = c2cae11 + docs/design/field-fix.patch"
+}
