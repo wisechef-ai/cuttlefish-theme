@@ -138,3 +138,19 @@ export function centreDistance(cx: number, cy: number, r: Rect): number {
   const dx = (cx - (r[0] + r[2] / 2)) / (r[2] / 2), dy = (cy - (r[1] + r[3] / 2)) / (r[3] / 2)
   return Math.hypot(dx, dy)
 }
+
+// ---- hygiene -------------------------------------------------------------------------------------------------------------
+/** A committed evidence file carries no user home and no tailnet address: the home prefix becomes <home>/ (the sandbox
+ *  segments after it stay, so a relative path still has its sandboxes part), a 100.64.0.0/10 address becomes <tailnet-ip>. */
+export function scrubPath(s: string): string {
+  return s.replace(/\/home\/[^/\s"']+\//g, '<home>/')
+    .replace(/\b100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}\b/g, '<tailnet-ip>')
+}
+
+/** scrubPath on every string of a JSON-like value (a new value; the input is not changed). */
+export function scrubDeep<T>(v: T): T {
+  if (typeof v === 'string') return scrubPath(v) as unknown as T
+  if (Array.isArray(v)) return v.map(x => scrubDeep(x)) as unknown as T
+  if (v !== null && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, scrubDeep(x)])) as T
+  return v
+}

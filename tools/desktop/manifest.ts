@@ -1,5 +1,5 @@
 /** The manifest of evidence/v2 (shape: tests/acceptance/test_o7_desktop_evidence.py + contract/RAW-EVIDENCE.md + PARTS-2.md). Pure. */
-import type { Box, Rect, StripVerdict } from './evidence_lib.ts'
+import { scrubDeep, type Box, type Rect, type StripVerdict } from './evidence_lib.ts'
 
 export interface SessionSpec { stored_id: string; expected: string; dom_state: string; dom_dump: string; title: string }
 export interface StillSpec { state: string; path: string; sha256: string; meta?: string; dom_dump?: string }
@@ -30,6 +30,10 @@ const FIELD_STATES = ['resting', 'working', 'needs_you', 'error']
 const BUDGET = { idle_pp: 1.0, working_pp: 6.0 } // fixed before measuring (PLAN.md §4); never moved here
 
 export function buildManifest(i: ManifestInput): Record<string, unknown> {
+  return scrubDeep(buildRaw(i))
+}
+
+function buildRaw(i: ManifestInput): Record<string, unknown> {
   const rel = i.rel ?? 'evidence/v2'
   if (i.stripCheck.states.length === 0) throw new Error('the strip check has no focused state: nothing was checked')
   const strip_check = {
